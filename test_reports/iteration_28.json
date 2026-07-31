@@ -1,0 +1,61 @@
+{
+  "summary": "Verified NewProjectForm multi-file/free-text-client/website upload path (backend + UI) and 'My Tools' tab integration on 9 unit pages. Backend regression PASS (2/2). Frontend project submit PASS. Tab regression FAIL on 5 of 9 pages: TechnologyAndBuild, SalesAndBD, MarketingAndBrand, AdvisoryAndConsulting, OperationsAndFinance are missing data-testid='tab-deployed'. Working pages: THCOHRPage, AcademyAndLearning, ClientDelivery, ITAndTools.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "TechnologyAndBuild.jsx", "issue": "Missing 'My Tools' tab (data-testid='tab-deployed'). Only Overview + Build History tabs render at /technology.", "selector": "[data-testid='tab-deployed']", "priority": "HIGH"},
+      {"component": "SalesAndBD.jsx", "issue": "Missing 'My Tools' tab at /sales", "selector": "[data-testid='tab-deployed']", "priority": "HIGH"},
+      {"component": "MarketingAndBrand.jsx", "issue": "Missing 'My Tools' tab at /marketing", "selector": "[data-testid='tab-deployed']", "priority": "HIGH"},
+      {"component": "AdvisoryAndConsulting.jsx", "issue": "Missing 'My Tools' tab at /advisory", "selector": "[data-testid='tab-deployed']", "priority": "HIGH"},
+      {"component": "OperationsAndFinance.jsx", "issue": "Missing 'My Tools' tab at /operations", "selector": "[data-testid='tab-deployed']", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "Backend POST /api/projects with website + free-text client_name + 3 client_documents -> 200, client_name_snapshot='Acme Free Text Corp QA', client_id normalized to null when 'custom', client_documents length=3",
+    "Backend GET /api/projects -> created project visible in list with website + 3 client_documents",
+    "Backend GET /api/projects/{id} -> details persisted (website, 3 docs)",
+    "Backend GET /api/flowforge/tools?unit={unit} -> 200 list for all 9 units",
+    "UI Login (joshua@thcohq.com) -> /dashboard",
+    "UI /talent/projects/new renders all 8 expected data-testids (project-name-input, client-input, website-input, description-input, brief-upload, roadmap-upload, client-docs-upload, submit-project-btn)",
+    "UI Form submit with free-text client + 2 client docs + brief.pdf + roadmap.pdf navigates back to /talent/projects",
+    "UI tab-deployed switches to 'Deployed Tools' panel on: /thco-hr, /client-delivery, /academy, /it-tools (with empty-state or list rendering)",
+    "UI tab-build-history still works on the 4 pages that have tab-deployed"
+  ],
+  "failed_tests": [
+    "UI tab-deployed missing on /technology, /sales, /marketing, /advisory, /operations (5 of 9 unit pages)"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_new_project_and_deployed_tools.py",
+    "/app/test_reports/pytest/new_project_deployed_tools.xml"
+  ],
+  "action_items": [
+    "Add 'My Tools' tab (data-testid='tab-deployed') + DeployedTools <DeployedTools unit='...' /> render branch to: TechnologyAndBuild.jsx (unit='technology'), SalesAndBD.jsx (unit='sales'), MarketingAndBrand.jsx (unit='marketing'), AdvisoryAndConsulting.jsx (unit='advisory'), OperationsAndFinance.jsx (unit='operations'). Mirror the THCOHRPage.jsx pattern: import DeployedTools, add activeTab state with 'deployed' branch, render <button data-testid='tab-deployed'>My Tools</button> in tab strip."
+  ],
+  "critical_code_review_comments": [
+    "NewProjectForm multi-file dropzone: clientDocs accumulator never deduplicates by name; user re-selecting the same file appends duplicates. Minor UX issue.",
+    "Backend: 100MB cap is enforced PER FILE, not total. Form description claims '100MB total limit' but backend allows 100MB per uploaded file. Either update copy or sum sizes server-side.",
+    "Backend: client_documents accepts ANY extension (no _validate_file call) while brief/roadmap are restricted to PDF/DOCX. Confirm this is intentional (frontend allows pdf/docx/xlsx/png/zip/etc).",
+    "DeployedTools.jsx loadTools has no error toast — silent on API failure (only console.error)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_new_project_and_deployed_tools.py"
+  ],
+  "success_rate": {
+    "backend": "100% (2/2 new tests pass; full project create + flowforge list verified)",
+    "frontend": "55% (form submit PASS + 4/9 unit pages PASS for tab-deployed; 5/9 FAIL)"
+  },
+  "test_credentials": {
+    "admin_email": "joshua@thcohq.com",
+    "admin_password": "THCOAdmin2024!"
+  },
+  "seed_data_creation": "Created 2 TEST projects: TEST_QA_FreeTextClient_Project (backend) and TEST_QA_UI_FreeTextClient (UI). Both use client_name 'Acme Free Text Corp QA' and have multi-file client_documents. Safe to leave or purge.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "After main agent adds tab-deployed to the 5 missing pages (TechnologyAndBuild, SalesAndBD, MarketingAndBrand, AdvisoryAndConsulting, OperationsAndFinance), re-run the Playwright tab-switch loop in iteration_28 across all 9 routes to confirm. Backend tests in test_new_project_and_deployed_tools.py are already green and reusable. NewProjectForm + POST /api/projects multi-file path is fully verified — no need to re-test that.",
+  "rca_of_the_issue": "Code grep on /app/frontend/src/pages confirms only 4 of 9 page files contain 'tab-deployed': THCOHRPage.jsx, AcademyAndLearning.jsx, ClientDelivery.jsx, ITAndTools.jsx. The other 5 (TechnologyAndBuild.jsx, SalesAndBD.jsx, MarketingAndBrand.jsx, AdvisoryAndConsulting.jsx, OperationsAndFinance.jsx) were never modified to include the new tab + DeployedTools render branch. Routes in App.js correctly mount each component, so the regression is purely the missing UI changes in 5 pages. Mitigation: replicate the THCOHRPage.jsx tab pattern (lines 169-184) into each missing page with the appropriate `unit` slug."
+}

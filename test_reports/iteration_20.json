@@ -1,0 +1,233 @@
+{
+  "summary": "Comprehensive frontend testing of THE FORGE — Fire and Memory 24-page cinematic animated lookbook/presentation. All features working correctly: preview route /proposals/preview/the-forge loads without errors, public route /proposals/the-forge shows email gate with 'THE FORGE — Fire and Memory' subtitle, all 24 pages render with data-testid forge-page-1 through forge-page-24, navigation (prev/next buttons + keyboard ArrowRight/ArrowLeft) works correctly, counter shows '1 / 24' on load and updates properly, progress bar at bottom updates on navigation, CSS-only animations triggered on page activation via data-active attribute.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "Preview route /proposals/preview/the-forge loads without errors - PASS",
+    "Main presentation container visible with data-testid='forge-presentation' - PASS",
+    "All 24 pages exist with data-testid='forge-page-1' through 'forge-page-24' - PASS",
+    "Counter shows '1 / 24' on load - PASS",
+    "Counter updates correctly during navigation (2 / 24, 3 / 24, etc.) - PASS",
+    "Prev/Next buttons visible (data-testid='forge-prev', 'forge-next') - PASS",
+    "Next button navigation works (1 → 2) - PASS",
+    "Keyboard ArrowRight navigation works - PASS",
+    "Keyboard ArrowLeft navigation works - PASS",
+    "Progress bar at bottom updates on navigation - PASS",
+    "Page 1: Gold 'THE FORGE' ignition letters with amber glow animation - PASS",
+    "Page 1: 'Fire and Memory' subtitle visible - PASS",
+    "Page 2: Video element present (data-testid='forge-video') - PASS",
+    "Page 2: Video uses /images/theforge/forge-video.mp4 - PASS",
+    "Page 3: Cover with 'BUILD. BURN. WIN.' in amber - PASS",
+    "Page 3: Ember particles floating upward visible (36 particles) - PASS",
+    "Page 4: Gold italic typewriter quote 'You are not building a castle.' - PASS",
+    "Page 6: Three civilisations (MEROË, BENIN, DAHOMEY) visible - PASS",
+    "Page 6: Bronze hall background image (bronze-hall.jpg) present - PASS",
+    "Page 7: City skyline background with Oja Nla narrative visible - PASS",
+    "Page 7: city-skyline.jpg background present - PASS",
+    "Page 9: 'PENDING RETURN' badge visible - PASS",
+    "Page 9: Empty cases background (empty-cases.jpg) present - PASS",
+    "Page 10: 'THE KEEPER' character title visible - PASS",
+    "Page 10: Character image (keeper.jpg) on RIGHT side - PASS",
+    "Page 11: 'ADESUWA' character title visible - PASS",
+    "Page 11: Character image (adesuwa.jpg) on LEFT side - PASS",
+    "Page 12: 'KETURA PIERRE' character title visible - PASS",
+    "Page 12: Drop-in animation class (adi) present - PASS",
+    "Page 12: ketura.jpg image present - PASS",
+    "Page 13: 'ADUKE' character title visible - PASS",
+    "Page 13: aduke.jpg image present - PASS",
+    "Page 14: 'MARCUS HALE' character title visible - PASS",
+    "Page 14: marcus-hale.jpg image present - PASS",
+    "Page 14: Cold blue background (#080C14 = rgb(8, 12, 20)) confirmed - PASS",
+    "Page 17: All 6 game loop steps found (HARVEST, UPGRADE, RUN, DEPOSIT, TRADE, REUNITE) - PASS",
+    "Page 18: 'Oja Ìfé' title visible - PASS",
+    "Page 18: Mothers United image (mothers-united.jpg) present - PASS",
+    "Page 18: Brightness animation class (abu) present - PASS",
+    "Page 20: 'Eight Revenue Streams' title visible - PASS",
+    "Page 20: All 8 revenue stream numbers (01-08) found - PASS",
+    "Page 21: 'Seven Months to Soft Launch' title visible - PASS",
+    "Page 21: All 7 months visible in roadmap - PASS",
+    "Page 21: Grand Oja aerial background present - PASS",
+    "Page 23: 'Three Decisions. Two Weeks.' title visible - PASS",
+    "Page 23: 'The cases will not stay empty.' text visible - PASS",
+    "Page 23: Title card background present - PASS",
+    "Page 24: 'THE FORGE' ignition letters visible - PASS",
+    "Page 24: 'Fire and Memory' subtitle visible - PASS",
+    "Page 24: 'BUILD. BURN. WIN.' visible - PASS",
+    "Page 24: Confidential footer visible - PASS",
+    "Page 24: Ember particles visible (18 particles) - PASS",
+    "Final counter shows '24 / 24' - PASS",
+    "Public route /proposals/the-forge shows email gate - PASS",
+    "Email gate shows 'THE FORGE — Fire and Memory' subtitle - PASS",
+    "Email gate form submission works - presentation loads after - PASS",
+    "Card on /proposals page shows 'THE FORGE' title - PASS",
+    "Card on /proposals page shows 'Fire and Memory — Lookbook & Proposal' - PASS",
+    "Card on /proposals page shows '24 Pages • Cinematic Deck' - PASS",
+    "Card on /proposals page has 'NEW' badge - PASS",
+    "Card on /proposals page links to /proposals/the-forge - PASS"
+  ],
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "All data is hardcoded in component as expected - no API calls needed for presentation content",
+    "Good use of data-testid attributes for all 24 pages and navigation elements (forge-page-1 to forge-page-24, forge-prev, forge-next, forge-counter, forge-video)",
+    "CSS-only animations working correctly via data-active attribute trigger on .f-pg elements",
+    "Character page template (CharPage) properly handles side='left' for Adesuwa (page 11) and side='right' for others",
+    "Page 14 correctly uses different background color (#080C14 cold blue) for Marcus Hale villain page",
+    "Ember particles component (Embers) creates 18 animated 2px dots with drift animation floating upward",
+    "Video element on page 2 properly autoplays when page is active and pauses when inactive",
+    "Keyboard navigation properly implemented with ArrowLeft/ArrowRight/ArrowUp/ArrowDown/Space",
+    "Touch swipe navigation implemented for mobile",
+    "Color palette correctly applied: Warm black #0E0C09 background, Gold #C4841A headings, Amber #E87A2A accents",
+    "Playfair Display serif font for headings (.forge-serif class), Inter sans-serif for body text",
+    "Page transitions use opacity crossfade (400ms) as specified",
+    "All 16 images loaded from /images/theforge/ folder (plus 1 mp4 video)",
+    "Progress bar at bottom shows amber fill based on current page position"
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A - Frontend only test",
+    "frontend": "100% (61/61 tests passed)"
+  },
+  "test_credentials": {
+    "email": "joshua@thcohq.com",
+    "password": "THCOAdmin2024!",
+    "note": "Used for accessing /proposals page to verify THE FORGE card"
+  },
+  "seed_data_creation": "None - all data hardcoded in component",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "THE FORGE is a NEW 24-page cinematic presentation similar to INGABO. Routes: /proposals/preview/the-forge (no auth, direct access), /proposals/the-forge (email gate). All data hardcoded in TheForgePresentation.jsx. Features: Gold 'THE FORGE' letter ignition animation on pages 1 and 24 with amber glow, video on page 2 with autoplay, ember particles (Embers component) floating upward, character pages 10-14 with CharPage template, page 11 ADESUWA has image on LEFT side, page 14 MARCUS HALE has cold blue background (#080C14) for temperature contrast, CSS-only animations via data-active attribute and animation classes (aig=ignite, adi=drop-in, abu=brightness-up, asl/asr=slide, af=fadeIn, au=fadeUp, atc=typeChar), full keyboard/touch navigation, opacity crossfade transitions (400ms), progress bar at bottom. Color palette: Warm black #0E0C09, Gold #C4841A, Amber #E87A2A, Off-white #F5ECD7, Cold blue #080C14 (villain only). Fonts: Playfair Display serif for headings (.forge-serif), Inter sans-serif for body. Images in /app/frontend/public/images/theforge/ (16 images + 1 video ~81MB)",
+  "features_tested": {
+    "preview_route": {
+      "status": "PASS",
+      "url": "/proposals/preview/the-forge",
+      "details": "Loads presentation without authentication"
+    },
+    "public_route": {
+      "status": "PASS",
+      "url": "/proposals/the-forge",
+      "details": "Shows email gate with 'THE FORGE — Fire and Memory' subtitle"
+    },
+    "proposals_page_card": {
+      "status": "PASS",
+      "details": "Card displayed with warm amber/gold gradient, 'F' serif icon, 'THE FORGE' title, 'Fire and Memory — Lookbook & Proposal' subtitle, '24 Pages • Cinematic Deck', 'NEW' badge, navigates to public route"
+    },
+    "navigation_buttons": {
+      "status": "PASS",
+      "details": "Prev/Next buttons work (data-testid='forge-prev', 'forge-next')"
+    },
+    "keyboard_navigation": {
+      "status": "PASS",
+      "details": "ArrowRight/ArrowLeft/ArrowUp/ArrowDown/Space keys navigate between pages"
+    },
+    "page_counter": {
+      "status": "PASS",
+      "details": "Shows 'X / 24' format (data-testid='forge-counter')"
+    },
+    "progress_bar": {
+      "status": "PASS",
+      "details": "Bottom amber progress bar visible, updates with current page position"
+    },
+    "all_24_pages": {
+      "status": "PASS",
+      "details": "All pages have data-testid='forge-page-1' through 'forge-page-24'"
+    },
+    "page_content": {
+      "page_1_title_reveal": {
+        "status": "PASS",
+        "content": "Gold serif 'THE FORGE' letters animate in with ignition effect (aig class), 'Fire and Memory' subtitle"
+      },
+      "page_2_video": {
+        "status": "PASS",
+        "content": "Video element (data-testid='forge-video'), /images/theforge/forge-video.mp4"
+      },
+      "page_3_cover": {
+        "status": "PASS",
+        "content": "'THE FORGE' title, 'Fire and Memory', 'BUILD. BURN. WIN.' in amber, ember particles"
+      },
+      "page_4_typewriter": {
+        "status": "PASS",
+        "content": "Gold italic typewriter quote about building a castle"
+      },
+      "page_6_three_civilisations": {
+        "status": "PASS",
+        "content": "MEROË, BENIN, DAHOMEY with bronze-hall.jpg background"
+      },
+      "page_7_oja_nla": {
+        "status": "PASS",
+        "content": "City skyline background (city-skyline.jpg), 'Oja Nla — City of the Great Market'"
+      },
+      "page_9_bronze_hall": {
+        "status": "PASS",
+        "content": "empty-cases.jpg background, 'PENDING RETURN' badge"
+      },
+      "page_10_keeper": {
+        "status": "PASS",
+        "content": "'THE KEEPER' title, keeper.jpg on RIGHT side"
+      },
+      "page_11_adesuwa": {
+        "status": "PASS",
+        "content": "'ADESUWA' title, adesuwa.jpg on LEFT side"
+      },
+      "page_12_ketura": {
+        "status": "PASS",
+        "content": "'KETURA PIERRE' title, drop-in animation (adi), ketura.jpg on right"
+      },
+      "page_13_aduke": {
+        "status": "PASS",
+        "content": "'ADUKE' title, slow fade reveal, aduke.jpg on right"
+      },
+      "page_14_marcus_hale": {
+        "status": "PASS",
+        "content": "'MARCUS HALE' title, cold blue background (#080C14), marcus-hale.jpg on right"
+      },
+      "page_17_game_loop": {
+        "status": "PASS",
+        "content": "6 steps (HARVEST, UPGRADE, RUN, DEPOSIT, TRADE, REUNITE) alternating left/right, market-builds.jpg background"
+      },
+      "page_18_ojafe": {
+        "status": "PASS",
+        "content": "mothers-united.jpg with brightness animation (abu class), 'Oja Ìfé' title"
+      },
+      "page_20_revenue": {
+        "status": "PASS",
+        "content": "'Eight Revenue Streams. All Player-Driven.' with numbered list 01-08"
+      },
+      "page_21_roadmap": {
+        "status": "PASS",
+        "content": "'Seven Months to Soft Launch' with timeline, grand-oja-aerial.jpg background"
+      },
+      "page_23_the_ask": {
+        "status": "PASS",
+        "content": "'Three Decisions. Two Weeks.', 'The cases will not stay empty.', title-card.jpg background"
+      },
+      "page_24_closing": {
+        "status": "PASS",
+        "content": "Gold 'THE FORGE' ignition letters, 'Fire and Memory', 'BUILD. BURN. WIN.', 'Confidential' footer, ember particles"
+      }
+    },
+    "css_animations": {
+      "status": "PASS",
+      "details": "CSS-only animations via data-active attribute, animation classes: af (fadeIn), au (fadeUp), asl (slideL), asr (slideR), adi (dropIn), asu (scaleUp), atc (typeChar), aig (ignite), abu (brightUp)"
+    },
+    "crossfade_transitions": {
+      "status": "PASS",
+      "details": "Opacity crossfade transitions (400ms) between absolute-positioned pages"
+    },
+    "color_palette": {
+      "status": "PASS",
+      "details": "Warm black #0E0C09 background, Gold #C4841A headings, Amber #E87A2A accents correctly applied, Cold blue #080C14 for villain page (p14)"
+    },
+    "typography": {
+      "status": "PASS",
+      "details": "Playfair Display serif for headings (.forge-serif class), Inter sans-serif for body"
+    }
+  }
+}

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="6" time="54.085" timestamp="2026-02-22T01:27:09.416692+00:00" hostname="agent-env-9e47d1e6-1ff1-46f6-b330-f411032d5bb2"><testcase classname="tests.test_structured_brief.TestStructuredBriefDetection" name="test_generate_endpoint_exists" time="0.864"><failure message="AssertionError: Unexpected status: 520, body: &lt;!DOCTYPE html&gt;&#10;  &lt;!--[if lt IE 7]&gt; &lt;html class=&quot;no-js ie6 oldie&quot; lang=&quot;en-US&quot;&gt; &lt;![endif]--&gt;&#10;  &lt;!--[if IE 7]&gt;    &lt;html class=&quot;no-js ie7 oldie&quot; lang=&quot;en-US&quot;&gt; &lt;![endif]--&gt;&#10;  &lt;!--[if IE 8]&gt;    &lt;html class=&quot;no-js ie8 oldie&quot; lang=&quot;en-US&quot;&gt; &lt;![endif]--&gt;&#10;  &lt;!--[if gt IE 8]&gt;&lt;!--&gt; &lt;html class=&quot;no-js&quot; lang=&quot;en-US&quot;&gt; &lt;!--&lt;![endif]--&gt;&#10;  &lt;head&gt;&#10;  &#10;  &#10;  &lt;title&gt;ai-builder-222.cluster-0.preview.emergentcf.cloud | 520: Web server is returning an unknown error&lt;/title&gt;&#10;  &lt;meta charset=&quot;UTF-8&quot; /&gt;&#10;  &lt;meta http-equiv=&quot;Content-Type&quot; conten&#10;assert 520 in [404, 403]&#10; +  where 520 = &lt;Response [520]&gt;.status_code">tests/test_structured_brief.py:81: in test_generate_endpoint_exists
+    assert response.status_code in [404, 403], f"Unexpected status: {response.status_code}, body: {response.text[:500]}"
+E   AssertionError: Unexpected status: 520, body: &lt;!DOCTYPE html&gt;
+E     &lt;!--[if lt IE 7]&gt; &lt;html class="no-js ie6 oldie" lang="en-US"&gt; &lt;![endif]--&gt;
+E     &lt;!--[if IE 7]&gt;    &lt;html class="no-js ie7 oldie" lang="en-US"&gt; &lt;![endif]--&gt;
+E     &lt;!--[if IE 8]&gt;    &lt;html class="no-js ie8 oldie" lang="en-US"&gt; &lt;![endif]--&gt;
+E     &lt;!--[if gt IE 8]&gt;&lt;!--&gt; &lt;html class="no-js" lang="en-US"&gt; &lt;!--&lt;![endif]--&gt;
+E     &lt;head&gt;
+E     
+E     
+E     &lt;title&gt;ai-builder-222.cluster-0.preview.emergentcf.cloud | 520: Web server is returning an unknown error&lt;/title&gt;
+E     &lt;meta charset="UTF-8" /&gt;
+E     &lt;meta http-equiv="Content-Type" conten
+E   assert 520 in [404, 403]
+E    +  where 520 = &lt;Response [520]&gt;.status_code</failure></testcase><testcase classname="tests.test_structured_brief.TestStructuredBriefDetection" name="test_structured_brief_with_all_markers" time="13.166" /><testcase classname="tests.test_structured_brief.TestStructuredBriefDetection" name="test_workflow_data_contains_tool_name" time="10.566" /><testcase classname="tests.test_structured_brief.TestStructuredBriefDetection" name="test_action_buttons_present" time="13.446" /><testcase classname="tests.test_structured_brief.TestCasualVsStructuredBrief" name="test_casual_request_may_ask_questions" time="5.684" /><testcase classname="tests.test_structured_brief.TestMinimalStructuredBrief" name="test_brief_with_4_markers_detected" time="10.280" /></testsuite></testsuites>

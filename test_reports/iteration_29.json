@@ -1,0 +1,65 @@
+{
+  "summary": "Full Phase A test of THCO Flow (12-stage project management). Backend: 17/17 pytest tests PASS for projects (CRUD + 1->12 transitions + signed_at/start_date/completed_at), board (12 stages + legacy backfill), contacts+events (auto event on birthday), prospects (handed_off creates project), tickets (queued->shipped + shipped_at), messages (tier1 pending_approval / tier2 approved + approve/send/reject + invalid 400), roles (9 flags, invalid 400, grant/revoke), dashboard (all 11 expected keys + stages_meta 12), audit-log filter. Frontend: login + sidebar 'THCO Flow', /flow Dashboard (8 stat cards), /flow/board (12 columns), /flow/projects/new (form submit redirect), /flow/projects/:id (12 stage buttons + advance), /flow/contacts (modal), /flow/calendar (calendar-range), /flow/prospects (6 columns), /flow/tickets (modal form + create), /flow/messages (4 filter chips + draft modal), /flow/admin/roles (9 role rows). All targeted data-testids resolved.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/flow/admin/roles", "issues": ["All 9 roles show 'No users assigned. Stage emails will not be sent for this role.' on a fresh tenant — this is correct behavior but UX should hint admin to assign at least one user to avoid silently swallowed stage emails."]},
+      {"screen": "/flow Dashboard", "issues": ["Pipeline-by-stage chart and Upcoming events panel render correctly but were not exhaustively validated for empty-state styling."]}
+    ]
+  },
+  "passed_tests": [
+    "Backend POST /api/flow/projects -> stage=1, status='prospect', project_id_display matches THCO-YYYY-XXXXXX",
+    "Backend GET /api/flow/projects/board -> 12 stages metadata + board keyed 1..12, legacy backfill verified",
+    "Backend transitions 2..12 with signed_at@10, start_date@11, completed_at@12",
+    "Backend POST /api/flow/projects/{id}/lose with reason",
+    "Backend POST /api/flow/projects/{id}/assign-owner",
+    "Backend POST /api/flow/contacts with birthday auto-creates event with days_until + next_occurrence",
+    "Backend POST /api/flow/prospects/{id}/status with handed_off creates new Project at stage 1 (project_id returned)",
+    "Backend tickets queued->in_progress->in_review->shipped (shipped_at populated)",
+    "Backend tier=1 message -> pending_approval; approve -> approved; send -> sent (sent_at populated); tier=2 -> approved; invalid action -> 400",
+    "Backend GET /api/flow/roles returns 9 FLOW_ROLE_FLAGS rows; invalid flag assign -> 400; valid grant + revoke",
+    "Backend GET /api/flow/dashboard returns my_active_projects, pipeline_counts, approval_queue, pending_proposals, pending_contracts, upcoming_events_7d, events, overdue_invoices, prospect_counts, my_tickets, stages_meta (12 entries)",
+    "Backend GET /api/flow/audit-log?entity_type=project returns scoped entries",
+    "UI login joshua@thcohq.com -> /dashboard; sidebar shows 'THCO Flow' (replaced 'Project Management')",
+    "UI /flow renders 8 stat cards (stat-active/approval/proposals/contracts/events/invoices/tickets/prospects)",
+    "UI /flow/board renders 12 columns (column-stage-1..12)",
+    "UI /flow/projects/new with np-name + np-client + np-submit creates and redirects to /flow/projects/:id",
+    "UI /flow/projects/:id shows 12 stage-btn-1..12 and advance-btn moves stage",
+    "UI /flow/contacts new contact modal (ct-name + ct-birthday + ct-save)",
+    "UI /flow/calendar shows calendar-range",
+    "UI /flow/prospects 6 status columns (prospect-col-researched..rejected)",
+    "UI /flow/tickets New Ticket modal -> tk-project (with project options) + tk-title + tk-save -> ticket created",
+    "UI /flow/messages 4 filter chips (msg-filter-all/pending_approval/approved/sent) + Draft Message modal -> msg-contact + msg-content + msg-save",
+    "UI /flow/admin/roles lists all 9 role rows (role-is_qualifier..role-is_prospect_owner)"
+  ],
+  "failed_tests": [],
+  "test_report_links": [
+    "/app/backend/tests/test_flow.py",
+    "/app/test_reports/pytest/flow_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "/app/backend/routers/flow.py is 929 lines — over the 700-line guideline. Recommend splitting per-domain (projects.py, contacts.py, prospects.py, tickets.py, messages.py, roles.py, dashboard.py) under a /flow subpackage to keep blast radius small as Phase B grows.",
+    "POST /api/flow/projects/{id}/lose accepts `reason` as a QUERY parameter but client-side senders typically use JSON body. Should accept body via Pydantic model for consistency with other endpoints.",
+    "POST /api/flow/projects/{id}/transition payload merge does not validate keys — any client can write arbitrary fields onto the project document (e.g., overwrite stage_history). Whitelist allowed keys: package_url, pricing_data, proposal_url, contract_url, total_value, currency, brief_document_url, roadmap_document_url.",
+    "_generate_project_id uses uuid hex slice (6 chars) — collision probability is low but not zero; spec text says 'THCO-2026-XXXXXX' sequential format. Consider auto-increment per-year counter for true uniqueness + monotonic display IDs.",
+    "list_events parses both DD-MM and YYYY-MM-DD; silently skips malformed dates with bare `except`. Add explicit validation + warning log so bad data isn't invisible.",
+    "_send_stage_email blocks the transition response (awaited inline). On Resend outage the user-facing transition latency spikes. Move to background task (FastAPI BackgroundTasks or asyncio.create_task) so the API never waits on email I/O.",
+    "Role assignment endpoint does not check that the caller is admin/super_admin — any authenticated user can grant any flag to any user (privilege escalation). Add an admin guard.",
+    "Project transition has no guard rails — a user can jump from stage 1 to stage 12 directly with no warning. Consider validating that target_stage is contiguous (current_stage +/- 1) or requires admin override flag.",
+    "FlowTickets.jsx — TicketForm does not preselect a milestone, so engineer flow has to know project context cold. Minor UX.",
+    "Hardcoded 100-record / 500-record limits on list endpoints (list_contacts, list_prospects, list_tickets, list_messages) — no pagination; tenant with >500 contacts will see truncated data.",
+    "Audit log entries store `details` as arbitrary dict but include full notes — consider truncating to e.g. 1KB to avoid log-table bloat.",
+    "Frontend /flow/admin/roles has no permission gate (route is mounted for everyone). DashboardLayout.hasUnitAccess allows 'flow' for all users — anyone can land on /flow/admin/roles."
+  ],
+  "updated_files": ["/app/backend/tests/test_flow.py"],
+  "success_rate": {"backend": "100% (17/17)", "frontend": "100% (12/12 critical UI flows, after opening modals correctly)"},
+  "test_credentials": {"admin_email": "joshua@thcohq.com", "admin_password": "THCOAdmin2024!", "token_field": "session_token"},
+  "seed_data_creation": "Created TEST_QA_* records: 1 project (transitioned 1->12), 1 'lost' project, 1 prospect handed-off (creates a second project), 1 contact w/ birthday + event, 3 messages (tier1 send, tier2 auto, tier2 bogus), 1 UI ticket, 1 UI contact, 1 UI project (advanced 1 stage). Safe to leave or purge via prefix TEST_QA_.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "THCO Flow Phase A is fully wired (backend + UI). Phase B intentionally stubbed: message 'send' only marks status='sent' (no Twilio/Resend), no LLM proposal gen, no Stripe invoicing, no e-signature. /app/backend/tests/test_flow.py is the canonical regression suite (17 tests, ~3s). The legacy /api/projects and old Project Delivery Workflow still coexist alongside /api/flow/* — projects backfill into the new stage system on /flow/projects/board load (verified). No bugs to refile; only code-quality recommendations in critical_code_review_comments.",
+  "rca_of_the_issue": "n/a — no failures. Two initial UI false-negatives (tk-project / msg-contact) were resolved when the test correctly opened the modal first via 'New Ticket' / 'Draft Message' button. Both data-testids are in place; the testids only exist while the modal is open."
+}

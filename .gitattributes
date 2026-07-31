@@ -1,0 +1,4 @@
+*.mp4 filter=lfs diff=lfs merge=lfs -text
+*.mov filter=lfs diff=lfs merge=lfs -text
+frontend/public/winston-duke/**/*.png filter=lfs diff=lfs merge=lfs -text
+frontend/public/winston-duke/**/*.jpg filter=lfs diff=lfs merge=lfs -text

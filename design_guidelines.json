@@ -1,0 +1,137 @@
+{
+  "identity": {
+    "name": "THCO Internal Portal",
+    "tagline": "Human insight. Amplified.",
+    "vibe": "Accenture-level Professional, Sleek, Authoritative, High-Tech but Human",
+    "theme_mode": "dark"
+  },
+  "typography": {
+    "font_family": {
+      "sans": ["DM Sans", "sans-serif"],
+      "mono": ["Space Mono", "monospace"]
+    },
+    "styles": {
+      "h1": "font-sans text-4xl md:text-5xl font-bold tracking-tight text-white",
+      "h2": "font-sans text-3xl font-semibold tracking-tight text-white",
+      "h3": "font-sans text-2xl font-medium text-white",
+      "body": "font-sans text-base text-[#E8E6F0] leading-relaxed",
+      "label": "font-mono text-[11px] uppercase tracking-[2px] text-[#9B85FF]",
+      "nav_link": "font-sans text-sm font-medium text-[#8B8AA0] hover:text-white transition-colors"
+    }
+  },
+  "colors": {
+    "palette": {
+      "background": "#0D0F1A",
+      "surface": "#151828",
+      "surface_highlight": "#1C2035",
+      "border": "rgba(255,255,255,0.07)",
+      "primary": "#7C64FF",
+      "primary_light": "#9B85FF",
+      "text_primary": "#E8E6F0",
+      "text_secondary": "#8B8AA0",
+      "success": "#34D399",
+      "error": "#F87171",
+      "warning": "#FBBF24"
+    },
+    "tailwind_mapping": {
+      "background": "0 0% 0%", 
+      "foreground": "240 10% 92%",
+      "card": "230 30% 12%",
+      "card-foreground": "240 10% 92%",
+      "popover": "230 30% 16%",
+      "popover-foreground": "240 10% 92%",
+      "primary": "250 100% 70%",
+      "primary-foreground": "0 0% 100%",
+      "secondary": "230 30% 16%",
+      "secondary-foreground": "240 10% 92%",
+      "muted": "230 30% 16%",
+      "muted-foreground": "240 10% 63%",
+      "accent": "250 100% 76%",
+      "accent-foreground": "0 0% 100%",
+      "destructive": "0 90% 71%",
+      "destructive-foreground": "0 0% 100%",
+      "border": "240 5% 20%",
+      "input": "230 30% 16%",
+      "ring": "250 100% 70%"
+    },
+    "note": "The tailwind_mapping uses HSL values. The hex codes provided in the palette should be used to derive these HSL values for the global css file."
+  },
+  "layout": {
+    "grid_system": "Bento Grid",
+    "spacing": {
+      "container_padding": "p-6 md:p-10",
+      "section_gap": "gap-8",
+      "card_padding": "p-6"
+    },
+    "structure": {
+      "sidebar_width": "w-64",
+      "sidebar_collapsed_width": "w-20",
+      "max_content_width": "max-w-7xl mx-auto"
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-[#7C64FF] hover:bg-[#6c5ce7] text-white rounded-md px-6 py-2 font-medium transition-all shadow-[0_0_15px_rgba(124,100,255,0.3)] hover:shadow-[0_0_25px_rgba(124,100,255,0.5)]",
+      "secondary": "bg-[#1C2035] hover:bg-[#252a40] text-white border border-white/10 rounded-md px-6 py-2 font-medium transition-all",
+      "ghost": "bg-transparent hover:bg-white/5 text-[#8B8AA0] hover:text-white"
+    },
+    "cards": {
+      "base": "bg-[#151828] border border-white/5 rounded-xl overflow-hidden",
+      "hover_effect": "hover:border-[#7C64FF]/50 transition-colors duration-300",
+      "active_glow": "shadow-[0_0_30px_-10px_rgba(124,100,255,0.15)]"
+    },
+    "inputs": {
+      "base": "bg-[#1C2035] border-white/10 text-white placeholder:text-white/20 focus:border-[#7C64FF] focus:ring-1 focus:ring-[#7C64FF] rounded-md h-11"
+    },
+    "status_badges": {
+      "active": "bg-[#34D399]/10 text-[#34D399] border border-[#34D399]/20 px-2 py-0.5 rounded text-xs font-mono uppercase tracking-wider",
+      "inactive": "bg-white/5 text-white/40 border border-white/5 px-2 py-0.5 rounded text-xs font-mono uppercase tracking-wider"
+    }
+  },
+  "visual_enhancers": {
+    "glassmorphism": "backdrop-blur-xl bg-[#0D0F1A]/80 border-b border-white/5",
+    "gradients": "No full gradients. Use subtle radial gradients for glows only.",
+    "shadows": "shadow-lg shadow-black/40",
+    "borders": "1px solid rgba(255,255,255,0.07)"
+  },
+  "image_urls": {
+    "dashboard_hero": {
+      "url": "https://images.unsplash.com/photo-1762278804941-27ff5cba5a2e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1MDV8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMGRpZ2l0YWwlMjBuZXR3b3JrJTIwcHVycGxlJTIwZGFyayUyMGJhY2tncm91bmR8ZW58MHx8fHwxNzcwNTgzMTUxfDA&ixlib=rb-4.1.0&q=85",
+      "description": "Abstract purple digital network for hero background",
+      "category": "hero"
+    },
+    "unit_talent": {
+      "url": "https://images.unsplash.com/photo-1758691736975-9f7f643d178e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1NzZ8MHwxfHNlYXJjaHwxfHxjb3Jwb3JhdGUlMjB0ZWFtJTIwbWVldGluZyUyMGRpdmVyc2UlMjBwcm9mZXNzaW9uYWx8ZW58MHx8fHwxNzcwNTgzMTQ3fDA&ixlib=rb-4.1.0&q=85",
+      "description": "Diverse corporate team for Talent unit card",
+      "category": "card_thumbnail"
+    },
+    "unit_placeholder": {
+      "url": "https://images.unsplash.com/photo-1762278804798-dd7e493db051?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1MDV8MHwxfHNlYXJjaHwyfHxhYnN0cmFjdCUyMGRpZ2l0YWwlMjBuZXR3b3JrJTIwcHVycGxlJTIwZGFyayUyMGJhY2tncm91bmR8ZW58MHx8fHwxNzcwNTgzMTUxfDA&ixlib=rb-4.1.0&q=85",
+      "description": "Abstract geometric purple lines for placeholder units",
+      "category": "card_thumbnail"
+    },
+    "login_bg": {
+      "url": "https://images.unsplash.com/photo-1759771963975-8a4885446f1f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1MDV8MHwxfHNlYXJjaHw0fHxhYnN0cmFjdCUyMGRpZ2l0YWwlMjBuZXR3b3JrJTIwcHVycGxlJTIwZGFyayUyMGJhY2tncm91bmR8ZW58MHx8fHwxNzcwNTgzMTUxfDA&ixlib=rb-4.1.0&q=85",
+      "description": "Subtle ring light for login page background",
+      "category": "background"
+    }
+  },
+  "instructions_to_main_agent": [
+    "1. SETUP: Update `index.css` with the provided HSL values for the DARK theme. Force dark mode by adding 'dark' class to html/body or setting default config.",
+    "2. FONTS: Import 'DM Sans' and 'Space Mono' from Google Fonts in `index.css`.",
+    "3. LAYOUT: Create a `DashboardLayout` component with a collapsible sidebar and a top header.",
+    "4. COMPONENTS: Use Shadcn components but override their styles using the `components` rules above. Specifically, remove default white backgrounds and use the `#151828` surface color.",
+    "5. TESTING: Add `data-testid` to ALL interactive elements (buttons, inputs, cards). Format: `page-section-element` (e.g., `login-form-submit-btn`).",
+    "6. PAGES: Build Login, Dashboard (with 8 unit cards), Talent Unit Page (with 2 tool forms), and Settings.",
+    "7. MOCKING: Mock the Google OAuth and Webhook calls. Log the form data to console and show a success toast.",
+    "8. CRITICAL: Ensure the 'Talent & Human Capital' card is the only active one. Others should be visually disabled (opacity 50%, grayscale filter, or 'Coming Soon' badge).",
+    "9. FORMS: Use `react-hook-form` + `zod` for validation. Use Shadcn `Form` components."
+  ],
+  "universal_guidelines": [
+    "Avoid 'AI slop' - no generic gradients or centered layouts.",
+    "Use generous padding (p-8, p-10) to create a premium feel.",
+    "Typography hierarchy is key: Bold headings, readable body, technical labels.",
+    "Micro-interactions: Add `hover:scale-[1.02]` to cards for a tactile feel.",
+    "Never use pure black (#000000). Use the deep navy (#0D0F1A) provided."
+  ]
+}

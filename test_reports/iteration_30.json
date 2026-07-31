@@ -1,0 +1,55 @@
+{
+  "summary": "Tested THCO Flow v2 10-stage restructure (backend + frontend). 11/11 backend pytest passed. Frontend: board renders 10 columns with track legend, sibling banner, build/proposal panels & build comments all working end-to-end. ONE CRITICAL BLOCKER: Stage 5 advance modal's Engineer dropdown calls /api/flow/users-by-role/is_engineer which 400s because `is_engineer` is missing from FLOW_ROLE_FLAGS whitelist. The Promise.all rejection also leaves the Operations Owner dropdown empty, so Stage 4->5 is fully unsubmittable from the UI (it works fine via API).",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "GET /api/flow/users-by-role/is_engineer",
+        "issue": "Returns 400 'Invalid role flag' — `is_engineer` is not in FLOW_ROLE_FLAGS (flow.py line 53-63). Frontend Stage 5 modal depends on this endpoint to populate the Engineer dropdown.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "StructuredStageModal (Stage 5)",
+        "issue": "Engineer dropdown empty + 'No users hold the is_engineer role.' error shown. Operations Owner dropdown also empty (same error) because Promise.all on usersByRole('is_pricing_owner') + usersByRole('is_engineer') rejects on the engineer failure and never sets pricingOwners. Result: 'Split & Advance' cannot be submitted from the UI even though server-side it works.",
+        "selector": "[data-testid='modal-engineer-select'], [data-testid='modal-ops-select']",
+        "priority": "CRITICAL"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Stage 4 -> Stage 5 transition / split",
+        "issue": "Backend transition + split works (pytest verified, 3 db records wired correctly). But UI cannot trigger it because both dropdowns are empty (see ui_bugs above).",
+        "affected_selectors": ["[data-testid='modal-engineer-select']", "[data-testid='modal-ops-select']", "[data-testid='modal-submit']"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_flow_v2_restructure.py",
+    "/app/test_reports/pytest/flow_v2_results.xml"
+  ],
+  "action_items": [
+    "Add ('is_engineer', 'Engineer') to FLOW_ROLE_FLAGS in /app/backend/routers/flow.py (line 53-63). After that, both Stage 5 dropdowns will populate. (Optional defensive UX fix: change the Promise.all in /app/frontend/src/pages/flow/FlowProjectDetail.jsx StructuredStageModal to Promise.allSettled so one role-fetch failure doesn't blank the other dropdown.)"
+  ],
+  "critical_code_review_comments": [
+    "Frontend Promise.all pattern in StructuredStageModal makes both dropdowns fail when any single usersByRole call rejects — switch to Promise.allSettled for resilience.",
+    "Backend FLOW_ROLE_FLAGS is the single source of truth for the users-by-role whitelist; missing is_engineer there is the root cause and is a 1-line fix.",
+    "The transition validator at Stage 5 (flow.py line ~385) does NOT verify that the selected engineer actually has is_engineer=True — any user_id is accepted. Consider adding role-flag enforcement on the engineer like is_qualifier check on the assigner.",
+    "Backend tests confirm split atomicity (parent + 2 siblings, parent_project_id + sibling_project_id wired). Good.",
+    "Dashboard correctly drops `pending_contracts` and emits `in_build_count` + `build_status_counts` with 10 stages_meta entries."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_flow_v2_restructure.py (new)"
+  ],
+  "success_rate": {"backend": "100% (11/11 pytest)", "frontend": "~85% — all UI elements render; only Stage 5 modal submission flow is blocked by the is_engineer backend bug"},
+  "test_credentials": "joshua@thcohq.com / THCOAdmin2024! (super_admin + all flags) — works.",
+  "seed_data_creation": "Created several TEST_QA_v2_* projects via API for split/build/transition coverage. Build sibling 91c70564-... has 2 test build_comments; proposal sibling a3b80c35-... was visited for UI verification.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "After main agent adds is_engineer to FLOW_ROLE_FLAGS, re-test: (1) GET /api/flow/users-by-role/is_engineer returns 200 with active engineers, (2) On Stage 4 project (e.g. THCO-2026-851730), opening 'Advance to Stage 5' modal should now populate BOTH Operations Owner and Engineer dropdowns, (3) Selecting both and clicking 'Split & Advance' should toast 'Stage 5 complete...' and create sibling banner. Negative paths still un-tested via UI: (a) non-qualifier user trying stage 1->2 should 403 — not tested because only super_admin creds were provided, (b) drag-drop track-boundary rejection from kanban — not tested via playwright as drag-drop simulation is fragile; recommend manual verification.",
+  "rca of the issue": "Frontend StructuredStageModal (FlowProjectDetail.jsx ~line 230) issues `Promise.all([flowAPI.usersByRole('is_pricing_owner'), flowAPI.usersByRole('is_engineer')])`. The second request 400s because `is_engineer` is absent from FLOW_ROLE_FLAGS in /app/backend/routers/flow.py (line 53-63). Promise.all rejection short-circuits — neither setPricingOwners nor setEngineers runs — so both dropdowns stay at default empty arrays. The fix is single-line on backend: add `('is_engineer', 'Engineer')` to the FLOW_ROLE_FLAGS list. Reproduction: login as joshua@thcohq.com, open any Stage 4 project, click 'Advance to Stage 5', observe both dropdowns empty and red error messages."
+}

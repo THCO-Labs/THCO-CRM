@@ -152,6 +152,21 @@ class ImportExternalRequest(BaseModel):
     candidates: List[Dict[str, Any]]
 
 
+class SaveDiscoveredRequest(BaseModel):
+    """Body for /network/save-discovered.
+
+    Declared as a model so every field is read from the JSON body. When
+    `provider` was a bare `str` parameter FastAPI treated it as a query
+    parameter, so the value the UI posted in the body was ignored and the
+    default was recorded on every search -- which is why the whole search
+    history reads "duckduckgo" with zero credits used.
+    """
+    candidates: List[Dict[str, Any]] = []
+    provider: str = "duckduckgo"
+    query_info: Optional[Dict[str, Any]] = None
+    duration_ms: Optional[int] = None
+
+
 # ── Auth helper ────────────────────────────────────────────────────────
 
 async def get_current_user(request: Request) -> dict:
@@ -913,17 +928,16 @@ async def delete_external_candidate(request: Request, candidate_id: str):
 
 
 @router.post("/network/save-discovered")
-async def save_discovered_candidates(
-    request: Request,
-    candidates: List[Dict] = None,
-    provider: str = "duckduckgo",
-    query_info: Dict = None,
-    duration_ms: int = None,
-):
+async def save_discovered_candidates(request: Request, data: SaveDiscoveredRequest):
     """Save discovered candidates to the external network with dedup and analytics."""
     user = await get_current_user(request)
     from services.talent_dedup import deduplicate_and_save
     from services.talent_cache import log_activity
+
+    candidates = data.candidates
+    provider = data.provider
+    query_info = data.query_info
+    duration_ms = data.duration_ms
 
     start = datetime.now(timezone.utc)
     results = []
@@ -946,7 +960,9 @@ async def save_discovered_candidates(
         "query": query_info or {},
         "recruiter": user.get("name"),
         "recruiter_id": user.get("user_id"),
-        "credits_used": 1 if provider == "serpapi" else 0,
+        # Serper bills per search on its free tier too, so both paid
+        # providers count. Only the DuckDuckGo fallback is free.
+        "credits_used": 1 if provider in ("serpapi", "serper") else 0,
         "new_candidates": created,
         "updated_candidates": updated,
         "skipped_candidates": skipped,

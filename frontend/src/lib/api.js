@@ -265,8 +265,15 @@ export const talentAPI = {
     return response.data;
   },
 
-  saveDiscovered: async (candidates) => {
-    const response = await apiClient.post('/talent/network/save-discovered', { candidates });
+  // `provider` and `queryInfo` drive the credit/analytics record, so the
+  // search that produced these candidates must pass them through.
+  saveDiscovered: async (candidates, provider, queryInfo, durationMs) => {
+    const response = await apiClient.post('/talent/network/save-discovered', {
+      candidates,
+      provider: provider || 'duckduckgo',
+      query_info: queryInfo || null,
+      duration_ms: durationMs || null,
+    });
     return response.data;
   },
 

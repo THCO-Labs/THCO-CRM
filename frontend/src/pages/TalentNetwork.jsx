@@ -195,7 +195,10 @@ const TalentNetwork = () => {
                       </td>
                       <td className="px-6 py-4">
                         <span className="text-sm text-gray-700 font-medium">
-                          {c.current_role || c.currentRole || c.title?.split(" - ")[0]?.split(" | ")[0] || "-"}
+                          {/* The title's first segment is the person's name, so
+                              falling back to it printed the name under
+                              "Occupation". Show nothing when no role was parsed. */}
+                          {c.current_role || c.currentRole || "-"}
                         </span>
                         {c.current_company && <p className="text-xs text-gray-400">{c.current_company}</p>}
                       </td>

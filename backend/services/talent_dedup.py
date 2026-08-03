@@ -2,6 +2,8 @@ import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
 
+from services.talent_normalize import canonical_linkedin_url, to_db_document
+
 logger = logging.getLogger(__name__)
 
 
@@ -9,10 +11,18 @@ async def find_duplicates(db, candidate: Dict) -> List[Dict]:
     """Find duplicate external candidates by LinkedIn URL, email, phone, GitHub, or name+company."""
     matches = []
 
-    # Strong match: LinkedIn URL
+    # Strong match: LinkedIn URL. Compared in canonical form so the same
+    # profile under a different country subdomain, casing, trailing slash
+    # or tracking parameter resolves to one candidate.
     linkedin = candidate.get("linkedin") or candidate.get("linkedinUrl") or candidate.get("sourceUrl")
-    if linkedin:
-        existing = await db.external_candidates.find_one({"linkedin": linkedin})
+    canonical = canonical_linkedin_url(linkedin)
+    if canonical:
+        existing = await db.external_candidates.find_one({
+            "$or": [
+                {"linkedin_canonical": canonical},
+                {"linkedin": canonical},
+            ]
+        })
         if existing:
             existing["_id"] = str(existing["_id"])
             existing["match_type"] = "linkedin"
@@ -67,14 +77,12 @@ async def find_duplicates(db, candidate: Dict) -> List[Dict]:
 
 async def deduplicate_and_save(db, candidate: Dict) -> Dict:
     """Check for duplicates, update if existing, insert if new."""
-    # Normalize linkedin field
-    if not candidate.get("linkedin") and candidate.get("linkedinUrl"):
-        candidate["linkedin"] = candidate["linkedinUrl"]
-    if not candidate.get("linkedin") and candidate.get("sourceUrl"):
-        if "linkedin.com/in" in (candidate.get("sourceUrl") or ""):
-            candidate["linkedin"] = candidate["sourceUrl"]
+    # Collapse the search layer's camelCase aliases into the canonical
+    # snake_case document shape. Writing the raw search dict was what left
+    # most rows carrying both spellings, which dedup could not match on.
+    doc = to_db_document(candidate)
 
-    duplicates = await find_duplicates(db, candidate)
+    duplicates = await find_duplicates(db, doc)
 
     if duplicates:
         existing = duplicates[0]
@@ -84,36 +92,47 @@ async def deduplicate_and_save(db, candidate: Dict) -> Dict:
         # Merge fields (don't overwrite existing non-null fields)
         updates = {}
         for field in ["name", "email", "phone", "location", "current_role", "current_company",
-                       "experience_years", "skills", "raw_text", "summary", "linkedin", "sourceUrl"]:
-            new_val = candidate.get(field)
+                       "experience_years", "skills", "raw_text", "summary", "linkedin",
+                       "linkedin_canonical", "source_url", "github", "title"]:
+            new_val = doc.get(field)
             old_val = existing.get(field)
             if new_val and not old_val:
                 updates[field] = new_val
 
-        if "skills" in updates and isinstance(updates["skills"], list):
-            updates["skills"] = list(set(existing.get("skills", []) + updates["skills"]))
+        # Skills merge must run whether or not `skills` was an empty-to-full
+        # transition, so newly discovered skills accumulate on repeat hits.
+        new_skills = doc.get("skills") or []
+        if isinstance(new_skills, list) and new_skills:
+            merged = list(dict.fromkeys((existing.get("skills") or []) + new_skills))
+            if merged != (existing.get("skills") or []):
+                updates["skills"] = merged
 
-        if updates:
-            updates["updated_at"] = datetime.now(timezone.utc).isoformat()
-            updates["discovery_count"] = (existing.get("discovery_count", 1) + 1)
-            await db.external_candidates.update_one(
-                {"candidate_id": existing_id},
-                {"$set": updates}
-            )
+        # A repeat sighting is itself signal -- the Talent Network sorts on
+        # discovery_count -- so it is recorded even when the new result
+        # carried no field the stored profile was missing.
+        updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+        updates["discovery_count"] = (existing.get("discovery_count", 1) + 1)
+        # Seeing a profile again means it is not stale.
+        updates["stale"] = False
+
+        await db.external_candidates.update_one(
+            {"candidate_id": existing_id},
+            {"$set": updates}
+        )
 
         return {"status": "updated", "candidate_id": existing_id, "match_type": match_type}
 
     # No duplicate: insert
     import uuid
-    cid = candidate.get("candidate_id") or f"ext_{uuid.uuid4().hex[:12]}"
-    doc = {
-        **candidate,
+    cid = doc.get("candidate_id") or f"ext_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc).isoformat()
+    doc.update({
         "candidate_id": cid,
         "discovery_count": 1,
-        "first_discovered": datetime.now(timezone.utc).isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "first_discovered": now,
+        "updated_at": now,
         "stale": False,
         "enriched": False,
-    }
+    })
     await db.external_candidates.insert_one(doc)
     return {"status": "created", "candidate_id": cid}

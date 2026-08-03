@@ -112,7 +112,12 @@ const ExternalSourcing = () => {
     }
     setSaving(true);
     try {
-      const data = await talentAPI.saveDiscovered(toSave);
+      const data = await talentAPI.saveDiscovered(toSave, provider, {
+        role,
+        keywords,
+        location,
+        experience_years: experienceYears,
+      });
       toast.success(`${data.created} saved, ${data.updated} updated in Talent Network`);
       setSelectedCandidates(new Set());
     } catch (err) {

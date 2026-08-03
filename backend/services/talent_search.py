@@ -21,6 +21,53 @@ DEFAULT_SITES = [
     "stackoverflow.com/users",
 ]
 
+from services.talent_normalize import (
+    canonical_linkedin_url,
+    detect_location,
+    is_nigerian_result,
+    name_matches_slug,
+)
+
+
+def _build_result(
+    url: str,
+    title: str,
+    snippet: str,
+    query_location: str = "",
+    platform: str = "LinkedIn",
+) -> Optional[Dict[str, Any]]:
+    """Build one search result, or None if it fails Nigerian verification.
+
+    Every provider funnels through here so the geo gate, the location
+    derivation and the output schema cannot drift apart again.
+    """
+    url = (url or "").strip()
+    if not url:
+        return None
+
+    ok, reason = is_nigerian_result(url, title, snippet)
+    if not ok:
+        logger.debug(f"Rejected non-Nigerian result ({reason}): {url}")
+        return None
+
+    canonical = canonical_linkedin_url(url)
+
+    return {
+        "name": _extract_name_from_title(title or ""),
+        "title": title or "",
+        "currentRole": _extract_role_from_title(title or ""),
+        "currentCompany": None,
+        "location": detect_location(url, title, snippet, fallback=query_location),
+        "linkedinUrl": canonical or (url if "linkedin.com/in" in url else None),
+        "sourceUrl": url,
+        "sourcePlatform": platform,
+        "skills": [],
+        "summary": (snippet or "")[:200],
+        "matchReasons": [],
+        "confidence": "Medium",
+        "geoReason": reason,
+    }
+
 
 # ── Real Web Search (DuckDuckGo) ──────────────────────────────────────
 
@@ -83,38 +130,21 @@ def _search_web_for_candidates(
                     results = list(ddgs.text(query, max_results=min(25, max_results - len(candidates))))
                     for r in results:
                         url = r.get("href", "")
-                        if url in seen_urls:
+                        dedup_key = canonical_linkedin_url(url) or url
+                        if not dedup_key or dedup_key in seen_urls:
                             continue
 
-                        # Filter: only Nigerian profiles
-                        title = (r.get("title", "") or "").lower()
-                        body = (r.get("body", "") or "").lower()
-                        url_lower = url.lower()
-
-                        is_nigerian = any(n in title or n in body for n in [
-                            "nigeria", "lagos", "abuja", "port harcourt", "ibadan",
-                            "kano", "enugu", "benin city", "owerri", "abia",
-                            "ng.linkedin", ".ng/", "/ng/", "oyo", "delta", "rivers",
-                        ])
-
-                        if not is_nigerian:
+                        built = _build_result(
+                            url=url,
+                            title=r.get("title", "") or "",
+                            snippet=r.get("body", "") or "",
+                            query_location=loc,
+                        )
+                        if built is None:
                             continue
 
-                        seen_urls.add(url)
-                        candidates.append({
-                            "name": _extract_name_from_title(r.get("title", "")),
-                            "title": r.get("title", ""),
-                            "currentRole": None,
-                            "currentCompany": None,
-                            "location": loc,
-                            "linkedinUrl": url if "linkedin.com/in" in url else None,
-                            "sourceUrl": url,
-                            "sourcePlatform": "LinkedIn",
-                            "skills": [],
-                            "summary": (r.get("body", "") or "")[:200],
-                            "matchReasons": [],
-                            "confidence": "Medium",
-                        })
+                        seen_urls.add(dedup_key)
+                        candidates.append(built)
             except Exception as e:
                 logger.warning(f"DuckDuckGo search error: {e}")
                 continue
@@ -349,32 +379,59 @@ Return exactly this JSON shape:
 }"""
 
 
+def _build_nigeria_query(keywords, role, location) -> str:
+    """Build a Google query already constrained to Nigeria.
+
+    Filtering foreign profiles out after the fact still costs a paid
+    SerpAPI/Serper request for every wasted result -- an unconstrained
+    query was spending ten pages of credits to yield five usable
+    candidates. Pushing the geography into the query itself means the
+    provider returns Nigerian profiles to begin with.
+    """
+    query = " ".join(f'"{k}"' for k in ([role] + list(keywords or [])[:3]) if k)
+
+    loc = (location or "").strip()
+    if loc and loc.lower() not in ("remote", "any", "nigeria"):
+        # A specific Nigerian city was requested.
+        query += f' "{loc}"'
+    else:
+        # No usable city: constrain to Nigeria broadly.
+        query += ' (Nigeria OR Lagos OR Abuja OR "Port Harcourt")'
+
+    # Exclude job adverts and recruiter pages, which pollute people search.
+    query += ' -jobs -hiring -"we are hiring"'
+    return f"site:linkedin.com/in {query}"
+
+
 def _try_serpapi(keywords, role, location, max_results) -> List[Dict]:
     if not SERPAPI_KEY:
         return []
     try:
         from serpapi import Client
         client = Client(api_key=SERPAPI_KEY)
-        query = " ".join(f'"{k}"' for k in ([role] + keywords[:3]) if k)
-        if location:
-            query += f' "{location}"'
         results = client.search({
-            "engine": "google", "q": f'site:linkedin.com/in {query}',
+            "engine": "google",
+            "q": _build_nigeria_query(keywords, role, location),
             "num": min(max_results, 100),
+            "gl": "ng",  # bias Google to the Nigerian index
         }, timeout=15)
         out = []
+        rejected = 0
         for r in results.get("organic_results", []):
-            title = r.get("title", "")
-            out.append({
-                "name": _extract_name_from_title(title), "title": title,
-                "currentRole": _extract_role_from_title(title),
-                "currentCompany": None, "location": location,
-                "linkedinUrl": r.get("link") if "linkedin.com/in" in (r.get("link") or "") else None,
-                "sourceUrl": r.get("link", ""), "sourcePlatform": "LinkedIn",
-                "skills": [], "summary": (r.get("snippet", "") or "")[:200],
-                "matchReasons": [], "confidence": "Medium",
-            })
-        logger.info(f"SerpAPI returned {len(out)} results")
+            built = _build_result(
+                url=r.get("link", ""),
+                title=r.get("title", ""),
+                snippet=r.get("snippet", "") or "",
+                query_location=location,
+            )
+            if built is None:
+                rejected += 1
+                continue
+            out.append(built)
+        logger.info(
+            f"SerpAPI returned {len(out)} Nigerian results "
+            f"({rejected} rejected by geo filter)"
+        )
         return out
     except Exception as e:
         logger.warning(f"SerpAPI failed: {e}")
@@ -386,21 +443,21 @@ def _try_serper(keywords, role, location, max_results) -> List[Dict]:
         return []
     try:
         import httpx
-        query = " ".join(f'"{k}"' for k in ([role] + keywords[:3]) if k)
-        if location:
-            query += f' "{location}"'
+        query = _build_nigeria_query(keywords, role, location)
 
         # Paginate to get up to max_results (free tier: 10 per page)
         all_results = []
         seen_urls = set()
+        rejected = 0
         page = 1
         while len(all_results) < max_results and page <= 10:
             resp = httpx.post(
                 "https://google.serper.dev/search",
                 json={
-                    "q": f'site:linkedin.com/in {query}',
+                    "q": query,
                     "num": 10,
                     "page": page,
+                    "gl": "ng",  # bias Google to the Nigerian index
                 },
                 headers={"X-API-KEY": SERPER_KEY, "Content-Type": "application/json"}, timeout=15,
             )
@@ -410,23 +467,29 @@ def _try_serper(keywords, role, location, max_results) -> List[Dict]:
                 break
             for r in organic:
                 url = r.get("link", "")
-                if url in seen_urls:
+                # Dedupe on the canonical URL so the same profile served
+                # under different country subdomains is not counted twice.
+                dedup_key = canonical_linkedin_url(url) or url
+                if dedup_key in seen_urls:
                     continue
-                seen_urls.add(url)
-                title = r.get("title", "")
-                all_results.append({
-                    "name": _extract_name_from_title(title), "title": title,
-                    "currentRole": _extract_role_from_title(title),
-                    "currentCompany": None, "location": location,
-                    "linkedinUrl": url if "linkedin.com/in" in url else None,
-                    "sourceUrl": url, "sourcePlatform": "LinkedIn",
-                    "skills": [], "summary": (r.get("snippet", "") or "")[:200],
-                    "matchReasons": [], "confidence": "Medium",
-                })
+                seen_urls.add(dedup_key)
+                built = _build_result(
+                    url=url,
+                    title=r.get("title", ""),
+                    snippet=r.get("snippet", "") or "",
+                    query_location=location,
+                )
+                if built is None:
+                    rejected += 1
+                    continue
+                all_results.append(built)
                 if len(all_results) >= max_results:
                     break
             page += 1
-        logger.info(f"Serper returned {len(all_results)} results across {page-1} pages")
+        logger.info(
+            f"Serper returned {len(all_results)} Nigerian results across "
+            f"{page-1} pages ({rejected} rejected by geo filter)"
+        )
         return all_results
     except Exception as e:
         logger.warning(f"Serper failed: {e}")
@@ -509,8 +572,26 @@ Return JSON: {{"candidates": [{{"index": 1, "name": "...", "currentRole": "...",
             for i, r in enumerate(web_results):
                 if i in enrich_map:
                     e = enrich_map[i]
-                    if e.get("name"):
-                        r["name"] = e["name"]
+                    # The model returns its own `index` to join back onto the
+                    # result list. If it drops or renumbers a row, that join
+                    # silently shifts every name onto the wrong profile, so
+                    # an AI-supplied name is only accepted when it is
+                    # corroborated by the result it claims to describe.
+                    new_name = e.get("name")
+                    if new_name:
+                        title = r.get("title", "") or ""
+                        url = r.get("linkedinUrl") or r.get("sourceUrl") or ""
+                        corroborated = (
+                            new_name.lower() in title.lower()
+                            or name_matches_slug(new_name, url)
+                        )
+                        if corroborated:
+                            r["name"] = new_name
+                        else:
+                            logger.warning(
+                                f"Discarded AI name {new_name!r} for {url}: "
+                                "does not match the source result"
+                            )
                     if e.get("currentRole"):
                         r["currentRole"] = e["currentRole"]
                     if e.get("skills"):

@@ -519,6 +519,9 @@ const DashboardLayoutInner = ({ children, user }) => {
               )}
             </div>
 
+            {/* Build New Tool */}
+            <FlowForgeFAB />
+
             {/* Theme toggle */}
             <Button
               variant="ghost"
@@ -609,9 +612,6 @@ const DashboardLayoutInner = ({ children, user }) => {
         <main className="flex-1 p-4 lg:p-8 overflow-auto">
           {children}
         </main>
-
-        {/* FlowForge FAB */}
-        <FlowForgeFAB />
       </div>
     </div>
   );

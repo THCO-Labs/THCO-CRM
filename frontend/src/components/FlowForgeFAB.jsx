@@ -2,58 +2,44 @@ import { useState } from "react";
 import { Plus, Zap } from "lucide-react";
 import UnitSelectionModal from "./UnitSelectionModal";
 
+/**
+ * "Build New Tool" action.
+ *
+ * Sits inline in the header alongside the theme toggle, notifications and the
+ * user menu. It was previously a fixed-position floating button, which
+ * overlapped page content and drew the eye with a pulsing ripple; as a header
+ * control it stays available without competing with the page.
+ *
+ * The gradient is kept so it still reads as the primary action among the
+ * otherwise neutral header icons.
+ */
 const FlowForgeFAB = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
 
   return (
     <>
-      {/* Floating Action Button */}
       <button
         onClick={() => setIsModalOpen(true)}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-        className="fixed bottom-6 right-6 z-50 group"
+        title="Build New Tool"
+        aria-label="Build New Tool"
         data-testid="flowforge-fab"
-      >
-        {/* Button with gradient and animation */}
-        <div className={`
-          flex items-center gap-2 
-          bg-gradient-to-r from-[#1FB58A] to-[#3DDC97] 
-          text-white font-medium 
-          rounded-full shadow-lg shadow-[#1FB58A]/30
-          hover:shadow-xl hover:scale-105
-          transition-all duration-300 ease-out
-          ${isHovered ? "pr-5 pl-4" : "p-4"}
-        `}>
-          <div className="relative">
-            <Plus className={`w-6 h-6 transition-transform duration-300 ${isHovered ? "rotate-90" : ""}`} />
-            <Zap className="absolute -top-1 -right-1 w-3 h-3 text-yellow-300 animate-pulse" />
-          </div>
-          
-          {/* Expandable text */}
-          <span className={`
-            whitespace-nowrap overflow-hidden transition-all duration-300
-            ${isHovered ? "max-w-[120px] opacity-100" : "max-w-0 opacity-0"}
-          `}>
-            Build New Tool
-          </span>
-        </div>
-
-        {/* Ripple effect on hover */}
-        <div className={`
-          absolute inset-0 rounded-full
+        className="
+          group relative flex items-center justify-center
+          w-9 h-9 rounded-full
           bg-gradient-to-r from-[#1FB58A] to-[#3DDC97]
-          opacity-0 group-hover:opacity-30
-          animate-ping
-          transition-opacity duration-300
-        `} />
+          text-white shadow-sm shadow-[#1FB58A]/30
+          hover:shadow-md hover:brightness-105
+          focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1FB58A] focus-visible:ring-offset-2
+          transition-all duration-200
+        "
+      >
+        <Plus className="w-[18px] h-[18px] transition-transform duration-200 group-hover:rotate-90" />
+        <Zap className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 text-yellow-300" />
       </button>
 
-      {/* Unit Selection Modal */}
-      <UnitSelectionModal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
+      <UnitSelectionModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
       />
     </>
   );

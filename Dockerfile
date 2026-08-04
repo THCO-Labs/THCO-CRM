@@ -12,7 +12,15 @@ WORKDIR /app/frontend
 COPY frontend/package.json frontend/yarn.lock ./
 RUN yarn install --frozen-lockfile --network-timeout 600000
 
-COPY frontend/ ./
+# Copied in three layers, cheapest-changing first. public/ is 268MB of images,
+# video and PDFs that almost never change, while src/ is 3.4MB that changes
+# constantly -- copying them together meant every code edit invalidated and
+# re-pushed the whole 268MB.
+COPY frontend/public ./public
+COPY frontend/craco.config.js frontend/tailwind.config.js frontend/postcss.config.js \
+     frontend/jsconfig.json frontend/components.json ./
+COPY frontend/plugins ./plugins
+COPY frontend/src ./src
 
 # REACT_APP_BACKEND_URL is deliberately left unset: the API is served from the
 # same origin as this bundle in production, so api.js resolves to a relative

@@ -19,55 +19,85 @@ def set_db(database):
 
 
 async def ensure_indexes():
-    try:
-        # Internal candidates
-        await db.candidates.create_index([("candidate_id", 1)], unique=True, background=True)
-        await db.candidates.create_index([("email", 1)], sparse=True, background=True)
-        await db.candidates.create_index([("skills", 1)], background=True)
-        await db.candidates.create_index([("status", 1)], background=True)
-        await db.candidates.create_index([("source", 1)], background=True)
-        await db.candidates.create_index([("experience_years", 1)], background=True)
-        await db.candidates.create_index([
-            ("raw_text", "text"), ("skills", "text"),
-            ("name", "text"), ("email", "text"),
-        ], background=True, name="candidate_search_idx")
+    """Create the talent indexes, tolerating individual failures.
+
+    Each index is attempted independently. Previously the whole block shared
+    one try/except, so the first failure skipped every index after it -- on a
+    managed server that rejects one definition (Azure Cosmos DB returns an
+    internal error for one of these), external_candidates was left with no
+    indexes at all and every search became a collection scan.
+    """
+    specs = [
+        # (collection, keys, kwargs)
+        ("candidates", [("candidate_id", 1)], {"unique": True}),
+        ("candidates", [("email", 1)], {"sparse": True}),
+        ("candidates", [("skills", 1)], {}),
+        ("candidates", [("status", 1)], {}),
+        ("candidates", [("source", 1)], {}),
+        ("candidates", [("experience_years", 1)], {}),
+        # Preferred: index the parsed CV body too, so full-text search reaches
+        # CV content. Azure Cosmos DB rejects this -- raw_text holds up to 50KB
+        # per document and the server errors out -- so a reduced form without
+        # raw_text is attempted next. Whichever succeeds first wins; the search
+        # endpoints fall back to regex for whatever the index does not cover.
+        ("candidates", [("raw_text", "text"), ("skills", "text"),
+                        ("name", "text"), ("email", "text")],
+         {"name": "candidate_search_idx"}),
+        ("candidates", [("skills", "text"), ("name", "text"), ("email", "text")],
+         {"name": "candidate_search_idx"}),
 
         # External candidates (Talent Intelligence Network)
-        await db.external_candidates.create_index([("candidate_id", 1)], unique=True, background=True)
-        await db.external_candidates.create_index([("linkedin", 1)], sparse=True, background=True)
-        await db.external_candidates.create_index([("email", 1)], sparse=True, background=True)
-        await db.external_candidates.create_index([("phone", 1)], sparse=True, background=True)
-        await db.external_candidates.create_index([("github", 1)], sparse=True, background=True)
-        await db.external_candidates.create_index([("skills", 1)], background=True)
-        await db.external_candidates.create_index([("location", 1)], background=True)
-        await db.external_candidates.create_index([("seniority", 1)], background=True)
-        await db.external_candidates.create_index([("updated_at", -1)], background=True)
-        await db.external_candidates.create_index([("discovery_count", -1)], background=True)
-        await db.external_candidates.create_index([
-            ("name", "text"), ("skills", "text"), ("summary", "text"),
-            ("current_role", "text"), ("ai_summary", "text"),
-        ], background=True, name="external_candidate_search_idx")
+        ("external_candidates", [("candidate_id", 1)], {"unique": True}),
+        ("external_candidates", [("linkedin", 1)], {"sparse": True}),
+        ("external_candidates", [("linkedin_canonical", 1)], {"sparse": True}),
+        ("external_candidates", [("email", 1)], {"sparse": True}),
+        ("external_candidates", [("phone", 1)], {"sparse": True}),
+        ("external_candidates", [("github", 1)], {"sparse": True}),
+        ("external_candidates", [("skills", 1)], {}),
+        ("external_candidates", [("location", 1)], {}),
+        ("external_candidates", [("seniority", 1)], {}),
+        ("external_candidates", [("updated_at", -1)], {}),
+        ("external_candidates", [("discovery_count", -1)], {}),
+        ("external_candidates", [("name", "text"), ("skills", "text"),
+                                 ("summary", "text"), ("current_role", "text"),
+                                 ("ai_summary", "text")],
+         {"name": "external_candidate_search_idx"}),
 
-        # Candidate sources
-        await db.candidate_sources.create_index([("candidate_id", 1)], background=True)
-        await db.candidate_sources.create_index([("source_type", 1)], background=True)
+        ("candidate_sources", [("candidate_id", 1)], {}),
+        ("candidate_sources", [("source_type", 1)], {}),
 
-        # Search history
-        await db.candidate_search_history.create_index([("query_hash", 1)], background=True)
-        await db.candidate_search_history.create_index([("cached_until", 1)], background=True)
-        await db.candidate_search_history.create_index([("searched_at", -1)], background=True)
+        ("candidate_search_history", [("query_hash", 1)], {}),
+        ("candidate_search_history", [("cached_until", 1)], {}),
+        ("candidate_search_history", [("searched_at", -1)], {}),
 
-        # Refresh queue
-        await db.candidate_refresh_queue.create_index([("candidate_id", 1)], background=True)
-        await db.candidate_refresh_queue.create_index([("status", 1)], background=True)
+        ("candidate_refresh_queue", [("candidate_id", 1)], {}),
+        ("candidate_refresh_queue", [("status", 1)], {}),
 
-        # Activity log
-        await db.candidate_activity.create_index([("candidate_id", 1)], background=True)
-        await db.candidate_activity.create_index([("timestamp", -1)], background=True)
+        ("candidate_activity", [("candidate_id", 1)], {}),
+        ("candidate_activity", [("timestamp", -1)], {}),
+    ]
 
-        logger.info("Talent indexes ensured (internal + external + network)")
-    except Exception as e:
-        logger.warning(f"Index creation warning: {e}")
+    created = 0
+    failed = []
+    done_names = set()
+    for collection, keys, kwargs in specs:
+        # A named index may appear twice as a preferred/fallback pair; once one
+        # variant exists, skip the rest.
+        name = kwargs.get("name")
+        if name and (collection, name) in done_names:
+            continue
+        try:
+            await db[collection].create_index(keys, background=True, **kwargs)
+            created += 1
+            if name:
+                done_names.add((collection, name))
+        except Exception as e:
+            label = name or ",".join(str(k[0]) for k in keys)
+            failed.append(f"{collection}.{label}: {str(e)[:120]}")
+
+    logger.info(f"Talent indexes ensured: {created} created/verified, {len(failed)} failed")
+    for f in failed:
+        logger.warning(f"  index skipped -- {f}")
 
 
 # ── Models ──────────────────────────────────────────────────────────────

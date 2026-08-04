@@ -10,13 +10,18 @@ name: Build and deploy to Azure
 # Application settings (MONGO_URL, JWT_SECRET, SERPER_KEY, ...) are configured
 # on the Web App itself, not here -- they must never enter the image or logs.
 
+# Manual-only until the Azure resources and the three secrets below exist.
+# Deploying on every push is the goal, but with the secrets unset the job
+# fails at the Azure login step within seconds and emails a failure on every
+# commit. Once `az webapp` is provisioned and the secrets are set, uncomment
+# the `push:` block to deploy automatically on merge to main.
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - '**.md'
-      - '.vscode/**'
   workflow_dispatch:
+  # push:
+  #   branches: [main]
+  #   paths-ignore:
+  #     - '**.md'
+  #     - '.vscode/**'
 
 env:
   IMAGE_NAME: thco-crm

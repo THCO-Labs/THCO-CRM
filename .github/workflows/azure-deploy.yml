@@ -9,17 +9,16 @@ name: Build and deploy to Azure
 #   ACR_NAME            container registry name, without .azurecr.io
 #   AZURE_RESOURCE_GROUP / AZURE_CONTAINERAPP_NAME  target resources
 #
-# Left on manual trigger until those secrets exist -- with them unset the job
-# fails at the login step within seconds and emails a failure for every commit.
-# Uncomment the `push:` block once they are configured.
+# Every push to main deploys to production. Documentation-only changes are
+# skipped so they do not spend build minutes or roll a new revision.
 on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '.vscode/**'
+      - 'docs/**'
   workflow_dispatch:
-  # push:
-  #   branches: [main]
-  #   paths-ignore:
-  #     - '**.md'
-  #     - '.vscode/**'
-  #     - 'docs/**'
 
 env:
   IMAGE_NAME: thco-crm

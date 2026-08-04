@@ -1,20 +1,17 @@
 name: Build and deploy to Azure
 
-# Builds the container and deploys it to Azure Web App for Containers.
+# Builds the container in Azure Container Registry and rolls the Container App
+# onto the new image.
 #
-# Required repository secrets:
-#   AZURE_CREDENTIALS   output of `az ad sp create-for-rbac --sdk-auth`
-#   ACR_NAME            Azure Container Registry name, without .azurecr.io
-#   AZURE_WEBAPP_NAME   name of the Web App
+# Requires three repository secrets:
+#   AZURE_CREDENTIALS   output of `az ad sp create-for-rbac --json-auth` for a
+#                       principal with Contributor on the resource group
+#   ACR_NAME            container registry name, without .azurecr.io
+#   AZURE_RESOURCE_GROUP / AZURE_CONTAINERAPP_NAME  target resources
 #
-# Application settings (MONGO_URL, JWT_SECRET, SERPER_KEY, ...) are configured
-# on the Web App itself, not here -- they must never enter the image or logs.
-
-# Manual-only until the Azure resources and the three secrets below exist.
-# Deploying on every push is the goal, but with the secrets unset the job
-# fails at the Azure login step within seconds and emails a failure on every
-# commit. Once `az webapp` is provisioned and the secrets are set, uncomment
-# the `push:` block to deploy automatically on merge to main.
+# Left on manual trigger until those secrets exist -- with them unset the job
+# fails at the login step within seconds and emails a failure for every commit.
+# Uncomment the `push:` block once they are configured.
 on:
   workflow_dispatch:
   # push:
@@ -22,6 +19,7 @@ on:
   #   paths-ignore:
   #     - '**.md'
   #     - '.vscode/**'
+  #     - 'docs/**'
 
 env:
   IMAGE_NAME: thco-crm
@@ -40,39 +38,34 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Log in to container registry
-        run: az acr login --name ${{ secrets.ACR_NAME }}
+      # Build inside ACR rather than on the runner: the build context includes
+      # ~260MB of frontend assets, and ACR keeps that traffic inside Azure.
+      - name: Build image in ACR
+        run: |
+          az acr build \
+            --registry "${{ secrets.ACR_NAME }}" \
+            --image "${IMAGE_NAME}:${GITHUB_SHA}" \
+            --image "${IMAGE_NAME}:latest" \
+            --file Dockerfile .
 
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and push image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          # Tag with the commit SHA so a deploy is traceable to a revision and
-          # a rollback is a matter of pointing the Web App at an earlier tag.
-          tags: |
-            ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
-            ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Deploy to Web App
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
-          images: ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
+      - name: Roll the container app onto the new image
+        run: |
+          az containerapp update \
+            --name "${{ secrets.AZURE_CONTAINERAPP_NAME }}" \
+            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+            --image "${{ secrets.ACR_NAME }}.azurecr.io/${IMAGE_NAME}:${GITHUB_SHA}"
 
       - name: Wait for the app to report healthy
         run: |
-          url="https://${{ secrets.AZURE_WEBAPP_NAME }}.azurewebsites.net/healthz"
-          echo "Polling $url"
+          fqdn=$(az containerapp show \
+            --name "${{ secrets.AZURE_CONTAINERAPP_NAME }}" \
+            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          echo "Polling https://${fqdn}/healthz"
           for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' "$url" || true)
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://${fqdn}/healthz" || true)
             if [ "$code" = "200" ]; then
-              echo "Healthy after ${i} attempt(s)."
+              echo "Healthy after ${i} attempt(s): https://${fqdn}"
               exit 0
             fi
             echo "  attempt $i: HTTP ${code:-none}"

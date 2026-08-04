@@ -2864,7 +2864,11 @@ app.include_router(api_router)
 # Serve the Create-React-App production build (frontend)
 # Mount static assets under /static and provide SPA fallback for non-/api routes.
 FRONTEND_BUILD_DIR = ROOT_DIR.parent / "frontend" / "build"
-if FRONTEND_BUILD_DIR.exists():
+# Require the static directory itself, not just `build/`. StaticFiles raises at
+# import time if the directory is absent, so a leftover or half-written build/
+# (common in development, where the CRA dev server serves the frontend instead)
+# took the whole API down on startup rather than simply skipping SPA serving.
+if (FRONTEND_BUILD_DIR / "static").is_dir():
     # Serve static assets (js/css/media) from /static
     app.mount("/static", StaticFiles(directory=str(FRONTEND_BUILD_DIR / "static")), name="static")
 

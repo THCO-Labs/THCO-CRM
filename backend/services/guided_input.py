@@ -306,7 +306,7 @@ Then I'll have everything to start building."""
 
 # Unit display names mapping
 UNIT_DISPLAY_NAMES = {
-    "talent": "Talent & Human Capital",
+    "talent": "Talent & Delivery",
     "thco-hr": "THCO HR",
     "sales": "Sales & Business Development",
     "marketing": "Marketing & Brand",

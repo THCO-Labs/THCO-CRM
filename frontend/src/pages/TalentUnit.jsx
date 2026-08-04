@@ -135,7 +135,7 @@ const TalentUnit = () => {
           </BreadcrumbItem>
           <BreadcrumbSeparator className="text-gray-300" />
           <BreadcrumbItem>
-            <BreadcrumbPage className="text-gray-900 font-medium">Talent & Human Capital</BreadcrumbPage>
+            <BreadcrumbPage className="text-gray-900 font-medium">Talent & Delivery</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
@@ -148,7 +148,7 @@ const TalentUnit = () => {
               <Users className="w-8 h-8 text-white" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Talent & Human Capital</h1>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Talent & Delivery</h1>
               <p className="text-gray-500 text-lg">
                 AI-powered recruiting, sourcing, and talent operations
               </p>

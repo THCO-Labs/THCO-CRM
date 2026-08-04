@@ -50,7 +50,7 @@ import { hasUnitAccess, hasFullAccess, canManageUsers } from "../context/UserCon
 import FlowForgeFAB from "./FlowForgeFAB";
 
 const UNITS = [
-  { name: "Talent & Human Capital", slug: "talent", icon: Users, path: "/talent" },
+  { name: "Talent & Delivery", slug: "talent", icon: Users, path: "/talent" },
   { name: "THCO HR", slug: "thco-hr", icon: UserCog, path: "/thco-hr" },
   { name: "THCO Flow", slug: "flow", icon: FolderKanban, path: "/flow" },
   { name: "IT & THCO Tools", slug: "it-tools", icon: Wrench, path: "/it-tools" },
@@ -160,7 +160,7 @@ const DashboardLayoutInner = ({ children, user }) => {
     if (path === "/admin/users") return "User Management";
     if (path.startsWith("/admin/assessments")) return "Candidate Assessments";
     if (path.startsWith("/talent")) {
-      if (path === "/talent") return "Talent & Human Capital";
+      if (path === "/talent") return "Talent & Delivery";
       if (path === "/talent/sourcing") return "AI Candidate Sourcing";
       if (path === "/talent/database-search") return "Database Search";
       if (path === "/talent/candidates") return "Candidate Database";
@@ -216,6 +216,7 @@ const DashboardLayoutInner = ({ children, user }) => {
 
   // Quick navigator: every destination this person can reach, searchable from the top bar
   const searchIndex = [
+    { label: "New Project", path: "/flow/projects/new", group: "Portal" },
     { label: "Dashboard", path: "/dashboard", group: "Portal" },
     { label: "Proposals & Clients", path: "/proposals", group: "Portal" },
     { label: "Tasks", path: "/tasks", group: "Portal" },

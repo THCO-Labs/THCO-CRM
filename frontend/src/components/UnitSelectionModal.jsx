@@ -17,7 +17,7 @@ import { useNavigate } from "react-router-dom";
 
 const UNITS = [
   { 
-    name: "Talent & Human Capital", 
+    name: "Talent & Delivery", 
     slug: "talent", 
     icon: Users, 
     gradient: "bg-gradient-to-br from-[#B855E8] to-[#DA67E4]",

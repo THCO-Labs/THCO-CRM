@@ -51,10 +51,29 @@ const Login = () => {
     }
   };
 
+  // Google sign-in is only offered once a real OAuth client is configured.
+  // This previously redirected to auth.emergentagent.com -- a leftover from the
+  // scaffolding tool -- which sent staff to a third-party sign-in page instead
+  // of THCO's own. Showing no button is better than showing a broken one.
+  //
+  // To enable: create an OAuth 2.0 Web client in the thco-crm Google Cloud
+  // project, set REACT_APP_GOOGLE_CLIENT_ID, and implement the backend
+  // /api/auth/google/callback token exchange.
+  const googleClientId = process.env.REACT_APP_GOOGLE_CLIENT_ID;
+  const googleEnabled = Boolean(googleClientId);
+
   const handleGoogleLogin = () => {
+    if (!googleEnabled) return;
     setIsGoogleLoading(true);
-    const redirectUrl = window.location.origin + '/dashboard';
-    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
+    const params = new URLSearchParams({
+      client_id: googleClientId,
+      redirect_uri: `${window.location.origin}/auth/google/callback`,
+      response_type: "code",
+      scope: "openid email profile",
+      access_type: "offline",
+      prompt: "select_account",
+    });
+    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
   };
 
   return (
@@ -127,7 +146,8 @@ const Login = () => {
             <p className="text-gray-500 text-sm">Enter your credentials to continue.</p>
           </div>
 
-          {/* Google Login */}
+          {/* Google Login — hidden until an OAuth client is configured */}
+          {googleEnabled && (
           <Button
             variant="outline"
             className="w-full mb-7 h-12 bg-white border-[#EAE7E0] text-gray-700 hover:bg-[#FBFAF7] hover:border-[#DCD5C6] rounded-full font-medium shadow-sm text-[14px]"
@@ -147,11 +167,16 @@ const Login = () => {
             )}
             Continue with Google
           </Button>
+          )}
 
+          {/* The "or" divider only makes sense when there is an alternative
+              sign-in method above it. */}
+          {googleEnabled && (
           <div className="relative mb-7">
             <div className="lux-divider" />
             <span className="absolute left-1/2 -translate-x-1/2 -top-2 bg-[#F7F6F3] px-4 text-[10px] text-gray-400 uppercase tracking-[0.3em]">or</span>
           </div>
+          )}
 
           {/* Email/Password Form */}
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">

@@ -118,7 +118,7 @@ function getPageTitle(path) {
     "/dashboard": "Dashboard",
     "/settings": "Settings",
     "/proposals": "Proposals",
-    "/talent": "Talent & Human Capital",
+    "/talent": "Talent & Delivery",
     "/talent/sourcing": "Talent Sourcing Tool",
     "/talent/database-search": "Database Search Tool",
     "/talent/candidates": "Candidate Database",

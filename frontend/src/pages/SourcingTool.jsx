@@ -113,7 +113,7 @@ const SourcingTool = () => {
           <BreadcrumbSeparator className="text-gray-300" />
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <Link to="/talent" className="text-gray-500 hover:text-gray-900">Talent & Human Capital</Link>
+              <Link to="/talent" className="text-gray-500 hover:text-gray-900">Talent & Delivery</Link>
             </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator className="text-gray-300" />
@@ -461,7 +461,7 @@ const SourcingTool = () => {
         data-testid="back-to-talent-link"
       >
         <ArrowLeft className="w-4 h-4" />
-        Back to Talent & Human Capital
+        Back to Talent & Delivery
       </Link>
     </div>
   );

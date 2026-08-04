@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { hasFullAccess } from "../context/UserContext";
 
 const UNIT_LABELS = {
-  talent: "Talent & Human Capital",
+  talent: "Talent & Delivery",
   "thco-hr": "THCO HR",
   flow: "THCO Flow",
   "it-tools": "IT & THCO Tools",

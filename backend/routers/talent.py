@@ -8,6 +8,8 @@ import uuid
 import logging
 import asyncio
 
+from services import permissions
+
 router = APIRouter(prefix="/talent", tags=["talent"])
 logger = logging.getLogger(__name__)
 db = None
@@ -219,6 +221,25 @@ async def get_current_user(request: Request) -> dict:
     return user
 
 
+async def require_talent_access(request: Request) -> dict:
+    """Authenticate, then confirm the caller may see candidate data.
+
+    The candidate database holds personal data -- names, emails, phone
+    numbers and full CV text for real people. Every route here previously
+    accepted any authenticated session, so an ordinary staff account could
+    read all of it by requesting the URL directly; only the sidebar hid it.
+
+    Restricted to administrators and members of the Talent unit.
+    """
+    user = await get_current_user(request)
+    if not permissions.can_view_candidates(user):
+        raise HTTPException(
+            status_code=403,
+            detail="Access to the candidate database requires the Talent unit",
+        )
+    return user
+
+
 # ── Candidate CRUD ─────────────────────────────────────────────────────
 
 @router.post("/candidates/upload")
@@ -227,7 +248,7 @@ async def upload_candidate_cv(
     file: UploadFile = File(...),
     background_tasks: BackgroundTasks = None,
 ):
-    user = await get_current_user(request)
+    user = await require_talent_access(request)
     contents = await file.read()
 
     from services.cv_parser import parse_cv
@@ -262,7 +283,7 @@ async def upload_bulk_cvs(
     request: Request,
     files: List[UploadFile] = File(...),
 ):
-    user = await get_current_user(request)
+    user = await require_talent_access(request)
     from services.cv_parser import parse_cv
 
     results = []
@@ -323,7 +344,7 @@ async def list_candidates(
     skip: int = 0,
     limit: int = 50,
 ):
-    await get_current_user(request)
+    await require_talent_access(request)
 
     filters = {}
     if status:
@@ -377,7 +398,7 @@ async def text_search_candidates(
     skip: int = 0,
     limit: int = 50,
 ):
-    await get_current_user(request)
+    await require_talent_access(request)
 
     import re
 
@@ -417,7 +438,7 @@ async def text_search_candidates(
 
 @router.get("/candidates/{candidate_id}")
 async def get_candidate(request: Request, candidate_id: str):
-    await get_current_user(request)
+    await require_talent_access(request)
     candidate = await db.candidates.find_one({"candidate_id": candidate_id})
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found")
@@ -427,7 +448,7 @@ async def get_candidate(request: Request, candidate_id: str):
 
 @router.put("/candidates/{candidate_id}")
 async def update_candidate(request: Request, candidate_id: str, data: CandidateUpdate):
-    await get_current_user(request)
+    await require_talent_access(request)
     existing = await db.candidates.find_one({"candidate_id": candidate_id})
     if not existing:
         raise HTTPException(status_code=404, detail="Candidate not found")
@@ -443,7 +464,7 @@ async def update_candidate(request: Request, candidate_id: str, data: CandidateU
 
 @router.delete("/candidates/{candidate_id}")
 async def delete_candidate(request: Request, candidate_id: str):
-    await get_current_user(request)
+    await require_talent_access(request)
     result = await db.candidates.delete_one({"candidate_id": candidate_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Candidate not found")
@@ -454,7 +475,7 @@ async def delete_candidate(request: Request, candidate_id: str):
 
 @router.post("/candidates/search-by-skills")
 async def search_by_skills(request: Request, skills: List[str]):
-    await get_current_user(request)
+    await require_talent_access(request)
     and_clauses = [{"skills": {"$regex": s, "$options": "i"}} for s in skills]
     cursor = db.candidates.find({"$and": and_clauses}).sort("experience_years", -1).limit(50)
     candidates = []
@@ -473,7 +494,7 @@ async def list_drive_files(
     query: str = None,
     page_size: int = 50,
 ):
-    await get_current_user(request)
+    await require_talent_access(request)
     from services.google_drive import list_cv_files
     fid = folder_id or os.environ.get('GOOGLE_DRIVE_CV_FOLDER_ID', '')
     files = list_cv_files(folder_id=fid, query=query, page_size=page_size, recursive=True)
@@ -483,7 +504,7 @@ async def list_drive_files(
 @router.post("/drive/import-all")
 async def import_all_from_drive(request: Request, background_tasks: BackgroundTasks):
     """Start a background import of all CVs from configured Google Drive folders."""
-    await get_current_user(request)
+    await require_talent_access(request)
 
     async def run_import():
         from services.google_drive import list_cv_files, download_file_by_name
@@ -557,7 +578,7 @@ async def import_all_from_drive(request: Request, background_tasks: BackgroundTa
 
 @router.post("/drive/import")
 async def import_from_drive(request: Request, data: DriveImportRequest):
-    user = await get_current_user(request)
+    user = await require_talent_access(request)
     from services.google_drive import list_cv_files, download_file_by_name
     from services.cv_parser import parse_cv
 
@@ -623,7 +644,7 @@ async def import_from_drive(request: Request, data: DriveImportRequest):
 
 @router.post("/sourcing/search")
 async def search_external(request: Request, data: SourcingSearchRequest):
-    await get_current_user(request)
+    await require_talent_access(request)
     from services.talent_search import search_external_candidates
     import asyncio
     results = await asyncio.to_thread(
@@ -649,7 +670,7 @@ async def search_external(request: Request, data: SourcingSearchRequest):
 
 @router.post("/sourcing/boolean-pack")
 async def build_boolean_pack(request: Request, data: BooleanSearchPackRequest):
-    await get_current_user(request)
+    await require_talent_access(request)
     from services.talent_search import build_boolean_search_pack
     packs = build_boolean_search_pack(
         role=data.role,
@@ -662,7 +683,7 @@ async def build_boolean_pack(request: Request, data: BooleanSearchPackRequest):
 
 @router.post("/sourcing/import")
 async def import_external_candidates(request: Request, data: ImportExternalRequest):
-    user = await get_current_user(request)
+    user = await require_talent_access(request)
 
     results = []
     for c in data.candidates:
@@ -709,7 +730,7 @@ async def import_external_candidates(request: Request, data: ImportExternalReque
 
 @router.post("/candidates/ai-parse")
 async def ai_parse_cv(request: Request, data: AiCvParseRequest):
-    await get_current_user(request)
+    await require_talent_access(request)
     from services.talent_search import parse_cv_with_ai
     result = parse_cv_with_ai(data.raw_text)
     if not result:
@@ -721,7 +742,7 @@ async def ai_parse_cv(request: Request, data: AiCvParseRequest):
 
 @router.post("/sourcing/analyze-jd")
 async def analyze_jd(request: Request, data: JdAnalysisRequest):
-    await get_current_user(request)
+    await require_talent_access(request)
     from services.talent_search import analyze_jd_for_matching
     result = analyze_jd_for_matching(
         title=data.title,
@@ -738,7 +759,7 @@ async def analyze_jd(request: Request, data: JdAnalysisRequest):
 
 @router.post("/unified-search")
 async def unified_search(request: Request, data: UnifiedSearchRequest):
-    user = await get_current_user(request)
+    user = await require_talent_access(request)
     from services.talent_search import (
         analyze_jd_for_matching,
         build_search_query_from_rubric,
@@ -824,7 +845,7 @@ async def list_external_candidates(
     skip: int = 0,
     limit: int = 50,
 ):
-    await get_current_user(request)
+    await require_talent_access(request)
 
     filters = {}
     # Free-text goes through the text index when the server supports it. The
@@ -903,7 +924,7 @@ async def list_external_candidates(
 
 @router.get("/network/candidates/{candidate_id}")
 async def get_external_candidate(request: Request, candidate_id: str):
-    await get_current_user(request)
+    await require_talent_access(request)
     doc = await db.external_candidates.find_one({"candidate_id": candidate_id})
     if not doc:
         raise HTTPException(status_code=404, detail="Candidate not found")
@@ -931,7 +952,7 @@ async def get_external_candidate(request: Request, candidate_id: str):
 
 @router.post("/network/candidates/{candidate_id}/enrich")
 async def enrich_external_candidate(request: Request, candidate_id: str):
-    await get_current_user(request)
+    await require_talent_access(request)
     from services.talent_enrichment import enrich_candidate
     result = await enrich_candidate(db, candidate_id)
     if not result:
@@ -944,7 +965,7 @@ async def enrich_external_candidate(request: Request, candidate_id: str):
 
 @router.post("/network/candidates/{candidate_id}/refresh")
 async def refresh_external_candidate(request: Request, candidate_id: str):
-    await get_current_user(request)
+    await require_talent_access(request)
     from services.talent_enrichment import enrich_candidate
     from services.talent_cache import log_activity
     doc = await db.external_candidates.find_one({"candidate_id": candidate_id})
@@ -958,7 +979,7 @@ async def refresh_external_candidate(request: Request, candidate_id: str):
 
 @router.post("/network/candidates/{candidate_id}/import")
 async def import_to_internal(request: Request, candidate_id: str):
-    await get_current_user(request)
+    await require_talent_access(request)
     doc = await db.external_candidates.find_one({"candidate_id": candidate_id})
     if not doc:
         raise HTTPException(status_code=404, detail="Candidate not found")
@@ -987,7 +1008,7 @@ async def import_to_internal(request: Request, candidate_id: str):
         "source_reference": doc.get("linkedin") or doc.get("candidate_id"),
         "external_source_id": doc.get("candidate_id"),
         "status": "new",
-        "uploaded_by": (await get_current_user(request)).get("user_id"),
+        "uploaded_by": (await require_talent_access(request)).get("user_id"),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -999,7 +1020,7 @@ async def import_to_internal(request: Request, candidate_id: str):
 
 @router.delete("/network/candidates/{candidate_id}")
 async def delete_external_candidate(request: Request, candidate_id: str):
-    await get_current_user(request)
+    await require_talent_access(request)
     await db.external_candidates.delete_one({"candidate_id": candidate_id})
     await db.candidate_sources.delete_many({"candidate_id": candidate_id})
     await db.candidate_activity.delete_many({"candidate_id": candidate_id})
@@ -1009,7 +1030,7 @@ async def delete_external_candidate(request: Request, candidate_id: str):
 @router.post("/network/save-discovered")
 async def save_discovered_candidates(request: Request, data: SaveDiscoveredRequest):
     """Save discovered candidates to the external network with dedup and analytics."""
-    user = await get_current_user(request)
+    user = await require_talent_access(request)
     from services.talent_dedup import deduplicate_and_save
     from services.talent_cache import log_activity
 
@@ -1061,7 +1082,7 @@ async def save_discovered_candidates(request: Request, data: SaveDiscoveredReque
 
 @router.post("/network/refresh-queue/process")
 async def process_refresh(request: Request, limit: int = 10):
-    await get_current_user(request)
+    await require_talent_access(request)
     from services.talent_cache import process_refresh_queue
     await process_refresh_queue(db, limit=limit)
     pending = await db.candidate_refresh_queue.count_documents({"status": "pending"})
@@ -1070,7 +1091,7 @@ async def process_refresh(request: Request, limit: int = 10):
 
 @router.get("/network/stats")
 async def network_stats(request: Request):
-    await get_current_user(request)
+    await require_talent_access(request)
     total = await db.external_candidates.count_documents({})
     enriched = await db.external_candidates.count_documents({"enriched": True})
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -1123,7 +1144,7 @@ async def network_stats(request: Request):
 
 @router.get("/stats")
 async def talent_stats(request: Request):
-    await get_current_user(request)
+    await require_talent_access(request)
     total_candidates = await db.candidates.count_documents({})
     by_source = {}
     async for doc in db.candidates.aggregate([

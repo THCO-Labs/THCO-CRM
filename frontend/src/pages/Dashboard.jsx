@@ -16,16 +16,17 @@ import {
   ArrowUpRight,
   UserCog,
   FolderKanban,
+  Plus,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../components/ui/dialog";
 import { dashboardAPI, activityAPI, authAPI, unitsAPI } from "../lib/api";
 import { useAnalytics } from "../context/AnalyticsContext";
-import { hasFullAccess } from "../context/UserContext";
+import { hasFullAccess, hasUnitAccess } from "../context/UserContext";
 
 const UNITS = [
   {
-    name: "Talent & Human Capital",
+    name: "Talent & Delivery",
     slug: "talent",
     icon: Users,
     path: "/talent",
@@ -268,6 +269,11 @@ const Dashboard = () => {
     );
   }
 
+  // Deliberately the same permission that already guards the button inside
+  // THCO Flow -- this surfaces the action, it does not widen or narrow who
+  // may take it.
+  const canCreateProject = hasUnitAccess(user, "flow");
+
   return (
     <div className="max-w-[1400px] mx-auto space-y-10" data-testid="dashboard-page">
       {/* Welcome Section */}
@@ -282,6 +288,18 @@ const Dashboard = () => {
               Signed in as {getRoleLabel(user)} · {accessibleUnits.length} unit{accessibleUnits.length !== 1 ? "s" : ""} in your portfolio
             </p>
           </div>
+
+          {/* Starting a project was only reachable from inside THCO Flow, so
+              anyone who did not already know where to look could not find it.
+              It belongs on the page everyone lands on after signing in. */}
+          {canCreateProject && (
+            <Link to="/flow/projects/new" data-testid="dashboard-new-project">
+              <Button className="h-11 px-6 rounded-full bg-[#0C0F13] text-white hover:bg-[#1a1f26] shadow-sm">
+                <Plus className="w-4 h-4 mr-2" />
+                New Project
+              </Button>
+            </Link>
+          )}
         </div>
         <div className="lux-divider mt-8" />
       </div>

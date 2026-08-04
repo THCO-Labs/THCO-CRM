@@ -302,7 +302,7 @@ const ApprovalQueue = () => {
 
   const unitOptions = [
     { value: "all", label: "All Units" },
-    { value: "talent", label: "Talent & Human Capital" },
+    { value: "talent", label: "Talent & Delivery" },
     { value: "sales", label: "Sales & Business Dev" },
     { value: "marketing", label: "Marketing & Brand" },
     { value: "advisory", label: "Advisory & Consulting" },

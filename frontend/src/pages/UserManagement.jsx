@@ -20,7 +20,7 @@ import { usersAPI } from "../lib/api";
 import { useUser } from "../context/UserContext";
 
 const ALL_UNITS = [
-  { slug: "talent", name: "Talent & Human Capital" },
+  { slug: "talent", name: "Talent & Delivery" },
   { slug: "thco-hr", name: "THCO HR" },
   { slug: "it-tools", name: "IT & THCO Tools" },
   { slug: "sales", name: "Sales & Business Dev" },

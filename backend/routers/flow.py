@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
+from services import permissions
 from datetime import datetime, timezone, timedelta
 import uuid
 
@@ -281,8 +282,11 @@ async def list_projects(
     q: Optional[str] = None,
 ):
     """List projects with filters."""
-    await _get_user(request)
-    query: Dict[str, Any] = {}
+    user = await _get_user(request)
+    # Staff see only the projects they are attached to. Administrators and
+    # delivery oversight roles get the full portfolio, for which this returns
+    # an empty filter.
+    query: Dict[str, Any] = dict(permissions.project_scope_filter(user))
     if stage:
         query["stage"] = stage
     if owner:

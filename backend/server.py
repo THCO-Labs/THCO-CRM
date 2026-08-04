@@ -17,6 +17,8 @@ import jwt
 import asyncio
 import httpx
 import resend
+
+from services import permissions
 import hashlib
 import secrets
 from datetime import datetime, timezone, timedelta
@@ -1103,7 +1105,10 @@ async def create_user(user_data: dict, request: Request):
     email_sent = False
     try:
         from services import send_email
-        login_link = f"{os.environ.get('FRONTEND_URL', 'http://localhost:5178')}/login"
+        # Must match the fallback used by the password-reset link above; they
+        # disagreed (5178 vs 3000), so invitation emails pointed at a port
+        # nothing listens on while reset emails worked.
+        login_link = f"{os.environ.get('FRONTEND_URL', 'http://localhost:3000')}/login"
         html = f"""
         <div style="font-family:Inter,Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;background:#0C0F13;border-radius:12px;color:#E8E6F0">
           <div style="font-size:22px;font-weight:700;color:#C6A15B;margin-bottom:4px">THCO Control Room</div>
@@ -1676,7 +1681,13 @@ def get_share_url(share_token: str) -> str:
 async def get_clients(request: Request):
     """Get all clients with their proposal counts"""
     user = await get_current_user(request)
-    
+    # Client records carry commercial terms and named contacts. Previously any
+    # authenticated account could list every client.
+    permissions.require(
+        permissions.can_view_clients(user),
+        "Client records require a commercial or delivery unit",
+    )
+
     clients = await db.clients.find({}, {"_id": 0}).to_list(1000)
     
     # Get proposal counts for each client

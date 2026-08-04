@@ -272,10 +272,13 @@ const TechnologyAndBuild = () => {
                 Build New Tool
               </Button>
             </Link>
-            <Button className="bg-cyan-600 hover:bg-cyan-700">
-              <Plus className="w-4 h-4 mr-2" />
-              New Project
-            </Button>
+            {/* Had neither an onClick nor a link, so clicking it did nothing. */}
+            <Link to="/flow/projects/new">
+              <Button className="bg-cyan-600 hover:bg-cyan-700" data-testid="tech-new-project-btn">
+                <Plus className="w-4 h-4 mr-2" />
+                New Project
+              </Button>
+            </Link>
           </div>
         </div>
       </div>

@@ -1142,6 +1142,30 @@ async def network_stats(request: Request):
 
 # ── Mailbox / connector imports ───────────────────────────────────────
 
+def _mail_connector():
+    """The mailbox connector to use.
+
+    Prefers the Gmail API via domain-wide delegation, which is the better
+    arrangement -- no per-mailbox credential, and it extends to any address in
+    the domain. Falls back to IMAP with an app password, which a mailbox owner
+    can enable without a Workspace administrator.
+
+    Both implement the same contract, so everything downstream is unchanged.
+    """
+    from services.connectors.gmail import GmailConnector
+    from services.connectors.imap_mailbox import ImapMailboxConnector
+
+    api = GmailConnector()
+    if api.is_configured() and api.check_access().get("ok"):
+        return api
+
+    imap = ImapMailboxConnector()
+    if imap.is_configured():
+        return imap
+
+    return api  # report the API connector's reason for being unavailable
+
+
 @router.get("/import/gmail/status")
 async def gmail_import_status(request: Request):
     """Whether the Gmail connector can reach its mailbox.
@@ -1151,9 +1175,7 @@ async def gmail_import_status(request: Request):
     rather than surfacing as an opaque error mid-run.
     """
     await require_talent_access(request)
-    from services.connectors.gmail import GmailConnector
-
-    connector = GmailConnector()
+    connector = _mail_connector()
     status = connector.check_access()
 
     cursor = await db.import_cursors.find_one({"connector": "gmail"}, {"_id": 0})
@@ -1163,8 +1185,9 @@ async def gmail_import_status(request: Request):
 
     return {
         "configured": connector.is_configured(),
-        "mailbox": connector.mailbox or None,
-        "query": connector.query,
+        "mailbox": getattr(connector, "mailbox", None) or None,
+        "transport": "gmail-api" if hasattr(connector, "query") else "imap",
+        "query": getattr(connector, "query", None),
         **status,
         "cursor": (cursor or {}).get("cursor"),
         "last_run": last_run,
@@ -1187,10 +1210,9 @@ async def gmail_import_run(
     user = await require_talent_access(request)
     permissions.require_admin(user)
 
-    from services.connectors.gmail import GmailConnector
     from services.connectors.runner import run_connector
 
-    connector = GmailConnector()
+    connector = _mail_connector()
     access = connector.check_access()
     if not access.get("ok"):
         raise HTTPException(status_code=400, detail=access.get("reason", "Gmail is not reachable"))

@@ -61,3 +61,28 @@ class Connector:
         """
         raise NotImplementedError
         yield  # pragma: no cover - makes this an async generator
+
+    def cursor_for(self, document: CandidateDocument) -> Optional[str]:
+        """The resume point this document represents.
+
+        Defaults to the received timestamp, which suits sources searched by
+        date. Sources with a stable monotonic identifier should override --
+        IMAP returns the message UID, because timestamps are neither unique
+        nor reliably ordered across a mailbox.
+        """
+        return document.received_at
+
+    @staticmethod
+    def cursor_is_newer(candidate: Optional[str], current: Optional[str]) -> bool:
+        """Whether `candidate` advances past `current`.
+
+        Numeric cursors are compared as numbers; a plain string comparison
+        would rank UID 9 above UID 10.
+        """
+        if candidate is None:
+            return False
+        if current is None:
+            return True
+        if str(candidate).isdigit() and str(current).isdigit():
+            return int(candidate) > int(current)
+        return str(candidate) > str(current)

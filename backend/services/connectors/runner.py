@@ -65,8 +65,11 @@ async def run_connector(
     newest_seen = since
 
     async for document in connector.fetch(since=since, limit=limit):
-        if document.received_at and (not newest_seen or document.received_at > newest_seen):
-            newest_seen = document.received_at
+        # The connector decides what its resume point looks like -- a
+        # timestamp for date-searched sources, a message UID for IMAP.
+        point = connector.cursor_for(document)
+        if connector.cursor_is_newer(point, newest_seen):
+            newest_seen = point
 
         if dry_run:
             counts["created"] += 1

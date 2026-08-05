@@ -1947,7 +1947,13 @@ async def upload_proposal(
 async def get_all_proposals(request: Request, limit: int = 50, skip: int = 0):
     """Get all proposals across all clients"""
     user = await get_current_user(request)
-    
+    # Proposals carry commercial terms and client pricing. Previously any
+    # authenticated account could list every one of them.
+    permissions.require(
+        permissions.can_view_clients(user),
+        "Proposals require a commercial or delivery role",
+    )
+
     proposals = await db.proposals.find({}, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
     
     for proposal in proposals:

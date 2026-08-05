@@ -43,6 +43,88 @@ PROFILE_FIELDS = (
     "skills", "experience_years", "education", "employment", "certifications",
 )
 
+# A mailbox carries far more than CVs. Contracts, invoices, proposals and
+# signed agreements are all PDFs bearing a name, an email and a phone number,
+# so the presence of contact details is not evidence that a document is a
+# resume. These signals decide it on content instead.
+_CV_SECTION_WORDS = (
+    # English
+    "work experience", "professional experience", "employment history",
+    "career history", "education", "qualifications", "academic",
+    "skills", "competencies", "certifications", "referees", "references",
+    "career objective", "personal profile", "professional summary",
+    "work history", "achievements", "personal details", "date of birth",
+    # The corpus is international -- CVs arrive in French, Spanish,
+    # Portuguese, Indonesian and Turkish. Judging them on English headings
+    # alone rejected roughly one real candidate in ten.
+    "expérience professionnelle", "experience professionnelle", "formation",
+    "compétences", "competences", "coordonnées", "coordonnees", "état civil",
+    "experiencia laboral", "experiencia profesional", "formación académica",
+    "formacion academica", "habilidades", "datos personales", "objetivo",
+    "experiência profissional", "formação", "competências",
+    "pengalaman kerja", "pendidikan", "keahlian", "data pribadi",
+    "riwayat hidup", "biografi", "jenis kelamin", "tempat, tanggal lahir",
+    "iş deneyimi", "eğitim bilgileri", "kişisel bilgiler", "iletişim bilgileri",
+)
+
+# "Curriculum vitae" states outright what the document is, in most of the
+# languages that matter here. Weighted separately because it is close to
+# conclusive on its own.
+_CV_DECLARATIONS = (
+    "curriculum vitae", "resume", "résumé", "curriculo", "currículo",
+    "hoja de vida", "lebenslauf", "özgeçmiş", "riwayat hidup", "cv",
+)
+
+# Wording that indicates a different kind of business document. Present in
+# strength, these outweigh an incidental "education" mention.
+_NON_CV_MARKERS = (
+    "invoice", "purchase order", "tax invoice", "amount due", "bill to",
+    "terms and conditions", "this agreement", "hereinafter", "the parties",
+    "witnesseth", "in witness whereof", "statement of work",
+    "scope of work", "payment terms", "remittance", "vat registration",
+    "quotation", "proforma", "receipt no", "account number",
+    "non-disclosure", "confidentiality agreement", "memorandum of understanding",
+)
+
+
+def looks_like_cv(parsed: Dict[str, Any]) -> tuple:
+    """Judge whether a parsed document is actually somebody's CV.
+
+    Returns (is_cv, reason). Scored rather than decided on any single signal,
+    because CV layouts vary enormously -- some carry no explicit headings at
+    all, and a strict rule would reject real candidates.
+    """
+    text = (parsed.get("raw_text") or "").lower()
+    if len(text) < 200:
+        return False, "document contains too little text to be a CV"
+
+    sections = sum(1 for w in _CV_SECTION_WORDS if w in text)
+    negatives = sum(1 for w in _NON_CV_MARKERS if w in text)
+    # Only the opening of a document declares what it is; the word "resume"
+    # appearing deep in a contract's prose means nothing.
+    declared = any(d in text[:400] for d in _CV_DECLARATIONS)
+
+    structured = sum(bool(parsed.get(f)) for f in ("education", "employment", "certifications"))
+    contact = sum(bool(parsed.get(f)) for f in ("email", "phone", "linkedin"))
+    skills = len(parsed.get("skills") or [])
+
+    score = 0.0
+    score += min(sections, 5) * 0.9        # section headings are the clearest tell
+    score += structured * 1.2              # parsed education/employment is stronger still
+    score += min(skills, 6) * 0.25
+    score += contact * 0.4
+    if declared:
+        score += 2.0                       # the document names itself a CV
+    # Business documents state their own nature repeatedly; one stray mention
+    # should not condemn a CV, several should.
+    score -= negatives * 1.6
+
+    if negatives >= 3 and structured == 0 and not declared:
+        return False, "reads as a business document rather than a CV"
+    if score < 2.2:
+        return False, f"does not read as a CV (score {score:.1f})"
+    return True, ""
+
 
 def parse_bytes(file_bytes: bytes, filename: str) -> Dict[str, Any]:
     """Parse a CV into the structured shape the pipeline works with."""
@@ -190,6 +272,12 @@ async def import_cv(db, file_bytes: bytes, filename: str,
             "reason": "no identifying details could be read from the document",
             "filename": filename,
         }
+
+    # A mailbox is not a CV folder. Contracts, invoices and proposals all carry
+    # a name and contact details, so the document itself has to be judged.
+    is_cv, why = looks_like_cv(parsed)
+    if not is_cv:
+        return {"action": "rejected", "reason": why, "filename": filename}
 
     match = await identity.find_match(db, parsed)
     now = datetime.now(timezone.utc).isoformat()

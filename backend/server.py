@@ -4,6 +4,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
@@ -2983,16 +2984,48 @@ FRONTEND_BUILD_DIR = ROOT_DIR.parent / "frontend" / "build"
 # import time if the directory is absent, so a leftover or half-written build/
 # (common in development, where the CRA dev server serves the frontend instead)
 # took the whole API down on startup rather than simply skipping SPA serving.
+class ImmutableStaticFiles(StaticFiles):
+    """Serve /static with a long cache lifetime.
+
+    Everything under /static is content-hashed by the build (main.<hash>.js),
+    so a given URL's bytes can never change -- a new build produces a new
+    filename. Without a Cache-Control header the browser revalidates, and in
+    practice re-downloads, the whole bundle on every visit. `immutable` tells
+    it not to bother even on a reload.
+
+    index.html is deliberately not served from here: it is the one file whose
+    contents change while its URL stays the same, and caching it would pin
+    users to a stale build.
+    """
+
+    def file_response(self, *args, **kwargs) -> Response:
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
+
+def _index_response() -> FileResponse:
+    """The SPA shell, explicitly uncached so a deploy takes effect at once."""
+    index_file = FRONTEND_BUILD_DIR / "index.html"
+    if not index_file.exists():
+        raise HTTPException(status_code=404, detail="Index not found")
+    return FileResponse(
+        str(index_file),
+        headers={"Cache-Control": "no-cache, must-revalidate"},
+    )
+
+
 if (FRONTEND_BUILD_DIR / "static").is_dir():
     # Serve static assets (js/css/media) from /static
-    app.mount("/static", StaticFiles(directory=str(FRONTEND_BUILD_DIR / "static")), name="static")
+    app.mount(
+        "/static",
+        ImmutableStaticFiles(directory=str(FRONTEND_BUILD_DIR / "static")),
+        name="static",
+    )
 
     @app.get("/", include_in_schema=False)
     async def serve_spa_index():
-        index_file = FRONTEND_BUILD_DIR / "index.html"
-        if index_file.exists():
-            return FileResponse(str(index_file))
-        raise HTTPException(status_code=404, detail="Index not found")
+        return _index_response()
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_spa(full_path: str, request: Request):
@@ -3006,10 +3039,7 @@ if (FRONTEND_BUILD_DIR / "static").is_dir():
             return FileResponse(str(candidate))
 
         # Otherwise serve index.html for SPA routing
-        index_file = FRONTEND_BUILD_DIR / "index.html"
-        if index_file.exists():
-            return FileResponse(str(index_file))
-        raise HTTPException(status_code=404, detail="Index not found")
+        return _index_response()
 
 # Start SLA scheduler
 from services.sla_scheduler import set_db as set_sla_db, start_scheduler as start_sla_scheduler
@@ -3060,6 +3090,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# The frontend bundle is several megabytes of JavaScript and was being sent
+# uncompressed, which is most of what a first visit spends its time on. There
+# is no CDN or reverse proxy in front of this app -- Container Apps passes
+# requests straight to uvicorn -- so if compression does not happen here it
+# does not happen at all. 500 bytes keeps it off small JSON replies, where the
+# CPU cost outweighs the saving.
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

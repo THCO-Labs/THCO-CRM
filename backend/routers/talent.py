@@ -281,50 +281,51 @@ async def upload_bulk_cvs(
     files: List[UploadFile] = File(...),
 ):
     user = await require_talent_access(request)
-    from services.cv_parser import parse_cv
+    # Shares the import pipeline with every other source. Previously this
+    # matched on an exact email only -- missing the same person applying from
+    # a second address -- and overwrote the stored skills and CV text with
+    # whatever the newest file happened to contain.
+    from services.candidate_import import import_cv
 
     results = []
     for file in files:
         contents = await file.read()
-        parsed = parse_cv(contents, file.filename)
+        outcome = await import_cv(
+            db, contents, file.filename,
+            {
+                "source": "upload",
+                "reference": file.filename,
+                "imported_by": user.get("user_id"),
+            },
+        )
 
-        existing = None
-        if parsed.get("email"):
-            existing = await db.candidates.find_one({"email": parsed["email"]})
-
-        if existing:
-            await db.candidates.update_one(
-                {"candidate_id": existing["candidate_id"]},
-                {"$set": {
-                    "skills": parsed.get("skills", existing.get("skills", [])),
-                    "raw_text": parsed.get("raw_text", "")[:50000],
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
-                    "source": f"{existing.get('source', '')},upload".strip(","),
-                }}
-            )
-            results.append({"status": "updated", "candidate_id": existing["candidate_id"], "name": existing.get("name")})
+        if outcome.get("action") == "rejected":
+            # `name` carries the filename so the results list still identifies
+            # which document failed; the screen renders name || candidate_id.
+            results.append({
+                "status": "rejected",
+                "name": file.filename,
+                "filename": file.filename,
+                "reason": outcome.get("reason"),
+            })
             continue
 
-        candidate = {
-            "candidate_id": f"cand_{uuid.uuid4().hex[:12]}",
-            "name": parsed.get("name"),
-            "email": parsed.get("email"),
-            "phone": parsed.get("phone"),
-            "linkedin": parsed.get("linkedin"),
-            "skills": parsed.get("skills", []),
-            "experience_years": parsed.get("experience_years"),
-            "raw_text": parsed.get("raw_text", "")[:50000],
-            "source": "upload",
-            "source_reference": file.filename,
-            "status": "new",
-            "uploaded_by": user.get("user_id"),
-            "uploaded_by_name": user.get("name"),
+        candidate = await db.candidates.find_one(
+            {"candidate_id": outcome["candidate_id"]}, {"_id": 0, "name": 1}
+        ) or {}
+
+        # `status` and `name` are retained for the existing upload screen;
+        # the remaining fields are additive.
+        results.append({
+            "status": outcome["action"],
+            "candidate_id": outcome["candidate_id"],
+            "name": candidate.get("name"),
             "filename": file.filename,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-        result = await db.candidates.insert_one(candidate)
-        results.append({"status": "created", "candidate_id": candidate["candidate_id"], "name": candidate.get("name")})
+            "version": outcome.get("version"),
+            "changes": outcome.get("changes", []),
+            "match_score": outcome.get("match_score"),
+            "review_queued": outcome.get("review_queued", False),
+        })
 
     return {"total": len(files), "results": results}
 

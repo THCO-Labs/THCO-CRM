@@ -47,7 +47,16 @@ const CVUpload = () => {
       setResults(data);
       const created = data.results.filter(r => r.status === "created").length;
       const updated = data.results.filter(r => r.status === "updated").length;
-      toast.success(`${created} new, ${updated} updated from ${data.total} files`);
+      const rejected = data.results.filter(r => r.status === "rejected").length;
+      const flagged = data.results.filter(r => r.review_queued).length;
+
+      // Rejected files were previously invisible in this summary, so a CV
+      // that could not be read looked the same as one that imported.
+      let summary = `${created} new, ${updated} updated`;
+      if (rejected) summary += `, ${rejected} unreadable`;
+      summary += ` from ${data.total} file${data.total === 1 ? "" : "s"}`;
+      if (rejected) toast.warning(summary); else toast.success(summary);
+      if (flagged) toast.info(`${flagged} possible duplicate${flagged === 1 ? "" : "s"} queued for review`);
       setFiles([]);
     } catch (err) {
       toast.error("Upload failed: " + (err.response?.data?.detail || err.message));
@@ -245,9 +254,25 @@ const CVUpload = () => {
                       )}
                       <div>
                         <p className="text-sm font-medium text-gray-900">{r.name || r.candidate_id}</p>
-                        <p className="text-xs text-gray-500">{r.status}</p>
+                        {/* An update now says what the newer CV actually added,
+                            rather than only that something happened. */}
+                        <p className="text-xs text-gray-500">
+                          {r.status === "updated" && r.changes?.length > 0
+                            ? `updated · ${r.changes.join(", ")}`
+                            : r.status === "updated"
+                            ? `updated · no new details`
+                            : r.status === "rejected"
+                            ? r.reason || "could not be read"
+                            : r.status}
+                          {r.version > 1 && ` · resume v${r.version}`}
+                        </p>
                       </div>
                     </div>
+                    {r.review_queued && (
+                      <span className="text-[10px] uppercase tracking-wider px-2 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                        possible duplicate
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>

@@ -1140,6 +1140,112 @@ async def network_stats(request: Request):
 
 # ── Stats ──────────────────────────────────────────────────────────────
 
+# ── Mailbox / connector imports ───────────────────────────────────────
+
+@router.get("/import/gmail/status")
+async def gmail_import_status(request: Request):
+    """Whether the Gmail connector can reach its mailbox.
+
+    Reported separately from running an import so the common failure --
+    domain-wide delegation not yet authorised -- is visible as a clear message
+    rather than surfacing as an opaque error mid-run.
+    """
+    await require_talent_access(request)
+    from services.connectors.gmail import GmailConnector
+
+    connector = GmailConnector()
+    status = connector.check_access()
+
+    cursor = await db.import_cursors.find_one({"connector": "gmail"}, {"_id": 0})
+    last_run = await db.import_runs.find_one(
+        {"connector": "gmail"}, {"_id": 0}, sort=[("ran_at", -1)]
+    )
+
+    return {
+        "configured": connector.is_configured(),
+        "mailbox": connector.mailbox or None,
+        "query": connector.query,
+        **status,
+        "cursor": (cursor or {}).get("cursor"),
+        "last_run": last_run,
+    }
+
+
+@router.post("/import/gmail/run")
+async def gmail_import_run(
+    request: Request,
+    limit: int = 50,
+    since: Optional[str] = None,
+    dry_run: bool = False,
+):
+    """Import CV attachments from the configured mailbox.
+
+    Runs synchronously and returns what happened per document. `dry_run` lists
+    what would be imported without writing, which is the sensible first call
+    against a mailbox nobody has pointed this at before.
+    """
+    user = await require_talent_access(request)
+    permissions.require_admin(user)
+
+    from services.connectors.gmail import GmailConnector
+    from services.connectors.runner import run_connector
+
+    connector = GmailConnector()
+    access = connector.check_access()
+    if not access.get("ok"):
+        raise HTTPException(status_code=400, detail=access.get("reason", "Gmail is not reachable"))
+
+    return await run_connector(
+        db, connector, limit=min(limit, 200), since=since, dry_run=dry_run
+    )
+
+
+@router.get("/import/runs")
+async def list_import_runs(request: Request, limit: int = 20):
+    """Recent connector runs, newest first."""
+    await require_talent_access(request)
+    runs = await db.import_runs.find({}, {"_id": 0}).sort("ran_at", -1).to_list(min(limit, 100))
+    return {"runs": runs}
+
+
+@router.get("/candidates/{candidate_id}/versions")
+async def list_resume_versions(request: Request, candidate_id: str):
+    """Every resume held for a candidate, newest first.
+
+    Resumes are never overwritten, so this is the full history of what the
+    candidate has sent and where each version came from.
+    """
+    await require_talent_access(request)
+    versions = await db.resume_versions.find(
+        {"candidate_id": candidate_id}, {"_id": 0, "raw_text": 0}
+    ).sort("version", -1).to_list(100)
+    return {"candidate_id": candidate_id, "total": len(versions), "versions": versions}
+
+
+@router.get("/merge-reviews")
+async def list_merge_reviews(request: Request, status: str = "pending", limit: int = 50):
+    """Candidate pairs the matcher could not decide on.
+
+    These are never merged automatically -- a shared name is not proof of a
+    shared identity -- so they wait here for a person to judge.
+    """
+    await require_talent_access(request)
+    reviews = await db.merge_reviews.find(
+        {"status": status}, {"_id": 0}
+    ).sort("created_at", -1).to_list(min(limit, 200))
+
+    for review in reviews:
+        for side in ("candidate_a", "candidate_b"):
+            doc = await db.candidates.find_one(
+                {"candidate_id": review.get(side)},
+                {"_id": 0, "candidate_id": 1, "name": 1, "email": 1, "phone": 1,
+                 "skills": 1, "created_at": 1},
+            )
+            review[f"{side}_detail"] = doc
+
+    return {"total": len(reviews), "reviews": reviews}
+
+
 @router.get("/stats")
 async def talent_stats(request: Request):
     await require_talent_access(request)

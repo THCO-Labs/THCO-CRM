@@ -198,3 +198,7 @@ frontend/package-lock.json
 
 # Local curl session jar - never commit
 cookies.txt
+
+# Google service account key - never commit
+service_account*.json
+backend/service_account*.json

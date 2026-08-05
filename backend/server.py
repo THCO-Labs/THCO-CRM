@@ -2788,6 +2788,47 @@ async def health_check():
     return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 
+@api_router.post("/internal/run-scheduled-job", include_in_schema=False)
+async def run_scheduled_job(request: Request, job: str):
+    """Run a scheduled job on demand, for an external scheduler to call.
+
+    The in-process APScheduler only fires while a container is running, and
+    Container Apps scales to zero when idle -- so an overnight sweep could be
+    skipped entirely because nothing was awake at 06:00. An external trigger
+    both wakes the app and runs the job.
+
+    Authenticated with a shared secret rather than a user session, since the
+    caller is a machine. Returns 404 rather than 401 when unconfigured or the
+    token is wrong, so the endpoint does not advertise itself.
+    """
+    expected = os.environ.get("SCHEDULER_TOKEN", "")
+    presented = request.headers.get("X-Scheduler-Token", "")
+    if not expected or presented != expected:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    jobs = {}
+    try:
+        from services.relationship_reminders import relationship_reminder_sweep
+        jobs["relationship-reminders"] = relationship_reminder_sweep
+    except Exception as e:
+        logger.warning(f"Scheduled job unavailable: {e}")
+
+    runner = jobs.get(job)
+    if runner is None:
+        raise HTTPException(status_code=400, detail=f"Unknown job '{job}'")
+
+    started = datetime.now(timezone.utc)
+    try:
+        await runner()
+    except Exception as e:
+        logger.exception(f"Scheduled job '{job}' failed")
+        raise HTTPException(status_code=500, detail=f"Job failed: {e}")
+
+    elapsed = (datetime.now(timezone.utc) - started).total_seconds()
+    logger.info(f"Scheduled job '{job}' completed in {elapsed:.1f}s")
+    return {"job": job, "status": "completed", "seconds": round(elapsed, 1)}
+
+
 # Unprefixed liveness probe. Deploy platforms poll /healthz at the root, not
 # under /api -- emergent.yml already pointed here while the only route was
 # /api/health, so every healthcheck 404'd and the deploy was marked failed.

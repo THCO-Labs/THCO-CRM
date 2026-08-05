@@ -1649,23 +1649,47 @@ async def get_dashboard_stats(request: Request):
 
 @app.on_event("startup")
 async def seed_initial_admin():
-    """Seed the initial super admin user if no users exist"""
+    """Seed the initial super admin on an empty database.
+
+    Credentials come from the environment. They were previously hardcoded, so
+    anyone with repository access knew the administrator's password on every
+    deployment. A random password is generated when none is supplied, and
+    logged once at startup so the first sign-in can use it -- the operator is
+    expected to change it immediately.
+    """
     user_count = await db.users.count_documents({})
-    if user_count == 0:
-        all_units = ["talent", "thco-hr", "flow", "it-tools", "sales", "marketing", "advisory", "technology", "operations", "academy", "client-delivery"]
-        admin_doc = {
-            "user_id": f"user_{uuid.uuid4().hex[:12]}",
-            "email": "joshua@thcohq.com",
-            "password_hash": hash_password("THCOAdmin2024!"),
-            "name": "Ayo",
-            "role": "super_admin",
-            "accessible_units": all_units,
-            "status": "active",
-            "picture": None,
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        await db.users.insert_one(admin_doc)
-        logger.info("Seeded initial super admin: joshua@thcohq.com")
+    if user_count != 0:
+        return
+
+    email = os.environ.get("SEED_ADMIN_EMAIL", "admin@thcohq.com")
+    name = os.environ.get("SEED_ADMIN_NAME", "Administrator")
+    password = os.environ.get("SEED_ADMIN_PASSWORD")
+    generated = False
+    if not password:
+        password = f"thco-{uuid.uuid4().hex[:16]}"
+        generated = True
+
+    all_units = ["talent", "thco-hr", "flow", "it-tools", "sales", "marketing", "advisory", "technology", "operations", "academy", "client-delivery"]
+    admin_doc = {
+        "user_id": f"user_{uuid.uuid4().hex[:12]}",
+        "email": email,
+        "password_hash": hash_password(password),
+        "name": name,
+        "role": "super_admin",
+        "accessible_units": all_units,
+        "status": "active",
+        "picture": None,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.users.insert_one(admin_doc)
+
+    if generated:
+        logger.warning(
+            "Seeded initial super admin %s with a generated password: %s "
+            "-- change it after first sign-in.", email, password
+        )
+    else:
+        logger.info("Seeded initial super admin: %s", email)
 
 # ==================== PROPOSAL MANAGEMENT ROUTES ====================
 

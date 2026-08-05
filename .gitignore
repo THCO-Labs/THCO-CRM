@@ -195,3 +195,6 @@ frontend/package.json.bak
 
 # Build/lock artifacts
 frontend/package-lock.json
+
+# Local curl session jar - never commit
+cookies.txt

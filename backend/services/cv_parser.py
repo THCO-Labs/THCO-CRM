@@ -418,11 +418,14 @@ _INSTITUTION_PREFIX = re.compile(
     r"[A-Z][\w'&.\-]*(?:\s+[A-Z][\w'&.\-]*){0,3})\b"
 )
 
+# The open-ended alternatives use [\w ] rather than [\w\s]: \s matches a
+# newline, so a pattern could run past the end of its line and swallow the
+# certification below it, yielding "AWS Certified Solutions Architect PMP".
 _CERT_PATTERN = re.compile(
     r"\b("
-    r"AWS Certified [\w\s]{3,40}|Microsoft Certified[\w\s:]{0,40}|"
+    r"AWS Certified [\w ]{3,40}|Microsoft Certified[\w :]{0,40}|"
     r"Azure (?:Fundamentals|Administrator|Developer|Solutions Architect)|"
-    r"Google (?:Cloud )?(?:Certified|Professional)[\w\s]{0,30}|"
+    r"Google (?:Cloud )?(?:Certified|Professional)[\w ]{0,30}|"
     r"CCNA|CCNP|CISSP|CISM|CISA|CompTIA [\w+]{1,12}|"
     r"PMP|PRINCE2|CAPM|ITIL(?:\s+v?\d)?|"
     r"Certified Scrum(?:Master| Product Owner)?|CSM|PSM ?[I]{0,3}|"
@@ -501,9 +504,16 @@ def extract_education(text: str) -> List[Dict[str, Any]]:
 
 
 def extract_certifications(text: str) -> List[str]:
-    """Named professional certifications, de-duplicated."""
+    """Named professional certifications, de-duplicated.
+
+    Matched line by line: the open-ended patterns (an AWS certification name
+    can be several words) otherwise run past a line ending and swallow the
+    next certification, producing entries like
+    "AWS Certified Solutions Architect PMP".
+    """
     found, seen = [], set()
-    for match in _CERT_PATTERN.finditer(text):
+    per_line = "\n".join(" ".join(l.split()) for l in text.split("\n"))
+    for match in _CERT_PATTERN.finditer(per_line):
         value = " ".join(match.group(1).split()).strip(" .,-")
         key = value.lower()
         if key in seen or len(value) < 3:

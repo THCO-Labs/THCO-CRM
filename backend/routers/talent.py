@@ -251,31 +251,28 @@ async def upload_candidate_cv(
     user = await require_talent_access(request)
     contents = await file.read()
 
-    from services.cv_parser import parse_cv
-    parsed = parse_cv(contents, file.filename)
+    # Routed through the shared import pipeline so an upload behaves the same
+    # as any other source: the CV is matched against existing candidates before
+    # a new record is created, and the file is kept as a resume version rather
+    # than replacing whatever was there.
+    from services.candidate_import import import_cv
 
-    candidate = {
-        "candidate_id": f"cand_{uuid.uuid4().hex[:12]}",
-        "name": parsed.get("name"),
-        "email": parsed.get("email"),
-        "phone": parsed.get("phone"),
-        "linkedin": parsed.get("linkedin"),
-        "skills": parsed.get("skills", []),
-        "experience_years": parsed.get("experience_years"),
-        "raw_text": parsed.get("raw_text", "")[:50000],
-        "source": "upload",
-        "source_reference": file.filename,
-        "status": "new",
-        "uploaded_by": user.get("user_id"),
-        "uploaded_by_name": user.get("name"),
-        "filename": file.filename,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }
+    outcome = await import_cv(
+        db, contents, file.filename,
+        {
+            "source": "upload",
+            "reference": file.filename,
+            "imported_by": user.get("user_id"),
+        },
+    )
 
-    result = await db.candidates.insert_one(candidate)
-    candidate["_id"] = str(result.inserted_id)
-    return candidate
+    if outcome.get("action") == "rejected":
+        raise HTTPException(status_code=422, detail=outcome.get("reason"))
+
+    candidate = await db.candidates.find_one(
+        {"candidate_id": outcome["candidate_id"]}, {"_id": 0}
+    )
+    return {**outcome, "candidate": candidate}
 
 
 @router.post("/candidates/upload-bulk")

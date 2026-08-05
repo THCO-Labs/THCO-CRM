@@ -372,6 +372,72 @@ class StageTransition(BaseModel):
     payload: Optional[Dict[str, Any]] = None  # arbitrary stage data (pricing, package_url, etc.)
 
 
+class ProjectEdit(BaseModel):
+    """Correctable details of a project.
+
+    Deliberately excludes stage, track and ownership: those move through the
+    transition and assignment endpoints, which record who changed what. This
+    is for fixing a mistyped name or a wrong description, not for bypassing
+    the pipeline.
+    """
+    name: Optional[str] = None
+    client_name: Optional[str] = None
+    website: Optional[str] = None
+    description: Optional[str] = None
+    notes: Optional[str] = None
+    source: Optional[str] = None
+
+
+@router.put("/projects/{project_id}")
+async def edit_project(project_id: str, data: ProjectEdit, request: Request):
+    """Correct a project's details.
+
+    There was previously no way to fix a project after creating it, so a
+    mistyped name stayed wrong for the life of the record.
+
+    Anyone attached to the project may edit it, as may administrators and
+    delivery oversight. Every change is written to the audit log with its old
+    and new value, so a correction is traceable rather than silent.
+    """
+    user = await _get_user(request)
+
+    project = await db.projects.find_one({"id": project_id}, {"_id": 0})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if not permissions.can_view_all_projects(user):
+        scope = permissions.project_scope_filter(user)
+        mine = await db.projects.find_one({"id": project_id, **scope}, {"_id": 0, "id": 1})
+        if not mine:
+            raise HTTPException(
+                status_code=403,
+                detail="You can only edit projects you are assigned to",
+            )
+
+    changes: Dict[str, Any] = {}
+    for field, value in data.model_dump(exclude_unset=True).items():
+        if value is None:
+            continue
+        cleaned = value.strip() if isinstance(value, str) else value
+        if field == "name" and not cleaned:
+            raise HTTPException(status_code=400, detail="Project name cannot be empty")
+        if cleaned != project.get(field):
+            changes[field] = cleaned
+
+    if not changes:
+        return {"message": "No changes", "project": _serialize_project(project)}
+
+    before = {k: project.get(k) for k in changes}
+    changes["updated_at"] = _now()
+    await db.projects.update_one({"id": project_id}, {"$set": changes})
+
+    await _audit("project", project_id, "edited", user,
+                 {"before": before, "after": {k: v for k, v in changes.items() if k != "updated_at"}})
+
+    updated = await db.projects.find_one({"id": project_id}, {"_id": 0})
+    return {"message": "Project updated", "changed": list(before), "project": _serialize_project(updated)}
+
+
 @router.post("/projects/{project_id}/transition")
 async def transition_stage(project_id: str, data: StageTransition, request: Request):
     """Advance or revert a project to any stage. Records history + sends email."""
@@ -712,8 +778,25 @@ async def build_update(project_id: str, data: BuildUpdate, request: Request):
     project = await db.projects.find_one({"id": project_id}, {"_id": 0})
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    if project.get("track") != "build":
-        raise HTTPException(status_code=400, detail="Build updates only allowed on build-track projects")
+
+    # A status value belongs to the build track, but a written progress note
+    # does not -- anyone working a project should be able to record where it
+    # stands. Requiring the build track for both meant staff on every other
+    # project had nowhere to post an update.
+    if data.status and project.get("track") != "build":
+        raise HTTPException(
+            status_code=400,
+            detail="Build status applies to build-track projects; post a comment instead",
+        )
+
+    if not permissions.can_view_all_projects(user):
+        scope = permissions.project_scope_filter(user)
+        mine = await db.projects.find_one({"id": project_id, **scope}, {"_id": 0, "id": 1})
+        if not mine:
+            raise HTTPException(
+                status_code=403,
+                detail="You can only post updates on projects you are assigned to",
+            )
 
     now = _now()
     updates: Dict[str, Any] = {}

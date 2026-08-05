@@ -218,12 +218,12 @@ const DashboardLayoutInner = ({ children, user }) => {
   const searchIndex = [
     { label: "New Project", path: "/flow/projects/new", group: "Portal" },
     { label: "Dashboard", path: "/dashboard", group: "Portal" },
-    // Kept out of quick search for non-administrators too; a hidden menu item
-    // that is still reachable from the search bar is not hidden.
+    // Proposals stay out of quick search for non-administrators too; a hidden
+    // menu item still reachable from the search bar is not hidden.
     ...(showAdminSection
-      ? [{ label: "Proposals & Clients", path: "/proposals", group: "Portal" },
-         { label: "Feedback", path: "/feedback", group: "Portal" }]
+      ? [{ label: "Proposals & Clients", path: "/proposals", group: "Portal" }]
       : []),
+    { label: "Feedback & IT Support", path: "/feedback", group: "Portal" },
     { label: "Tasks", path: "/tasks", group: "Portal" },
     ...visibleUnits.map((u) => ({ label: u.name, path: u.path, group: "Units" })),
     { label: "Flow · Pipeline Board", path: "/flow/board", group: "THCO Flow" },
@@ -323,19 +323,20 @@ const DashboardLayoutInner = ({ children, user }) => {
         {/* Navigation */}
         <nav className="relative z-10 flex-1 py-5 px-3 overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#2a2f38_transparent]">
           <NavItem to="/dashboard" icon={LayoutDashboard} label="Dashboard" active={isActive("/dashboard")} collapsed={!sidebarOpen} testId="nav-dashboard" />
-          {/* Proposals carry commercial terms and feedback carries internal
-              reports; both are administrative rather than general staff views.
-              The API enforces this too -- hiding a menu is not access control. */}
+          {/* Proposals carry commercial terms and client pricing, so they are
+              administrative. The API enforces this too -- hiding a menu is not
+              access control. */}
           {showAdminSection && (
-            <>
-              <div className="mt-1">
-                <NavItem to="/proposals" icon={FileText} label="Proposals" active={isActive("/proposals")} collapsed={!sidebarOpen} testId="nav-proposals" />
-              </div>
-              <div className="mt-1">
-                <NavItem to="/feedback" icon={MessageSquare} label="Feedback" active={isActive("/feedback")} collapsed={!sidebarOpen} testId="nav-feedback" />
-              </div>
-            </>
+            <div className="mt-1">
+              <NavItem to="/proposals" icon={FileText} label="Proposals" active={isActive("/proposals")} collapsed={!sidebarOpen} testId="nav-proposals" />
+            </div>
           )}
+          {/* Everyone keeps this: it is where staff raise an IT problem, not
+              the console that handles them. That console lives under
+              Administration as "IT Console" and stays restricted. */}
+          <div className="mt-1">
+            <NavItem to="/feedback" icon={MessageSquare} label="Feedback & IT Support" active={isActive("/feedback")} collapsed={!sidebarOpen} testId="nav-feedback" />
+          </div>
           <div className="mt-1">
             <NavItem to="/tasks" icon={KanbanSquare} label="Tasks" active={isActive("/tasks")} collapsed={!sidebarOpen} testId="nav-tasks" />
           </div>

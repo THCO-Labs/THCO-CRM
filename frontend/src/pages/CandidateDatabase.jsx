@@ -37,6 +37,34 @@ const CandidateDatabase = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [selectedCandidate, setSelectedCandidate] = useState(null);
   const [stats, setStats] = useState(null);
+  const [openingCv, setOpeningCv] = useState(false);
+
+  // Open a CV that arrived by email. The tab has to be opened synchronously
+  // off the click or the browser treats it as an unrequested popup and blocks
+  // it, so it is opened first and pointed at the document once it arrives.
+  const openStoredCv = async (candidateId) => {
+    const tab = window.open("", "_blank");
+    setOpeningCv(true);
+    try {
+      const url = await talentAPI.openResumeFile(candidateId);
+      if (tab) {
+        tab.location = url;
+      } else {
+        window.location.assign(url);
+      }
+      // Give the tab time to load before releasing the blob.
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      if (tab) tab.close();
+      toast.error(
+        err?.response?.status === 404
+          ? "No document stored for this candidate — it was imported before CVs were kept."
+          : "Could not open the CV"
+      );
+    } finally {
+      setOpeningCv(false);
+    }
+  };
 
   const loadCandidates = async () => {
     setLoading(true);
@@ -497,15 +525,16 @@ const CandidateDatabase = () => {
                     {/* CVs arriving by email have no external location to link
                         to, so the document itself is stored and served back. */}
                     {selectedCandidate.has_resume_file && (
-                      <a
-                        href={`${process.env.REACT_APP_BACKEND_URL ?? (process.env.NODE_ENV === "production" ? "" : "http://localhost:8000")}/api/talent/candidates/${selectedCandidate.candidate_id}/resume/file`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-xs text-blue-600 hover:underline mb-2"
+                      <button
+                        type="button"
+                        onClick={() => openStoredCv(selectedCandidate.candidate_id)}
+                        disabled={openingCv}
+                        className="flex items-center gap-1 text-xs text-blue-600 hover:underline mb-2 disabled:opacity-60"
                         data-testid="open-stored-cv"
                       >
-                        <ExternalLink className="w-3 h-3" /> Open original CV
-                      </a>
+                        <ExternalLink className="w-3 h-3" />
+                        {openingCv ? "Opening…" : "Open original CV"}
+                      </button>
                     )}
                     <div className="bg-gray-50 rounded-lg p-4 max-h-96 overflow-y-auto border border-gray-100">
                       <pre className="text-xs text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">

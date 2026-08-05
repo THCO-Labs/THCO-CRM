@@ -176,6 +176,19 @@ export const talentAPI = {
     return response.data;
   },
 
+  // The stored CV cannot be reached with a plain <a href>: this client sends
+  // its session as a Bearer header from localStorage, and a browser navigation
+  // carries neither that header nor a cookie, so the request arrives
+  // unauthenticated. Fetch it as a blob instead and hand the browser a local
+  // URL, which keeps the PDF viewer while leaving the session where it is.
+  openResumeFile: async (candidateId, version) => {
+    const response = await apiClient.get(
+      `/talent/candidates/${candidateId}/resume/file`,
+      { params: version ? { version } : {}, responseType: 'blob' }
+    );
+    return URL.createObjectURL(response.data);
+  },
+
   updateCandidate: async (candidateId, data) => {
     const response = await apiClient.put(`/talent/candidates/${candidateId}`, data);
     return response.data;

@@ -1268,6 +1268,73 @@ async def list_merge_reviews(request: Request, status: str = "pending", limit: i
     return {"total": len(reviews), "reviews": reviews}
 
 
+class MergeDecision(BaseModel):
+    """A person's decision on a queued pair.
+
+    `keep` names the candidate to retain when merging; when omitted the fuller
+    record is chosen, since that moves the least data.
+    """
+    decision: str                      # merge | separate | later
+    keep: Optional[str] = None
+
+
+@router.post("/merge-reviews/{review_id}/resolve")
+async def resolve_merge_review(review_id: str, data: MergeDecision, request: Request):
+    """Act on a queued pair: merge them, keep them apart, or defer."""
+    user = await require_talent_access(request)
+    permissions.require_admin(user)
+
+    from services.candidate_merge import choose_survivor, merge_candidates, resolve_review
+
+    review = await db.merge_reviews.find_one({"review_id": review_id}, {"_id": 0})
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+    if review.get("status") != "pending":
+        raise HTTPException(status_code=400, detail=f"Already resolved as '{review.get('status')}'")
+
+    if data.decision in ("separate", "later"):
+        try:
+            return await resolve_review(db, review_id, data.decision, user)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    if data.decision != "merge":
+        raise HTTPException(status_code=400, detail="decision must be merge, separate or later")
+
+    a_id, b_id = review["candidate_a"], review["candidate_b"]
+    if data.keep and data.keep not in (a_id, b_id):
+        raise HTTPException(status_code=400, detail="`keep` must be one of the two candidates")
+
+    if data.keep:
+        keep_id = data.keep
+        absorb_id = b_id if data.keep == a_id else a_id
+    else:
+        a = await db.candidates.find_one({"candidate_id": a_id}, {"_id": 0}) or {}
+        b = await db.candidates.find_one({"candidate_id": b_id}, {"_id": 0}) or {}
+        survivor, absorbed = choose_survivor(a, b)
+        keep_id = survivor.get("candidate_id")
+        absorb_id = absorbed.get("candidate_id")
+
+    try:
+        return await merge_candidates(db, keep_id, absorb_id, user, review_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/candidates/merge")
+async def merge_two_candidates(request: Request, keep: str, absorb: str):
+    """Merge two candidates chosen directly, outside the review queue."""
+    user = await require_talent_access(request)
+    permissions.require_admin(user)
+
+    from services.candidate_merge import merge_candidates
+
+    try:
+        return await merge_candidates(db, keep, absorb, user)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.get("/stats")
 async def talent_stats(request: Request):
     await require_talent_access(request)

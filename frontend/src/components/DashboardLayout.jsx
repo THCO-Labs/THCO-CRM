@@ -168,6 +168,7 @@ const DashboardLayoutInner = ({ children, user }) => {
       if (path === "/talent/sourcing/external") return "External Sourcing";
       if (path === "/talent/find") return "Find Candidates";
       if (path === "/talent/network") return "Talent Network";
+      if (path === "/talent/duplicates") return "Duplicate Review";
     }
     if (path === "/thco-hr") return "THCO HR";
     if (path === "/project-management") return "Project Management";
@@ -243,6 +244,7 @@ const DashboardLayoutInner = ({ children, user }) => {
           { label: "Find Candidates", path: "/talent/find", group: "Talent Tools" },
           { label: "External Sourcing", path: "/talent/sourcing/external", group: "Talent Tools" },
           { label: "Talent Network", path: "/talent/network", group: "Talent Tools" },
+          { label: "Duplicate Review", path: "/talent/duplicates", group: "Talent Tools" },
         ]
       : []),
     ...(canManageUsers(user) ? [{ label: "User Management", path: "/admin/users", group: "Admin" }] : []),

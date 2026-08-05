@@ -449,6 +449,90 @@ async def edit_project(project_id: str, data: ProjectEdit, request: Request):
     return {"message": "Project updated", "changed": list(before), "project": _serialize_project(updated)}
 
 
+@router.delete("/projects/{project_id}")
+async def delete_project(project_id: str, request: Request, permanent: bool = False):
+    """Remove a project.
+
+    Archived rather than destroyed. The brief for this system is to be able to
+    look back at what happened, and a deleted project takes its stage history,
+    documents and audit trail with it. An archived one can be restored.
+
+    Anyone attached to the project may archive it; only a super administrator
+    may delete permanently, and even then the archive copy is kept.
+    """
+    user = await _get_user(request)
+
+    project = await db.projects.find_one({"id": project_id}, {"_id": 0})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if not permissions.can_view_all_projects(user):
+        scope = permissions.project_scope_filter(user)
+        mine = await db.projects.find_one({"id": project_id, **scope}, {"_id": 0, "id": 1})
+        if not mine:
+            raise HTTPException(
+                status_code=403,
+                detail="You can only remove projects you are assigned to",
+            )
+
+    if permanent and not permissions.is_super_admin(user):
+        raise HTTPException(
+            status_code=403,
+            detail="Only a super administrator can delete a project permanently",
+        )
+
+    now = _now()
+    await db.projects_archived.update_one(
+        {"id": project_id},
+        {"$set": {**project, "archived_at": now,
+                  "archived_by": user.get("user_id"),
+                  "archived_by_name": user.get("name")}},
+        upsert=True,
+    )
+    await db.projects.delete_one({"id": project_id})
+    await _audit("project", project_id, "deleted" if permanent else "archived", user,
+                 {"name": project.get("name"), "stage": project.get("stage")})
+
+    return {
+        "message": "Project archived" if not permanent else "Project deleted",
+        "project_id": project_id,
+        "restorable": True,
+    }
+
+
+@router.post("/projects/{project_id}/restore")
+async def restore_project(project_id: str, request: Request):
+    """Put an archived project back."""
+    user = await _get_user(request)
+    permissions.require_admin(user)
+
+    archived = await db.projects_archived.find_one({"id": project_id}, {"_id": 0})
+    if not archived:
+        raise HTTPException(status_code=404, detail="No archived project with that id")
+
+    existing = await db.projects.find_one({"id": project_id}, {"_id": 0, "id": 1})
+    if existing:
+        raise HTTPException(status_code=400, detail="A live project already has that id")
+
+    for field in ("archived_at", "archived_by", "archived_by_name"):
+        archived.pop(field, None)
+
+    await db.projects.insert_one(archived)
+    await db.projects_archived.delete_one({"id": project_id})
+    await _audit("project", project_id, "restored", user, {"name": archived.get("name")})
+
+    return {"message": "Project restored", "project": _serialize_project(archived)}
+
+
+@router.get("/projects-archived")
+async def list_archived_projects(request: Request, limit: int = 50):
+    """Projects that have been archived, newest first."""
+    user = await _get_user(request)
+    permissions.require_admin(user)
+    items = await db.projects_archived.find({}, {"_id": 0}).sort("archived_at", -1).to_list(min(limit, 200))
+    return {"total": len(items), "projects": items}
+
+
 @router.post("/projects/{project_id}/transition")
 async def transition_stage(project_id: str, data: StageTransition, request: Request):
     """Advance or revert a project to any stage. Records history + sends email."""

@@ -211,6 +211,10 @@ async def find_match(db, incoming: Dict[str, Any]) -> Dict[str, Any]:
 
     best, best_score, best_reasons = None, 0.0, []
     async for existing in db.candidates.find({"$or": clauses}).limit(50):
+        # A pair a recruiter has already judged to be different people is not
+        # raised again, however similar the records look.
+        if incoming.get("candidate_id") in (existing.get("not_duplicates_of") or []):
+            continue
         score, reasons = score_pair(incoming, existing)
         if score > best_score:
             best, best_score, best_reasons = existing, score, reasons

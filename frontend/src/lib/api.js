@@ -243,6 +243,18 @@ export const talentAPI = {
   },
 
   // Talent Intelligence Network
+  // Duplicate review: pairs identity resolution declined to merge on its own.
+  listMergeReviews: async (status = "pending") =>
+    (await apiClient.get('/talent/merge-reviews', { params: { status } })).data,
+  resolveMergeReview: async (reviewId, body) =>
+    (await apiClient.post(`/talent/merge-reviews/${reviewId}/resolve`, body)).data,
+  listResumeVersions: async (candidateId) =>
+    (await apiClient.get(`/talent/candidates/${candidateId}/versions`)).data,
+  gmailImportStatus: async () =>
+    (await apiClient.get('/talent/import/gmail/status')).data,
+  runGmailImport: async (limit = 50, dryRun = false) =>
+    (await apiClient.post('/talent/import/gmail/run', null, { params: { limit, dry_run: dryRun } })).data,
+
   listNetworkCandidates: async (params = {}) => {
     const response = await apiClient.get('/talent/network/candidates', { params });
     return response.data;
@@ -714,6 +726,11 @@ export const flowAPI = {
   // Correcting details after creation. Scoped server-side: a team member may
   // only edit a project they are assigned to.
   updateProject: async (id, data) => (await apiClient.put(`/flow/projects/${id}`, data)).data,
+  // Archives by default; the record is restorable rather than destroyed.
+  deleteProject: async (id, permanent = false) =>
+    (await apiClient.delete(`/flow/projects/${id}`, { params: { permanent } })).data,
+  restoreProject: async (id) => (await apiClient.post(`/flow/projects/${id}/restore`)).data,
+  listArchivedProjects: async () => (await apiClient.get('/flow/projects-archived')).data,
   transitionStage: async (id, target_stage, note = '', payload = {}) =>
     (await apiClient.post(`/flow/projects/${id}/transition`, { target_stage, note, payload })).data,
   loseProject: async (id, reason) =>

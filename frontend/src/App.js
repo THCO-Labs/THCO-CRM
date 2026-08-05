@@ -14,6 +14,7 @@ import CVUpload from "./pages/CVUpload";
 import ExternalSourcing from "./pages/ExternalSourcing";
 import FindCandidates from "./pages/FindCandidates";
 import TalentNetwork from "./pages/TalentNetwork";
+import MergeReviews from "./pages/MergeReviews";
 import SourcingTool from "./pages/SourcingTool";
 import DatabaseSearchTool from "./pages/DatabaseSearchTool";
 import Settings from "./pages/Settings";
@@ -309,6 +310,12 @@ const AppRouter = () => {
       <Route path="/talent/find" element={
         <ProtectedRoute unit="talent">
           <FindCandidates />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/talent/duplicates" element={
+        <ProtectedRoute unit="talent">
+          <MergeReviews />
         </ProtectedRoute>
       } />
 

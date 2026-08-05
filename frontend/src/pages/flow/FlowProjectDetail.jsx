@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams, useNavigate } from "react-router-dom";
+import { Link, useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import FlowShell from "./FlowShell";
 import { flowAPI, authAPI } from "../../lib/api";
@@ -13,6 +13,7 @@ import { STAGES, BUILD_STATUS_LABELS } from "./stages";
 export default function FlowProjectDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [project, setProject] = useState(null);
   const [me, setMe] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -59,6 +60,13 @@ export default function FlowProjectDetail() {
     finally { setLoading(false); }
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
+
+  // Arriving from the projects list's edit action opens the form directly,
+  // rather than landing on the page and having to find the button.
+  useEffect(() => {
+    if (project && searchParams.get("edit") === "1" && !editing) openEdit();
+    /* eslint-disable-next-line */
+  }, [project]);
 
   const handleAdvance = (target) => {
     // Stages requiring structured input → open modal

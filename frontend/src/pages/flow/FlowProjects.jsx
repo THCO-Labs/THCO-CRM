@@ -3,7 +3,8 @@ import { Link, useSearchParams } from "react-router-dom";
 import FlowShell from "./FlowShell";
 import { flowAPI } from "../../lib/api";
 import { Button } from "../../components/ui/button";
-import { Loader2, Plus, Search, Building2, User } from "lucide-react";
+import { Loader2, Plus, Search, Building2, User, Pencil, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 export default function FlowProjects() {
   const [params, setParams] = useSearchParams();
@@ -23,6 +24,22 @@ export default function FlowProjects() {
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [stage]);
+
+  // Archives rather than destroys: the project can be restored, and its stage
+  // history and audit trail survive.
+  const archive = async (project) => {
+    const ok = window.confirm(
+      `Archive "${project.name}"?\n\nIt will be removed from the pipeline but can be restored by an administrator.`
+    );
+    if (!ok) return;
+    try {
+      await flowAPI.deleteProject(project.id);
+      toast.success(`"${project.name}" archived`);
+      setProjects((ps) => ps.filter((p) => p.id !== project.id));
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Could not archive that project");
+    }
+  };
 
   const submitSearch = (e) => {
     e.preventDefault();
@@ -94,7 +111,26 @@ export default function FlowProjects() {
                   </td>
                   <td className="px-4 py-3 text-gray-600">{p.delivery_owner_name || <span className="text-gray-400 italic">unassigned</span>}</td>
                   <td className="px-4 py-3 text-[11px] font-mono text-gray-400">{p.project_id_display}</td>
-                  <td className="px-4 py-3 text-gray-400">›</td>
+                  {/* Editing and removing were only reachable from the project
+                      page, which most people never opened. */}
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1 justify-end">
+                      <Link to={`/flow/projects/${p.id}?edit=1`} title="Edit details">
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-gray-400 hover:text-gray-900" data-testid={`edit-${p.id}`}>
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                      </Link>
+                      <Button
+                        variant="ghost" size="icon"
+                        className="h-7 w-7 text-gray-400 hover:text-red-600"
+                        title="Archive project"
+                        data-testid={`delete-${p.id}`}
+                        onClick={(e) => { e.preventDefault(); archive(p); }}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>

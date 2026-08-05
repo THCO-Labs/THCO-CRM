@@ -711,6 +711,9 @@ export const flowAPI = {
   getBoard: async () => (await apiClient.get('/flow/projects/board')).data,
   getProject: async (id) => (await apiClient.get(`/flow/projects/${id}`)).data,
   createProject: async (data) => (await apiClient.post('/flow/projects', data)).data,
+  // Correcting details after creation. Scoped server-side: a team member may
+  // only edit a project they are assigned to.
+  updateProject: async (id, data) => (await apiClient.put(`/flow/projects/${id}`, data)).data,
   transitionStage: async (id, target_stage, note = '', payload = {}) =>
     (await apiClient.post(`/flow/projects/${id}/transition`, { target_stage, note, payload })).data,
   loseProject: async (id, reason) =>

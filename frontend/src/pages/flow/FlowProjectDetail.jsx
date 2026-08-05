@@ -6,7 +6,7 @@ import { flowAPI, authAPI } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import {
   Loader2, ArrowLeft, ChevronRight, Building2, Globe, User, ArrowRight,
-  History, GitBranch, MessageCircle, X, Hammer, FileText, CheckCircle2
+  History, GitBranch, MessageCircle, X, Hammer, FileText, CheckCircle2, Pencil
 } from "lucide-react";
 import { STAGES, BUILD_STATUS_LABELS } from "./stages";
 
@@ -18,6 +18,37 @@ export default function FlowProjectDetail() {
   const [loading, setLoading] = useState(true);
   const [transitioning, setTransitioning] = useState(false);
   const [showStageModal, setShowStageModal] = useState(null); // {targetStage, payload?}
+  // Correcting details after creation. A mistyped project name was previously
+  // permanent, since nothing in the interface could change it.
+  const [editing, setEditing] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [form, setForm] = useState({});
+
+  const openEdit = () => {
+    setForm({
+      name: project?.name || "",
+      client_name: project?.client_name_snapshot || "",
+      website: project?.website || "",
+      description: project?.description || "",
+      notes: project?.notes || "",
+    });
+    setEditing(true);
+  };
+
+  const saveEdit = async () => {
+    if (!form.name?.trim()) { toast.error("Project name cannot be empty"); return; }
+    setSavingEdit(true);
+    try {
+      const res = await flowAPI.updateProject(id, form);
+      toast.success(res.changed?.length ? `Updated ${res.changed.join(", ")}` : "No changes");
+      setEditing(false);
+      await load();
+    } catch (err) {
+      // 403 here means the project belongs to someone else; the server is the
+      // authority on that, not this screen.
+      toast.error(err.response?.data?.detail || "Could not save changes");
+    } finally { setSavingEdit(false); }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -91,12 +122,79 @@ export default function FlowProjectDetail() {
               {project.assigned_engineer_name && <span className="flex items-center gap-1"><Hammer className="w-3.5 h-3.5" />Eng: {project.assigned_engineer_name}</span>}
             </div>
           </div>
-          {isLost ? (
-            <span className="px-3 py-1 bg-red-100 text-red-700 text-xs font-semibold rounded-full">LOST</span>
-          ) : (
-            <span className="px-3 py-1 bg-[#1B4332] text-white text-xs font-semibold rounded-full" data-testid="current-stage">Stage {stage} — {STAGES[stage]?.label}</span>
-          )}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={openEdit}
+              data-testid="edit-project-btn"
+              className="text-gray-600 hover:text-gray-900"
+            >
+              <Pencil className="w-3.5 h-3.5 mr-1.5" />
+              Edit details
+            </Button>
+            {isLost ? (
+              <span className="px-3 py-1 bg-red-100 text-red-700 text-xs font-semibold rounded-full">LOST</span>
+            ) : (
+              <span className="px-3 py-1 bg-[#1B4332] text-white text-xs font-semibold rounded-full" data-testid="current-stage">Stage {stage} — {STAGES[stage]?.label}</span>
+            )}
+          </div>
         </div>
+
+        {/* Correcting details. Stage and ownership are not here on purpose --
+            those move through the pipeline actions below, which record who
+            changed them. */}
+        {editing && (
+          <div className="mb-5 p-5 bg-[#F7F6F3] border border-[#EAE7E0] rounded-xl" data-testid="edit-project-form">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-gray-900">Edit project details</h3>
+              <button onClick={() => setEditing(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[
+                { key: "name", label: "Project name", required: true },
+                { key: "client_name", label: "Client" },
+                { key: "website", label: "Website" },
+              ].map(({ key, label, required }) => (
+                <div key={key} className={key === "name" ? "md:col-span-2" : ""}>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5">
+                    {label}{required && <span className="text-red-500"> *</span>}
+                  </label>
+                  <input
+                    value={form[key] || ""}
+                    onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+                    data-testid={`edit-${key}`}
+                    className="w-full h-10 px-3 bg-white border border-[#EAE7E0] rounded-lg text-sm focus:outline-none focus:border-[#1B4332]"
+                  />
+                </div>
+              ))}
+              {[
+                { key: "description", label: "Description" },
+                { key: "notes", label: "Notes" },
+              ].map(({ key, label }) => (
+                <div key={key} className="md:col-span-2">
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5">{label}</label>
+                  <textarea
+                    rows={2}
+                    value={form[key] || ""}
+                    onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+                    data-testid={`edit-${key}`}
+                    className="w-full px-3 py-2 bg-white border border-[#EAE7E0] rounded-lg text-sm focus:outline-none focus:border-[#1B4332] resize-none"
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>Cancel</Button>
+              <Button size="sm" onClick={saveEdit} disabled={savingEdit} className="bg-[#1B4332] hover:bg-[#1B4332]/90 text-white" data-testid="save-project-edit">
+                {savingEdit ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : null}
+                Save changes
+              </Button>
+            </div>
+          </div>
+        )}
 
         {project.description && <p className="text-sm text-gray-600 my-4 leading-relaxed">{project.description}</p>}
 

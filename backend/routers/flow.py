@@ -414,6 +414,11 @@ async def edit_project(project_id: str, data: ProjectEdit, request: Request):
                 detail="You can only edit projects you are assigned to",
             )
 
+    # The create endpoint stores the client under client_name_snapshot, so an
+    # edit writing `client_name` would add a stray field the rest of the app
+    # never reads.
+    FIELD_MAP = {"client_name": "client_name_snapshot"}
+
     changes: Dict[str, Any] = {}
     for field, value in data.model_dump(exclude_unset=True).items():
         if value is None:
@@ -421,8 +426,14 @@ async def edit_project(project_id: str, data: ProjectEdit, request: Request):
         cleaned = value.strip() if isinstance(value, str) else value
         if field == "name" and not cleaned:
             raise HTTPException(status_code=400, detail="Project name cannot be empty")
-        if cleaned != project.get(field):
-            changes[field] = cleaned
+
+        stored_field = FIELD_MAP.get(field, field)
+        current = project.get(stored_field)
+        # An absent field and an empty one are the same thing here; treating
+        # them as different recorded edits that changed nothing.
+        if (cleaned or "") == (current or ""):
+            continue
+        changes[stored_field] = cleaned
 
     if not changes:
         return {"message": "No changes", "project": _serialize_project(project)}

@@ -204,19 +204,383 @@ def extract_skills(text: str) -> List[str]:
     return sorted(normalized)
 
 
-def extract_name(text: str) -> Optional[str]:
-    lines = [l.strip() for l in text.split('\n') if l.strip()]
-    if not lines:
+# Words that appear at the top of a CV but are never a person's name. The
+# previous extractor matched "Curriculum Vitae" and "Professional Summary" as
+# names because they are two capitalised words, which is why 144 candidates in
+# the database are called things like "Professional Summary".
+_NAME_STOPWORDS = {
+    "curriculum", "vitae", "resume", "cv", "profile", "summary", "personal",
+    "data", "details", "information", "contact", "objective", "career",
+    "professional", "education", "experience", "employment", "history",
+    "skills", "competencies", "references", "referees", "qualifications",
+    "achievements", "certifications", "certificates", "awards", "interests",
+    "hobbies", "languages", "nationality", "address", "phone", "mobile",
+    "email", "date", "birth", "gender", "marital", "status", "statement",
+    "work", "about", "me", "bio", "biodata", "portfolio", "projects",
+    "declaration", "signature", "confidential",
+    # Job titles and role words. Without these the extractor happily returns
+    # "SENIOR SOFTWARE ENGINEER" as somebody's name.
+    "senior", "junior", "lead", "head", "chief", "officer", "manager",
+    "engineer", "developer", "analyst", "consultant", "specialist",
+    "executive", "director", "administrator", "administration", "assistant",
+    "coordinator", "supervisor", "intern", "trainee", "graduate", "student",
+    "architect", "designer", "scientist", "technician", "operations",
+    "operation", "marketing", "sales", "finance", "accountant", "accounting",
+    "human", "resource", "resources", "management", "functions", "enthusiast",
+    "enthusia", "software", "hardware", "network", "security", "support",
+    "service", "services", "product", "project", "business", "technology",
+    "digital", "content", "strategist", "writer", "editor", "nurse", "doctor",
+    # Places and address words that sit where a name is expected.
+    "street", "road", "avenue", "lane", "close", "estate", "city", "town",
+    "state", "country", "nigeria", "lagos", "abuja", "india", "malaysia",
+    "bangladesh", "dhaka", "pakistan", "lahore", "kenya", "ghana", "house",
+    "flat", "apartment", "block", "plot",
+}
+
+# Common titles to strip from the front of a detected name.
+_NAME_TITLES = {"mr", "mrs", "miss", "ms", "dr", "prof", "engr", "arc", "barr"}
+
+
+def _unspace_letters(line: str) -> str:
+    """Collapse letter-spaced headings such as "D U R O T I M I" into a word.
+
+    Some CV templates letter-space the name for visual effect. Left as-is the
+    name is unusable and the extractor skips past it to a section heading.
+
+    Word boundaries in such lines are marked by a wider gap, so runs of two or
+    more spaces are treated as separators before collapsing -- otherwise
+    "D U R O T I M I  J O H N S O N" becomes one unsplittable token.
+    """
+    if not line:
+        return line
+
+    groups = re.split(r"\s{2,}", line.strip())
+    collapsed = []
+    for group in groups:
+        tokens = group.split()
+        if len(tokens) >= 3 and all(len(t) == 1 and t.isalpha() for t in tokens):
+            collapsed.append("".join(tokens).capitalize())
+            continue
+        # Mixed: runs of single letters interleaved with whole words.
+        out, run = [], []
+        for t in tokens:
+            if len(t) == 1 and t.isalpha():
+                run.append(t)
+            else:
+                if run:
+                    out.append("".join(run).capitalize() if len(run) >= 3 else " ".join(run))
+                    run = []
+                out.append(t)
+        if run:
+            out.append("".join(run).capitalize() if len(run) >= 3 else " ".join(run))
+        collapsed.append(" ".join(out))
+
+    return " ".join(collapsed)
+
+
+def _looks_like_name(line: str) -> bool:
+    """Whether a line could plausibly be a person's name."""
+    if not line or len(line) > 60:
+        return False
+    if any(ch.isdigit() for ch in line):
+        return False
+    if "@" in line or "http" in line.lower() or "/" in line:
+        return False
+
+    words = [w for w in re.split(r"[\s,]+", line.strip()) if w]
+    if not (2 <= len(words) <= 5):
+        return False
+
+    lowered = [re.sub(r"[^a-z]", "", w.lower()) for w in words]
+    # Any section-heading word disqualifies the whole line.
+    if any(w in _NAME_STOPWORDS for w in lowered if w):
+        return False
+    # Names are letters, hyphens and apostrophes only.
+    if not all(re.fullmatch(r"[A-Za-z][A-Za-z'\-\.]*", w) for w in words):
+        return False
+    # Reject single-letter fragments beyond an initial.
+    if sum(1 for w in words if len(w.strip(".")) == 1) > 2:
+        return False
+    return True
+
+
+def _name_from_email(email: Optional[str]) -> Optional[str]:
+    """Derive a name from an email local part, e.g. mandonglawrence@ -> Mandong Lawrence.
+
+    Used only as a fallback. Many Nigerian CVs in the corpus carry the full
+    name in the address even when the document's own layout defeats parsing.
+    """
+    if not email or "@" not in email:
         return None
-    first_line = lines[0]
-    name_match = re.match(r'^([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})$', first_line)
-    if name_match:
-        return name_match.group(1)
-    for line in lines[:5]:
-        cleaned = re.sub(r'[^a-zA-Z\s]', '', line).strip()
-        parts = cleaned.split()
-        if 2 <= len(parts) <= 3 and all(p[0].isupper() and len(p) > 1 for p in parts):
-            return ' '.join(parts)
+    local = email.split("@", 1)[0]
+    local = re.sub(r"\d+", "", local)
+    parts = [p for p in re.split(r"[._\-]+", local) if len(p) > 1]
+
+    if len(parts) >= 2:
+        return " ".join(p.capitalize() for p in parts[:3])
+    return None
+
+
+def extract_name(text: str, email: Optional[str] = None) -> Optional[str]:
+    """Find the candidate's name.
+
+    Looks for a plausible name near the top of the document, preferring lines
+    corroborated by the email address, and falls back to deriving one from the
+    email when the layout defeats parsing.
+    """
+    raw_lines = [l.strip() for l in text.split("\n") if l.strip()]
+    if not raw_lines:
+        return _name_from_email(email)
+
+    # An explicit label is the most reliable signal a CV can give, and it is
+    # common in the corpus. Checked before the positional heuristics below,
+    # which would otherwise reject the line for containing the word "Name".
+    for line in raw_lines[:25]:
+        labelled = re.match(
+            r"^\s*(?:full\s+|sur|other\s+)?names?\s*[:\-]\s*(.+)$", line, re.I
+        )
+        if labelled:
+            value = _unspace_letters(labelled.group(1)).strip(" ,.-|")
+            value = re.sub(r"\s{2,}.*$", "", value)  # drop trailing columns
+            if _looks_like_name(value):
+                words = value.split()
+                if words[0].lower().strip(".") in _NAME_TITLES:
+                    words = words[1:]
+                if len(words) >= 2:
+                    return " ".join(words)
+
+    lines = [_unspace_letters(l) for l in raw_lines[:15]]
+    email_local = ""
+    if email and "@" in email:
+        email_local = re.sub(r"[^a-z]", "", email.split("@", 1)[0].lower())
+
+    best, best_score = None, 0
+    for index, line in enumerate(lines):
+        candidate = re.sub(r"\s+", " ", line).strip(" ,.-|")
+        if not _looks_like_name(candidate):
+            continue
+
+        words = candidate.split()
+        if words and words[0].lower().strip(".") in _NAME_TITLES:
+            words = words[1:]
+            if len(words) < 2:
+                continue
+            candidate = " ".join(words)
+
+        # Earlier lines are far more likely to be the name.
+        score = max(0, 12 - index)
+        # Corroboration by the email address is the strongest signal available.
+        if email_local:
+            joined = re.sub(r"[^a-z]", "", candidate.lower())
+            if joined and (joined in email_local or email_local in joined):
+                score += 30
+            elif any(len(w) > 3 and w.lower() in email_local for w in words):
+                score += 15
+        # Title Case reads more like a name than a shouted heading.
+        if candidate == candidate.title():
+            score += 3
+
+        if score > best_score:
+            best, best_score = candidate, score
+
+    # When an email is available it is the better authority. A line that the
+    # email does not corroborate scores below 15, and at that point a guess
+    # drawn from the document is as likely to be a job title or an address as
+    # a name -- returning nothing is more honest, and identity matching can
+    # still work from the email itself.
+    if best and (not email_local or best_score >= 15):
+        return best
+
+    from_email = _name_from_email(email)
+    if from_email:
+        return from_email
+
+    return best if best_score >= 10 else None
+
+
+# Short abbreviations need word boundaries or they match inside ordinary
+# words -- an unanchored "OND" matches "c(ond)ucted", "HND" matches "beh(ind)".
+_DEGREE_PATTERN = re.compile(
+    r"\b("
+    r"B\.?Sc|M\.?Sc|B\.?A|M\.?A|B\.?Eng|M\.?Eng|B\.?Tech|M\.?Tech|"
+    r"MBA|Ph\.?D|LL\.?B|LL\.?M|MBBS|HND|OND|NCE|PGD|"
+    r"Bachelors?|Masters?|Doctorate|Diploma|Higher National|Ordinary National"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_INSTITUTION_PATTERN = re.compile(
+    r"\b([A-Z][\w'&.\-]*(?:\s+[A-Z][\w'&.\-]*){0,5}\s+"
+    r"(?:University|Polytechnic|College|Institute|School of \w+))\b"
+)
+_INSTITUTION_PREFIX = re.compile(
+    r"\b((?:University|Institute|College|Polytechnic)\s+of\s+"
+    r"[A-Z][\w'&.\-]*(?:\s+[A-Z][\w'&.\-]*){0,3})\b"
+)
+
+_CERT_PATTERN = re.compile(
+    r"\b("
+    r"AWS Certified [\w\s]{3,40}|Microsoft Certified[\w\s:]{0,40}|"
+    r"Azure (?:Fundamentals|Administrator|Developer|Solutions Architect)|"
+    r"Google (?:Cloud )?(?:Certified|Professional)[\w\s]{0,30}|"
+    r"CCNA|CCNP|CISSP|CISM|CISA|CompTIA [\w+]{1,12}|"
+    r"PMP|PRINCE2|CAPM|ITIL(?:\s+v?\d)?|"
+    r"Certified Scrum(?:Master| Product Owner)?|CSM|PSM ?[I]{0,3}|"
+    r"Six Sigma(?: Green| Black)? Belt|"
+    r"ACCA|ACA|CFA|CPA|CIPM|SHRM-?[CS]P|PHR|SPHR|"
+    r"Chartered [\w\s]{3,30}"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_GITHUB_PATTERN = re.compile(r"github\.com/[\w\-.]+", re.IGNORECASE)
+_PORTFOLIO_PATTERN = re.compile(
+    r"\b((?:https?://)?(?:www\.)?[\w\-]+\.(?:dev|io|me|design|portfolio|site|xyz|tech)"
+    r"(?:/[\w\-./]*)?)\b",
+    re.IGNORECASE,
+)
+
+# Section headings that mark where employment history begins.
+_EXPERIENCE_HEADING = re.compile(
+    r"^\s*(?:work\s+)?(?:experience|employment|career|professional\s+experience|"
+    r"work\s+history|employment\s+history)\s*:?\s*$",
+    re.IGNORECASE,
+)
+_NEXT_HEADING = re.compile(
+    r"^\s*(?:education|qualifications?|skills?|certifications?|references?|"
+    r"projects?|interests?|hobbies|languages?|awards?)\s*:?\s*$",
+    re.IGNORECASE,
+)
+
+_DATE_RANGE = re.compile(
+    r"((?:19|20)\d{2})\s*[-–—to]{1,3}\s*((?:19|20)\d{2}|present|current|date|now)",
+    re.IGNORECASE,
+)
+
+
+def extract_education(text: str) -> List[Dict[str, Any]]:
+    """Pull degree and institution pairs out of the document.
+
+    Returns a list of {degree, institution, year} with whichever parts were
+    found. Entries are deliberately loose -- CV layouts vary enormously and a
+    partial record is more useful than none.
+    """
+    results: List[Dict[str, Any]] = []
+    seen = set()
+
+    for raw in text.split("\n"):
+        line = " ".join(raw.split())
+        if not (12 <= len(line) <= 160):
+            continue
+
+        degree = _DEGREE_PATTERN.search(line)
+        inst = _INSTITUTION_PREFIX.search(line) or _INSTITUTION_PATTERN.search(line)
+        if not (degree or inst):
+            continue
+
+        year = None
+        years = re.findall(r"\b(19[6-9]\d|20[0-4]\d)\b", line)
+        if years:
+            year = years[-1]
+
+        entry = {
+            "degree": degree.group(1).strip() if degree else None,
+            "institution": inst.group(1).strip() if inst else None,
+            "year": year,
+        }
+        key = (entry["degree"] or "", entry["institution"] or "", entry["year"] or "")
+        if key in seen or not (entry["degree"] or entry["institution"]):
+            continue
+        seen.add(key)
+        results.append(entry)
+
+        if len(results) >= 8:
+            break
+
+    return results
+
+
+def extract_certifications(text: str) -> List[str]:
+    """Named professional certifications, de-duplicated."""
+    found, seen = [], set()
+    for match in _CERT_PATTERN.finditer(text):
+        value = " ".join(match.group(1).split()).strip(" .,-")
+        key = value.lower()
+        if key in seen or len(value) < 3:
+            continue
+        seen.add(key)
+        found.append(value)
+        if len(found) >= 15:
+            break
+    return found
+
+
+def extract_employment(text: str) -> List[Dict[str, Any]]:
+    """Employment entries taken from the experience section.
+
+    Scoped to the experience section rather than the whole document, so that
+    dated lines under Education or Projects are not misread as jobs.
+    """
+    lines = [" ".join(l.split()) for l in text.split("\n")]
+
+    start = None
+    for i, line in enumerate(lines):
+        if _EXPERIENCE_HEADING.match(line):
+            start = i + 1
+            break
+    if start is None:
+        return []
+
+    entries: List[Dict[str, Any]] = []
+    for line in lines[start:start + 80]:
+        if not line:
+            continue
+        if _NEXT_HEADING.match(line):
+            break
+        if not (8 <= len(line) <= 160):
+            continue
+
+        period = _DATE_RANGE.search(line)
+        if not period:
+            continue
+
+        title = _DATE_RANGE.sub("", line).strip(" .,-–—|·•\t")
+        title = re.sub(r"\s{2,}", " | ", title).strip(" |")
+        if len(title) < 3:
+            continue
+
+        entries.append({
+            "description": title[:140],
+            "start": period.group(1),
+            "end": period.group(2),
+        })
+        if len(entries) >= 12:
+            break
+
+    return entries
+
+
+def extract_github(text: str) -> Optional[str]:
+    match = _GITHUB_PATTERN.search(text)
+    if not match:
+        return None
+    url = match.group(0).rstrip("/.,)")
+    # Skip repository links; the profile is what identifies a person.
+    parts = url.split("/")
+    if len(parts) >= 2 and parts[1].lower() in {"orgs", "topics", "features"}:
+        return None
+    return f"https://{url}"
+
+
+def extract_portfolio(text: str) -> Optional[str]:
+    for match in _PORTFOLIO_PATTERN.finditer(text):
+        url = match.group(1).rstrip("/.,)")
+        lowered = url.lower()
+        # These are captured by their own fields, not as a portfolio.
+        if any(d in lowered for d in ("github.com", "linkedin.com", "gmail",
+                                      "yahoo", "hotmail", "outlook.")):
+            continue
+        return url if url.startswith("http") else f"https://{url}"
     return None
 
 

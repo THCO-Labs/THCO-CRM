@@ -215,17 +215,61 @@ def _changes_between(existing: Dict[str, Any], updates: Dict[str, Any]) -> List[
     return notes
 
 
+# Documents are kept so a recruiter can open the original rather than only the
+# extracted text. Held in their own collection, fetched only when requested, so
+# candidate listings are not dragging binaries around.
+MAX_STORED_FILE_BYTES = 12 * 1024 * 1024
+
+_CONTENT_TYPES = {
+    ".pdf": "application/pdf",
+    ".doc": "application/msword",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".rtf": "application/rtf",
+    ".odt": "application/vnd.oasis.opendocument.text",
+    ".txt": "text/plain",
+}
+
+
+def content_type_for(filename: str) -> str:
+    lowered = (filename or "").lower()
+    for ext, mime in _CONTENT_TYPES.items():
+        if lowered.endswith(ext):
+            return mime
+    return "application/octet-stream"
+
+
 async def _record_version(db, candidate_id: str, parsed: Dict[str, Any],
-                          source: Dict[str, Any]) -> int:
+                          source: Dict[str, Any],
+                          file_bytes: Optional[bytes] = None) -> int:
     """Store this upload as a new resume version. Never replaces an earlier one."""
     version = await db.resume_versions.count_documents({"candidate_id": candidate_id}) + 1
+    version_id = str(uuid.uuid4())
+    filename = parsed.get("filename")
+
+    stored = False
+    if file_bytes and len(file_bytes) <= MAX_STORED_FILE_BYTES:
+        try:
+            await db.resume_files.insert_one({
+                "version_id": version_id,
+                "candidate_id": candidate_id,
+                "version": version,
+                "filename": filename,
+                "content_type": content_type_for(filename),
+                "size": len(file_bytes),
+                "content": file_bytes,
+                "stored_at": datetime.now(timezone.utc).isoformat(),
+            })
+            stored = True
+        except Exception as e:
+            # The profile is worth keeping even if the document could not be.
+            logger.warning("Could not store resume file for %s: %s", candidate_id, e)
 
     await db.resume_versions.insert_one({
-        "version_id": str(uuid.uuid4()),
+        "version_id": version_id,
         "candidate_id": candidate_id,
         "version": version,
         "uploaded_at": datetime.now(timezone.utc).isoformat(),
-        "filename": parsed.get("filename"),
+        "filename": filename,
         "resume_hash": parsed.get("resume_hash"),
         "text_hash": parsed.get("text_hash"),
         "raw_text": parsed.get("raw_text"),
@@ -234,6 +278,8 @@ async def _record_version(db, candidate_id: str, parsed: Dict[str, Any],
         "sender_email": source.get("sender_email"),
         "message_id": source.get("message_id"),
         "imported_by": source.get("imported_by"),
+        "file_stored": stored,
+        "file_size": len(file_bytes) if file_bytes else None,
     })
     return version
 
@@ -298,7 +344,9 @@ async def import_cv(db, file_bytes: bytes, filename: str,
             updates["phone_normalised"] = identity.normalise_phone(parsed["phone"])
 
         await db.candidates.update_one({"candidate_id": candidate_id}, {"$set": updates})
-        version = await _record_version(db, candidate_id, parsed, source)
+        version = await _record_version(db, candidate_id, parsed, source, file_bytes)
+        updates_after = {"has_resume_file": True}
+        await db.candidates.update_one({"candidate_id": candidate_id}, {"$set": updates_after})
 
         await _log_timeline(
             db, candidate_id, "resume_updated",
@@ -333,9 +381,10 @@ async def import_cv(db, file_bytes: bytes, filename: str,
         "created_at": now,
         "updated_at": now,
         "last_resume_at": now,
+        "has_resume_file": True,
     }
     await db.candidates.insert_one(document)
-    version = await _record_version(db, candidate_id, parsed, source)
+    version = await _record_version(db, candidate_id, parsed, source, file_bytes)
     await _log_timeline(
         db, candidate_id, "resume_imported",
         f"Imported from {source.get('source')}", {"version": version},

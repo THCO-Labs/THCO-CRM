@@ -1,6 +1,6 @@
 name: Scheduled jobs
 
-# Drives jobs that must run on a clock even when the app is idle.
+# Drives work that must happen on a clock even when the app is idle.
 #
 # The application scales to zero on Container Apps, so an in-process scheduler
 # only fires if something happened to be running at the time. Calling the app
@@ -12,28 +12,40 @@ name: Scheduled jobs
 #
 # GitHub's scheduler is best-effort and can lag under load, which is fine
 # here: reminders are deduplicated per contact, occasion, lead time and year,
-# so a late or repeated run cannot send the same notice twice.
+# and mailbox imports resume from a stored cursor and recognise an already
+# imported document by its hash. A late or repeated run cannot double up.
 
 on:
   schedule:
-    # 06:00 UTC daily — 07:00 in Lagos.
+    # 06:00 UTC daily — 07:00 in Lagos, before the working day.
     - cron: '0 6 * * *'
   workflow_dispatch:
     inputs:
       job:
-        description: 'Job to run'
-        required: true
-        default: 'relationship-reminders'
+        description: 'Run a single job only (blank runs all)'
+        required: false
+        default: ''
 
 jobs:
   run:
     runs-on: ubuntu-latest
+    strategy:
+      # Sequential: both jobs hit the same container, and there is no reason
+      # to have them competing for a cold start.
+      max-parallel: 1
+      # One job failing must not prevent the other from running -- a mailbox
+      # outage should never suppress a client's birthday reminder.
+      fail-fast: false
+      matrix:
+        job: [relationship-reminders, mailbox-import]
+
     steps:
-      - name: Run relationship reminders
+      - name: Run ${{ matrix.job }}
+        if: ${{ github.event.inputs.job == '' || github.event.inputs.job == matrix.job }}
         env:
           BASE: ${{ secrets.APP_BASE_URL }}
           TOKEN: ${{ secrets.SCHEDULER_TOKEN }}
-          JOB: ${{ github.event.inputs.job || 'relationship-reminders' }}
+          JOB: ${{ matrix.job }}
         run: |
           if [ -z "$BASE" ] || [ -z "$TOKEN" ]; then
             echo "APP_BASE_URL or SCHEDULER_TOKEN is not set."
@@ -43,9 +55,9 @@ jobs:
           # The first request may have to start a cold container, so allow a
           # generous timeout and one retry before treating it as a failure.
           for attempt in 1 2; do
-            echo "Attempt ${attempt}..."
+            echo "Attempt ${attempt} for ${JOB}..."
             code=$(curl -sS -o /tmp/out.json -w '%{http_code}' \
-              --max-time 300 \
+              --max-time 600 \
               -X POST "${BASE}/api/internal/run-scheduled-job?job=${JOB}" \
               -H "X-Scheduler-Token: ${TOKEN}" || echo "000")
 
@@ -60,5 +72,5 @@ jobs:
             sleep 20
           done
 
-          echo "Job did not complete successfully."
+          echo "${JOB} did not complete successfully."
           exit 1

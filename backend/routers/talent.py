@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Request, UploadFile, File, Form, BackgroundTasks
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
@@ -1242,6 +1243,44 @@ async def list_resume_versions(request: Request, candidate_id: str):
         {"candidate_id": candidate_id}, {"_id": 0, "raw_text": 0}
     ).sort("version", -1).to_list(100)
     return {"candidate_id": candidate_id, "total": len(versions), "versions": versions}
+
+
+@router.get("/candidates/{candidate_id}/resume/file")
+async def download_resume(request: Request, candidate_id: str, version: Optional[int] = None):
+    """Return the original CV document.
+
+    Recruiters need to read the CV as the candidate wrote it -- layout,
+    ordering and emphasis all carry meaning that extracted text loses. Drive
+    imports could already be opened at source; documents arriving by email had
+    nowhere to be opened from, so they are now stored on import.
+
+    Defaults to the most recent version.
+    """
+    await require_talent_access(request)
+
+    query: Dict[str, Any] = {"candidate_id": candidate_id}
+    if version:
+        query["version"] = version
+
+    doc = await db.resume_files.find_one(query, sort=[("version", -1)])
+    if not doc:
+        raise HTTPException(
+            status_code=404,
+            detail="No stored document for this candidate. Files are kept for CVs "
+                   "imported after this feature was added; earlier ones hold "
+                   "extracted text only.",
+        )
+
+    filename = (doc.get("filename") or f"{candidate_id}.pdf").replace('"', "")
+    return Response(
+        content=doc["content"],
+        media_type=doc.get("content_type") or "application/octet-stream",
+        headers={
+            # inline so a PDF opens in the browser rather than downloading
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Cache-Control": "private, max-age=300",
+        },
+    )
 
 
 @router.get("/merge-reviews")

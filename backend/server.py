@@ -2843,6 +2843,39 @@ async def run_scheduled_job(request: Request, job: str):
     except Exception as e:
         logger.warning(f"Scheduled job unavailable: {e}")
 
+    async def _mailbox_import():
+        """Pull newly arrived CVs from the configured mailbox.
+
+        Bounded per run: the connector resumes from a stored cursor, so a
+        limit only affects how much of a backlog is cleared in one go, never
+        whether a message is eventually seen. Kept modest so a scheduled run
+        finishes promptly rather than holding a container awake for hours.
+        """
+        from services.connectors.gmail import GmailConnector
+        from services.connectors.imap_mailbox import ImapMailboxConnector
+        from services.connectors.runner import run_connector
+
+        api = GmailConnector()
+        connector = api if (api.is_configured() and api.check_access().get("ok")) \
+            else ImapMailboxConnector()
+
+        if not connector.is_configured():
+            logger.info("Mailbox import skipped: no mailbox configured")
+            return
+
+        access = connector.check_access()
+        if not access.get("ok"):
+            logger.warning("Mailbox import skipped: %s", access.get("reason"))
+            return
+
+        limit = int(os.environ.get("MAILBOX_IMPORT_LIMIT", "100"))
+        await run_connector(db, connector, limit=limit)
+
+    try:
+        jobs["mailbox-import"] = _mailbox_import
+    except Exception as e:
+        logger.warning(f"Mailbox import job unavailable: {e}")
+
     runner = jobs.get(job)
     if runner is None:
         raise HTTPException(status_code=400, detail=f"Unknown job '{job}'")

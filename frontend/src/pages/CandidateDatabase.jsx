@@ -494,6 +494,19 @@ const CandidateDatabase = () => {
                         <ExternalLink className="w-3 h-3" /> Open CV on Google Drive
                       </a>
                     )}
+                    {/* CVs arriving by email have no external location to link
+                        to, so the document itself is stored and served back. */}
+                    {selectedCandidate.has_resume_file && (
+                      <a
+                        href={`${process.env.REACT_APP_BACKEND_URL ?? (process.env.NODE_ENV === "production" ? "" : "http://localhost:8000")}/api/talent/candidates/${selectedCandidate.candidate_id}/resume/file`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-xs text-blue-600 hover:underline mb-2"
+                        data-testid="open-stored-cv"
+                      >
+                        <ExternalLink className="w-3 h-3" /> Open original CV
+                      </a>
+                    )}
                     <div className="bg-gray-50 rounded-lg p-4 max-h-96 overflow-y-auto border border-gray-100">
                       <pre className="text-xs text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">
                         {selectedCandidate.raw_text}

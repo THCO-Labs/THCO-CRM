@@ -1,127 +1,127 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Toaster } from "./components/ui/sonner";
 
 // Pages
 import Login from "./pages/Login";
-import Register from "./pages/Register";
-import ForgotPassword from "./pages/ForgotPassword";
-import ResetPassword from "./pages/ResetPassword";
-import Dashboard from "./pages/Dashboard";
-import TalentUnit from "./pages/TalentUnit";
-import CandidateDatabase from "./pages/CandidateDatabase";
-import CVUpload from "./pages/CVUpload";
-import ExternalSourcing from "./pages/ExternalSourcing";
-import FindCandidates from "./pages/FindCandidates";
-import TalentNetwork from "./pages/TalentNetwork";
-import MergeReviews from "./pages/MergeReviews";
-import SourcingTool from "./pages/SourcingTool";
-import DatabaseSearchTool from "./pages/DatabaseSearchTool";
-import Settings from "./pages/Settings";
-import Proposals from "./pages/Proposals";
-import Tasks from "./pages/Tasks";
-import ProposalView from "./pages/ProposalView";
-import TaskBoardSharedView from "./pages/TaskBoardSharedView";
-import ProcureAIProposal from "./pages/ProcureAIProposal";
-import ProcureAIProposalV2 from "./pages/ProcureAIProposalV2";
-import ProcureAIExecutivePack from "./pages/ProcureAIExecutivePack";
-import ProcureAIExecutivePackV3 from "./pages/ProcureAIExecutivePackV3";
-import ProcureAIExecutivePackV4 from "./pages/ProcureAIExecutivePackV4";
-import ProcureAIScrollPresentation from "./pages/ProcureAIScrollPresentation";
+const Register = lazy(() => import("./pages/Register"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const TalentUnit = lazy(() => import("./pages/TalentUnit"));
+const CandidateDatabase = lazy(() => import("./pages/CandidateDatabase"));
+const CVUpload = lazy(() => import("./pages/CVUpload"));
+const ExternalSourcing = lazy(() => import("./pages/ExternalSourcing"));
+const FindCandidates = lazy(() => import("./pages/FindCandidates"));
+const TalentNetwork = lazy(() => import("./pages/TalentNetwork"));
+const MergeReviews = lazy(() => import("./pages/MergeReviews"));
+const SourcingTool = lazy(() => import("./pages/SourcingTool"));
+const DatabaseSearchTool = lazy(() => import("./pages/DatabaseSearchTool"));
+const Settings = lazy(() => import("./pages/Settings"));
+const Proposals = lazy(() => import("./pages/Proposals"));
+const Tasks = lazy(() => import("./pages/Tasks"));
+const ProposalView = lazy(() => import("./pages/ProposalView"));
+const TaskBoardSharedView = lazy(() => import("./pages/TaskBoardSharedView"));
+const ProcureAIProposal = lazy(() => import("./pages/ProcureAIProposal"));
+const ProcureAIProposalV2 = lazy(() => import("./pages/ProcureAIProposalV2"));
+const ProcureAIExecutivePack = lazy(() => import("./pages/ProcureAIExecutivePack"));
+const ProcureAIExecutivePackV3 = lazy(() => import("./pages/ProcureAIExecutivePackV3"));
+const ProcureAIExecutivePackV4 = lazy(() => import("./pages/ProcureAIExecutivePackV4"));
+const ProcureAIScrollPresentation = lazy(() => import("./pages/ProcureAIScrollPresentation"));
 
 // Business Unit Pages
-import SalesAndBD from "./pages/SalesAndBD";
-import MarketingAndBrand from "./pages/MarketingAndBrand";
-import AdvisoryAndConsulting from "./pages/AdvisoryAndConsulting";
-import TechnologyAndBuild from "./pages/TechnologyAndBuild";
-import OperationsAndFinance from "./pages/OperationsAndFinance";
-import AcademyAndLearning from "./pages/AcademyAndLearning";
-import ClientDelivery from "./pages/ClientDelivery";
-import THCOHRPage from "./pages/THCOHRPage";
-import ProjectManagement from "./pages/ProjectManagement";
-import ITAndTools from "./pages/ITAndTools";
+const SalesAndBD = lazy(() => import("./pages/SalesAndBD"));
+const MarketingAndBrand = lazy(() => import("./pages/MarketingAndBrand"));
+const AdvisoryAndConsulting = lazy(() => import("./pages/AdvisoryAndConsulting"));
+const TechnologyAndBuild = lazy(() => import("./pages/TechnologyAndBuild"));
+const OperationsAndFinance = lazy(() => import("./pages/OperationsAndFinance"));
+const AcademyAndLearning = lazy(() => import("./pages/AcademyAndLearning"));
+const ClientDelivery = lazy(() => import("./pages/ClientDelivery"));
+const THCOHRPage = lazy(() => import("./pages/THCOHRPage"));
+const ProjectManagement = lazy(() => import("./pages/ProjectManagement"));
+const ITAndTools = lazy(() => import("./pages/ITAndTools"));
 
 // THCO Flow — Project Management System (12-stage pipeline)
-import FlowDashboard from "./pages/flow/FlowDashboard";
-import FlowBoard from "./pages/flow/FlowBoard";
-import FlowProjects from "./pages/flow/FlowProjects";
-import FlowNewProject from "./pages/flow/FlowNewProject";
-import FlowProjectDetail from "./pages/flow/FlowProjectDetail";
-import FlowContacts from "./pages/flow/FlowContacts";
-import FlowCalendar from "./pages/flow/FlowCalendar";
-import FlowProspects from "./pages/flow/FlowProspects";
-import FlowTickets from "./pages/flow/FlowTickets";
-import FlowMessages from "./pages/flow/FlowMessages";
-import FlowRolesAdmin from "./pages/flow/FlowRolesAdmin";
+const FlowDashboard = lazy(() => import("./pages/flow/FlowDashboard"));
+const FlowBoard = lazy(() => import("./pages/flow/FlowBoard"));
+const FlowProjects = lazy(() => import("./pages/flow/FlowProjects"));
+const FlowNewProject = lazy(() => import("./pages/flow/FlowNewProject"));
+const FlowProjectDetail = lazy(() => import("./pages/flow/FlowProjectDetail"));
+const FlowContacts = lazy(() => import("./pages/flow/FlowContacts"));
+const FlowCalendar = lazy(() => import("./pages/flow/FlowCalendar"));
+const FlowProspects = lazy(() => import("./pages/flow/FlowProspects"));
+const FlowTickets = lazy(() => import("./pages/flow/FlowTickets"));
+const FlowMessages = lazy(() => import("./pages/flow/FlowMessages"));
+const FlowRolesAdmin = lazy(() => import("./pages/flow/FlowRolesAdmin"));
 
 // FlowForge Pages
-import FlowForgeChat from "./pages/FlowForgeChat";
-import ApprovalQueue from "./pages/ApprovalQueue";
+const FlowForgeChat = lazy(() => import("./pages/FlowForgeChat"));
+const ApprovalQueue = lazy(() => import("./pages/ApprovalQueue"));
 
 // Assessment Pages
-import CandidateAssessment from "./pages/CandidateAssessment";
-import AdminAssessments from "./pages/AdminAssessments";
+const CandidateAssessment = lazy(() => import("./pages/CandidateAssessment"));
+const AdminAssessments = lazy(() => import("./pages/AdminAssessments"));
 
 // Project Delivery Workflow Pages
-import ProjectFulfillment from "./pages/ProjectFulfillment";
-import NewProjectForm from "./pages/NewProjectForm";
-import DelegationBoard from "./pages/DelegationBoard";
-import MyProjects from "./pages/MyProjects";
-import ProjectReview from "./pages/ProjectReview";
-import ProjectTracker from "./pages/ProjectTracker";
-import UserManagement from "./pages/UserManagement";
-import Profile from "./pages/Profile";
-import Feedback from "./pages/Feedback";
-import ITFeedbackConsole from "./pages/ITFeedbackConsole";
-import BusinessUnitsAdmin from "./pages/BusinessUnitsAdmin";
-import UnitPage from "./pages/UnitPage";
+const ProjectFulfillment = lazy(() => import("./pages/ProjectFulfillment"));
+const NewProjectForm = lazy(() => import("./pages/NewProjectForm"));
+const DelegationBoard = lazy(() => import("./pages/DelegationBoard"));
+const MyProjects = lazy(() => import("./pages/MyProjects"));
+const ProjectReview = lazy(() => import("./pages/ProjectReview"));
+const ProjectTracker = lazy(() => import("./pages/ProjectTracker"));
+const UserManagement = lazy(() => import("./pages/UserManagement"));
+const Profile = lazy(() => import("./pages/Profile"));
+const Feedback = lazy(() => import("./pages/Feedback"));
+const ITFeedbackConsole = lazy(() => import("./pages/ITFeedbackConsole"));
+const BusinessUnitsAdmin = lazy(() => import("./pages/BusinessUnitsAdmin"));
+const UnitPage = lazy(() => import("./pages/UnitPage"));
 import { ThemeProvider } from "./context/ThemeContext";
 
 // Presentations
-import WinstonDukePresentation from "./pages/WinstonDukePresentation";
+const WinstonDukePresentation = lazy(() => import("./pages/WinstonDukePresentation"));
 
 // Public Email-Gated Presentations
-import ProcureAIExecutivePackPublic from "./pages/ProcureAIExecutivePackPublic";
-import ProcureAIExecutivePackV3Public from "./pages/ProcureAIExecutivePackV3Public";
-import ProcureAIProposalPublic from "./pages/ProcureAIProposalPublic";
-import ProcureAIScrollPublic from "./pages/ProcureAIScrollPublic";
-import ProcureAIProposalV1Public from "./pages/ProcureAIProposalV1Public";
-import ProcureAITWGSession from "./pages/ProcureAITWGSession";
-import ProcureAITWGSessionPublic from "./pages/ProcureAITWGSessionPublic";
-import ProcureAITWGSlideshow from "./pages/ProcureAITWGSlideshow";
-import ProcureAITWGSlideshowPublic from "./pages/ProcureAITWGSlideshowPublic";
-import THCOTownHall2026V2 from "./pages/THCOTownHall2026V2";
-import THCOTownHall2026V2Public from "./pages/THCOTownHall2026V2Public";
-import ProcureAIGCIOPack from "./pages/ProcureAIGCIOPack";
-import ProcureAIGCIOPackPublic from "./pages/ProcureAIGCIOPackPublic";
-import SagicorProgressDashboard from "./pages/SagicorProgressDashboard";
-import SagicorProgressDashboardPublic from "./pages/SagicorProgressDashboardPublic";
-import AIBankingPresentation from "./pages/AIBankingPresentation";
-import AIBankingPresentationPublic from "./pages/AIBankingPresentationPublic";
-import PebblesBrandPresentation from "./pages/PebblesBrandPresentation";
-import PebblesBrandPresentationPublic from "./pages/PebblesBrandPresentationPublic";
-import ProcureAIEYPresentation from "./pages/ProcureAIEYPresentation";
-import ProcureAIEYPresentationPublic from "./pages/ProcureAIEYPresentationPublic";
-import ProcureAIMeetTheTeam from "./pages/ProcureAIMeetTheTeam";
-import ProcureAIMeetTheTeamPublic from "./pages/ProcureAIMeetTheTeamPublic";
-import GDLPebblesPresentation from "./pages/GDLPebblesPresentation";
-import GDLPebblesPresentationPublic from "./pages/GDLPebblesPresentationPublic";
-import IngaboPresentation from "./pages/IngaboPresentation";
-import IngaboPresentationPublic from "./pages/IngaboPresentationPublic";
-import TheForgePresentation from "./pages/TheForgePresentation";
-import TheForgePresentationPublic from "./pages/TheForgePresentationPublic";
-import TheForgeV2Presentation from "./pages/TheForgeV2Presentation";
-import TheForgeV2PresentationPublic from "./pages/TheForgeV2PresentationPublic";
-import TideWarPresentation from "./pages/TideWarPresentation";
-import TideWarPresentationPublic from "./pages/TideWarPresentationPublic";
-import SagicorSTECPresentation from "./pages/SagicorSTECPresentation";
-import SagicorSTECPresentationPublic from "./pages/SagicorSTECPresentationPublic";
-import ReallocPresentation from "./pages/ReallocPresentation";
-import ReallocPresentationPublic from "./pages/ReallocPresentationPublic";
-import ProcureAITeamPresentation from "./pages/ProcureAITeamPresentation";
-import ProcureAITeamPresentationPublic from "./pages/ProcureAITeamPresentationPublic";
-import AFCTreasuryPresentation from "./pages/AFCTreasuryPresentation";
-import AFCTreasuryPresentationPublic from "./pages/AFCTreasuryPresentationPublic";
+const ProcureAIExecutivePackPublic = lazy(() => import("./pages/ProcureAIExecutivePackPublic"));
+const ProcureAIExecutivePackV3Public = lazy(() => import("./pages/ProcureAIExecutivePackV3Public"));
+const ProcureAIProposalPublic = lazy(() => import("./pages/ProcureAIProposalPublic"));
+const ProcureAIScrollPublic = lazy(() => import("./pages/ProcureAIScrollPublic"));
+const ProcureAIProposalV1Public = lazy(() => import("./pages/ProcureAIProposalV1Public"));
+const ProcureAITWGSession = lazy(() => import("./pages/ProcureAITWGSession"));
+const ProcureAITWGSessionPublic = lazy(() => import("./pages/ProcureAITWGSessionPublic"));
+const ProcureAITWGSlideshow = lazy(() => import("./pages/ProcureAITWGSlideshow"));
+const ProcureAITWGSlideshowPublic = lazy(() => import("./pages/ProcureAITWGSlideshowPublic"));
+const THCOTownHall2026V2 = lazy(() => import("./pages/THCOTownHall2026V2"));
+const THCOTownHall2026V2Public = lazy(() => import("./pages/THCOTownHall2026V2Public"));
+const ProcureAIGCIOPack = lazy(() => import("./pages/ProcureAIGCIOPack"));
+const ProcureAIGCIOPackPublic = lazy(() => import("./pages/ProcureAIGCIOPackPublic"));
+const SagicorProgressDashboard = lazy(() => import("./pages/SagicorProgressDashboard"));
+const SagicorProgressDashboardPublic = lazy(() => import("./pages/SagicorProgressDashboardPublic"));
+const AIBankingPresentation = lazy(() => import("./pages/AIBankingPresentation"));
+const AIBankingPresentationPublic = lazy(() => import("./pages/AIBankingPresentationPublic"));
+const PebblesBrandPresentation = lazy(() => import("./pages/PebblesBrandPresentation"));
+const PebblesBrandPresentationPublic = lazy(() => import("./pages/PebblesBrandPresentationPublic"));
+const ProcureAIEYPresentation = lazy(() => import("./pages/ProcureAIEYPresentation"));
+const ProcureAIEYPresentationPublic = lazy(() => import("./pages/ProcureAIEYPresentationPublic"));
+const ProcureAIMeetTheTeam = lazy(() => import("./pages/ProcureAIMeetTheTeam"));
+const ProcureAIMeetTheTeamPublic = lazy(() => import("./pages/ProcureAIMeetTheTeamPublic"));
+const GDLPebblesPresentation = lazy(() => import("./pages/GDLPebblesPresentation"));
+const GDLPebblesPresentationPublic = lazy(() => import("./pages/GDLPebblesPresentationPublic"));
+const IngaboPresentation = lazy(() => import("./pages/IngaboPresentation"));
+const IngaboPresentationPublic = lazy(() => import("./pages/IngaboPresentationPublic"));
+const TheForgePresentation = lazy(() => import("./pages/TheForgePresentation"));
+const TheForgePresentationPublic = lazy(() => import("./pages/TheForgePresentationPublic"));
+const TheForgeV2Presentation = lazy(() => import("./pages/TheForgeV2Presentation"));
+const TheForgeV2PresentationPublic = lazy(() => import("./pages/TheForgeV2PresentationPublic"));
+const TideWarPresentation = lazy(() => import("./pages/TideWarPresentation"));
+const TideWarPresentationPublic = lazy(() => import("./pages/TideWarPresentationPublic"));
+const SagicorSTECPresentation = lazy(() => import("./pages/SagicorSTECPresentation"));
+const SagicorSTECPresentationPublic = lazy(() => import("./pages/SagicorSTECPresentationPublic"));
+const ReallocPresentation = lazy(() => import("./pages/ReallocPresentation"));
+const ReallocPresentationPublic = lazy(() => import("./pages/ReallocPresentationPublic"));
+const ProcureAITeamPresentation = lazy(() => import("./pages/ProcureAITeamPresentation"));
+const ProcureAITeamPresentationPublic = lazy(() => import("./pages/ProcureAITeamPresentationPublic"));
+const AFCTreasuryPresentation = lazy(() => import("./pages/AFCTreasuryPresentation"));
+const AFCTreasuryPresentationPublic = lazy(() => import("./pages/AFCTreasuryPresentationPublic"));
 
 // Layout
 import DashboardLayout from "./components/DashboardLayout";
@@ -258,6 +258,14 @@ const ProtectedRoute = ({ children, unit, access }) => {
   );
 };
 
+// Shown while a route's chunk is fetched. Deliberately plain: it is on screen
+// for a few hundred milliseconds and a heavy skeleton would itself need code.
+const RouteLoading = () => (
+  <div className="min-h-screen flex items-center justify-center bg-white dark:bg-[#0D0F1A]">
+    <div className="w-8 h-8 border-2 border-[#C6A15B] border-t-transparent rounded-full animate-spin" />
+  </div>
+);
+
 // App Router Component
 const AppRouter = () => {
   const location = useLocation();
@@ -268,6 +276,7 @@ const AppRouter = () => {
   }
 
   return (
+    <Suspense fallback={<RouteLoading />}>
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
@@ -586,6 +595,7 @@ const AppRouter = () => {
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
+    </Suspense>
   );
 };
 

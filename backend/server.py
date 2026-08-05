@@ -2911,6 +2911,9 @@ if (FRONTEND_BUILD_DIR / "static").is_dir():
 from services.sla_scheduler import set_db as set_sla_db, start_scheduler as start_sla_scheduler
 set_sla_db(db)
 
+from services.relationship_reminders import set_db as set_relationship_db
+set_relationship_db(db)
+
 @app.on_event("startup")
 async def startup_scheduler():
     start_sla_scheduler()

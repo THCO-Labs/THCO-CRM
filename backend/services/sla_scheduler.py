@@ -278,10 +278,22 @@ async def flow_build_eod_reminder():
 
 
 def start_scheduler():
-    """Start the APScheduler with SLA, standup, and Flow EOD jobs."""
+    """Start the APScheduler with SLA, standup, Flow EOD, and relationship jobs."""
     scheduler.add_job(sla_reminder_sweep, "interval", minutes=5, id="sla_sweep", replace_existing=True)
     scheduler.add_job(daily_standup_sweep, "interval", hours=1, id="standup_sweep", replace_existing=True)
     # Flow EOD reminder: run every hour after 17:00 UTC (covers global teams)
     scheduler.add_job(flow_build_eod_reminder, "cron", hour="17-22", minute=0, id="flow_eod", replace_existing=True)
+
+    # Client birthdays and anniversaries, once each morning. Deduplicated per
+    # contact/occasion/year, so an extra run cannot resend.
+    from services.relationship_reminders import relationship_reminder_sweep
+    scheduler.add_job(
+        relationship_reminder_sweep, "cron", hour=6, minute=0,
+        id="relationship_sweep", replace_existing=True,
+    )
+
     scheduler.start()
-    logger.info("SLA Scheduler started: sla_sweep (5min), standup_sweep (1hr), flow_eod (cron 17-22h)")
+    logger.info(
+        "SLA Scheduler started: sla_sweep (5min), standup_sweep (1hr), "
+        "flow_eod (cron 17-22h), relationship_sweep (daily 06:00)"
+    )

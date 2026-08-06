@@ -19,6 +19,9 @@ import os
 import uuid
 import re
 
+from services import permissions
+from services import notifications
+
 router = APIRouter(prefix="/units", tags=["units"])
 
 # Will be set from server.py
@@ -53,6 +56,11 @@ class UnitCreate(BaseModel):
     accent: str = "#1FB58A"
     lead: str = ""
     config: UnitConfig = UnitConfig()
+
+
+class UnitHeadSet(BaseModel):
+    # Null clears the role, leaving the unit without a head.
+    user_id: Optional[str] = None
 
 
 class UnitUpdate(BaseModel):
@@ -156,6 +164,70 @@ async def update_unit(slug: str, data: UnitUpdate, request: Request):
     await db.units.update_one({"slug": slug}, {"$set": update})
     unit = await db.units.find_one({"slug": slug}, {"_id": 0})
     return serialize(unit)
+
+
+@router.put("/{slug}/head")
+async def set_unit_head(slug: str, data: UnitHeadSet, request: Request):
+    """Appoint, change or clear the head of a unit.
+
+    A unit has at most one head, so appointing a new one replaces whoever
+    held it -- companies reorganise, and the admin must be able to move the
+    role without editing anyone's account. Passing a null user_id clears it,
+    which leaves the unit with nobody able to open projects under it until
+    a new head is named.
+    """
+    user = await _current(request)
+    permissions.require_admin(user)
+
+    unit = await db.units.find_one({"slug": slug}, {"_id": 0})
+    if not unit:
+        raise HTTPException(status_code=404, detail="Unit not found")
+
+    previous_id = unit.get("head_user_id")
+    previous_name = unit.get("head_name")
+
+    if not data.user_id:
+        await db.units.update_one(
+            {"slug": slug},
+            {"$set": {"head_user_id": None, "head_name": None,
+                      "updated_at": datetime.now(timezone.utc).isoformat()}},
+        )
+        return {"slug": slug, "head_user_id": None, "head_name": None,
+                "previous_head_id": previous_id, "previous_head_name": previous_name}
+
+    head = await db.users.find_one(
+        {"user_id": data.user_id}, {"_id": 0, "user_id": 1, "name": 1, "email": 1, "accessible_units": 1}
+    )
+    if not head:
+        raise HTTPException(status_code=404, detail="That person does not have an account")
+
+    await db.units.update_one(
+        {"slug": slug},
+        {"$set": {
+            "head_user_id": head["user_id"],
+            "head_name": head.get("name"),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+
+    # Heading a unit you cannot open is a dead end, so grant access alongside.
+    await db.users.update_one(
+        {"user_id": head["user_id"]},
+        {"$addToSet": {"accessible_units": {"$each": [slug, "flow"]}}},
+    )
+
+    if head["user_id"] != previous_id:
+        await notifications.notify_made_unit_head(
+            db, head, slug, unit.get("name") or slug, user
+        )
+
+    return {
+        "slug": slug,
+        "head_user_id": head["user_id"],
+        "head_name": head.get("name"),
+        "previous_head_id": previous_id,
+        "previous_head_name": previous_name,
+    }
 
 
 @router.delete("/{slug}")

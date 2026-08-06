@@ -128,7 +128,7 @@ import DashboardLayout from "./components/DashboardLayout";
 
 // API
 import { authAPI } from "./lib/api";
-import { UserProvider, hasUnitAccess, canManageUsers } from "./context/UserContext";
+import { UserProvider, hasUnitAccess, canManageUsers, canEnterUnits } from "./context/UserContext";
 
 // Auth Callback Component - handles OAuth redirect
 const AuthCallback = () => {
@@ -245,7 +245,10 @@ const ProtectedRoute = ({ children, unit, access }) => {
   }
 
   let allowed = true;
-  if (unit) allowed = hasUnitAccess(user, unit);
+  // Both gates: the unit must be one they hold, and business units must be
+  // open to them at all. Hiding the menu is not enough on its own -- the
+  // address bar still works.
+  if (unit) allowed = hasUnitAccess(user, unit) && canEnterUnits(user);
   if (access === "admin") allowed = user?.role === "super_admin";
   if (access === "user-admin") allowed = canManageUsers(user);
   if (access === "hr") allowed = user?.role === "super_admin" || Boolean(user?.is_hr);
@@ -551,16 +554,16 @@ const AppRouter = () => {
       } />
 
       {/* THCO Flow — Project Management System (12-stage pipeline) */}
-      <Route path="/flow" element={<ProtectedRoute><FlowDashboard /></ProtectedRoute>} />
-      <Route path="/flow/board" element={<ProtectedRoute><FlowBoard /></ProtectedRoute>} />
-      <Route path="/flow/projects" element={<ProtectedRoute><FlowProjects /></ProtectedRoute>} />
-      <Route path="/flow/projects/new" element={<ProtectedRoute><FlowNewProject /></ProtectedRoute>} />
-      <Route path="/flow/projects/:id" element={<ProtectedRoute><FlowProjectDetail /></ProtectedRoute>} />
-      <Route path="/flow/contacts" element={<ProtectedRoute><FlowContacts /></ProtectedRoute>} />
-      <Route path="/flow/calendar" element={<ProtectedRoute><FlowCalendar /></ProtectedRoute>} />
-      <Route path="/flow/prospects" element={<ProtectedRoute><FlowProspects /></ProtectedRoute>} />
-      <Route path="/flow/tickets" element={<ProtectedRoute><FlowTickets /></ProtectedRoute>} />
-      <Route path="/flow/messages" element={<ProtectedRoute><FlowMessages /></ProtectedRoute>} />
+      <Route path="/flow" element={<ProtectedRoute unit="flow"><FlowDashboard /></ProtectedRoute>} />
+      <Route path="/flow/board" element={<ProtectedRoute unit="flow"><FlowBoard /></ProtectedRoute>} />
+      <Route path="/flow/projects" element={<ProtectedRoute unit="flow"><FlowProjects /></ProtectedRoute>} />
+      <Route path="/flow/projects/new" element={<ProtectedRoute unit="flow"><FlowNewProject /></ProtectedRoute>} />
+      <Route path="/flow/projects/:id" element={<ProtectedRoute unit="flow"><FlowProjectDetail /></ProtectedRoute>} />
+      <Route path="/flow/contacts" element={<ProtectedRoute unit="flow"><FlowContacts /></ProtectedRoute>} />
+      <Route path="/flow/calendar" element={<ProtectedRoute unit="flow"><FlowCalendar /></ProtectedRoute>} />
+      <Route path="/flow/prospects" element={<ProtectedRoute unit="flow"><FlowProspects /></ProtectedRoute>} />
+      <Route path="/flow/tickets" element={<ProtectedRoute unit="flow"><FlowTickets /></ProtectedRoute>} />
+      <Route path="/flow/messages" element={<ProtectedRoute unit="flow"><FlowMessages /></ProtectedRoute>} />
       <Route path="/flow/admin/roles" element={<ProtectedRoute><FlowRolesAdmin /></ProtectedRoute>} />
       <Route path="/it-tools" element={
         <ProtectedRoute unit="it-tools">

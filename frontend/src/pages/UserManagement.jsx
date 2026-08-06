@@ -16,7 +16,7 @@ import {
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../components/ui/dialog";
 import { toast } from "sonner";
-import { usersAPI } from "../lib/api";
+import { usersAPI, unitsAPI } from "../lib/api";
 import { useUser } from "../context/UserContext";
 
 const ALL_UNITS = [
@@ -47,6 +47,9 @@ const emptyForm = {
   is_hr: false,
   is_engineer: false,
   is_fulfillment: false,
+  // Optionally make this person the head of a unit as they are invited. A
+  // unit has one head, so choosing one here replaces whoever holds it.
+  head_of_unit: "",
 };
 
 export default function UserManagement() {
@@ -54,6 +57,7 @@ export default function UserManagement() {
   const isSuperAdmin = currentUser?.role === "super_admin";
 
   const [users, setUsers] = useState([]);
+  const [units, setUnits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState({});
@@ -86,15 +90,53 @@ export default function UserManagement() {
       const data = await usersAPI.getAll();
       setUsers(data || []);
     } catch {
-      toast.error("Failed to load users");
+      toast.error("Failed to load staff");
     } finally {
       setLoading(false);
     }
   }, []);
 
+  // Units carry their head, so they are loaded alongside the staff list.
+  const fetchUnits = useCallback(async () => {
+    try {
+      setUnits((await unitsAPI.list()) || []);
+    } catch {
+      /* the page is still usable without the head column */
+    }
+  }, []);
+
   useEffect(() => {
     fetchUsers();
-  }, [fetchUsers]);
+    fetchUnits();
+  }, [fetchUsers, fetchUnits]);
+
+  const unitName = (slug) =>
+    units.find((u) => u.slug === slug)?.name ||
+    ALL_UNITS.find((u) => u.slug === slug)?.name ||
+    slug;
+
+  const headOf = (slug) => units.find((u) => u.slug === slug)?.head_name || null;
+
+  // Which unit, if any, this person currently heads.
+  const unitHeaded = (userId) => units.find((u) => u.head_user_id === userId) || null;
+
+  const changeHead = async (slug, userId) => {
+    setSaving((s) => ({ ...s, [`head_${slug}`]: true }));
+    try {
+      const res = await unitsAPI.setHead(slug, userId);
+      await fetchUnits();
+      toast.success(
+        userId
+          ? `${res.head_name} now heads ${unitName(slug)}` +
+              (res.previous_head_name ? ` (replacing ${res.previous_head_name})` : "")
+          : `${unitName(slug)} now has no head`
+      );
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Could not change the unit head");
+    } finally {
+      setSaving((s) => ({ ...s, [`head_${slug}`]: false }));
+    }
+  };
 
   // HR / mini admins may not manage super admins
   const canEditTarget = (u) => isSuperAdmin || u.role !== "super_admin";
@@ -150,6 +192,8 @@ export default function UserManagement() {
 
   const submitCreate = async () => {
     if (!form.name.trim() || !form.email.trim()) return toast.error("Name and email are required");
+    // "__pick__" means unit head was chosen but no unit picked yet.
+    if (form.head_of_unit === "__pick__") return toast.error("Choose which unit they will head");
     if (form.password && form.password.length < 6) return toast.error("Password must be at least 6 characters");
     setCreating(true);
     try {
@@ -162,10 +206,16 @@ export default function UserManagement() {
         is_hr: form.is_hr,
         is_engineer: form.is_engineer,
         is_fulfillment: form.is_fulfillment,
+        head_of_unit: form.head_of_unit || undefined,
       });
       setCreatedCreds({ email: res.email, password: res.temp_password, emailSent: res.email_sent });
-      toast.success(`${res.name} added to the portal`);
+      toast.success(
+        form.head_of_unit
+          ? `${res.name} added and made head of ${unitName(form.head_of_unit)}`
+          : `${res.name} added to the portal`
+      );
       fetchUsers();
+      fetchUnits();
     } catch (e) {
       toast.error(e.response?.data?.detail || "Failed to create user");
     } finally {
@@ -312,9 +362,9 @@ export default function UserManagement() {
         <p className="lux-eyebrow mb-3">Administration</p>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="font-display text-4xl text-gray-900 leading-tight">User Management</h1>
+            <h1 className="font-display text-4xl text-gray-900 leading-tight">Staff Management</h1>
             <p className="text-sm text-gray-500 mt-2">
-              Add people to the portal, assign their role, and decide exactly which units they can see.
+              Add staff to the portal, assign their role and units, and appoint unit heads.
             </p>
           </div>
           <Button
@@ -322,7 +372,7 @@ export default function UserManagement() {
             className="bg-[#14181D] hover:bg-[#252b33] text-white rounded-full px-6 h-11 gap-2"
             data-testid="add-user-btn"
           >
-            <Plus className="w-4 h-4" /> Add User
+            <Plus className="w-4 h-4" /> Add Staff
           </Button>
         </div>
         <div className="lux-divider mt-8" />
@@ -346,6 +396,57 @@ export default function UserManagement() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Unit heads — reassignable at any time, because companies reorganise
+          and the admin must be able to move the role without editing accounts. */}
+      <div className="lux-card p-6" data-testid="unit-heads-panel">
+        <div className="flex items-start justify-between gap-4 mb-1">
+          <div>
+            <h2 className="font-display text-xl text-gray-900">Unit heads</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              Only a unit head can open projects for their unit and add staff to them.
+              Each unit has one head — change it whenever the company does.
+            </p>
+          </div>
+        </div>
+        <div className="lux-divider my-5" />
+        <div className="grid gap-3 md:grid-cols-2">
+          {ALL_UNITS.map((u) => {
+            const head = units.find((x) => x.slug === u.slug);
+            const busy = saving[`head_${u.slug}`];
+            return (
+              <div
+                key={u.slug}
+                className="flex items-center justify-between gap-3 border border-[#EAE7E0] rounded-xl px-4 py-3"
+                data-testid={`unit-head-row-${u.slug}`}
+              >
+                <div className="min-w-0">
+                  <p className="text-[13px] font-medium text-gray-900 truncate">{u.name}</p>
+                  <p className="text-[11px] text-gray-400 truncate">
+                    {head?.head_name ? `Headed by ${head.head_name}` : "No head — nobody can open projects here"}
+                  </p>
+                </div>
+                <select
+                  value={head?.head_user_id || ""}
+                  disabled={busy}
+                  onChange={(e) => changeHead(u.slug, e.target.value || null)}
+                  className="shrink-0 max-w-[190px] text-[12px] border border-[#EAE7E0] rounded-lg px-2.5 py-1.5 bg-white outline-none focus:border-[#C6A15B] disabled:opacity-50"
+                  data-testid={`unit-head-select-${u.slug}`}
+                >
+                  <option value="">— no head —</option>
+                  {users
+                    .filter((p) => p.status !== "disabled")
+                    .map((p) => (
+                      <option key={p.user_id} value={p.user_id}>
+                        {p.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Search */}
@@ -410,6 +511,17 @@ export default function UserManagement() {
                       >
                         {ROLE_LABELS[u.role] || u.role}
                       </span>
+                      {/* Heading a unit is what lets somebody open projects,
+                          so it belongs next to the role, not buried in a tab. */}
+                      {unitHeaded(u.user_id) && (
+                        <span
+                          className="ml-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full bg-[#EAF8F3] text-[#12795C] border border-[#BFE7DA]"
+                          title={`Heads ${unitHeaded(u.user_id).name} — can open projects for it`}
+                          data-testid={`heads-badge-${u.user_id}`}
+                        >
+                          Head · {unitHeaded(u.user_id).name}
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <button
@@ -503,10 +615,10 @@ export default function UserManagement() {
           {!createdCreds ? (
             <>
               <DialogHeader>
-                <p className="lux-eyebrow mb-1">New Account</p>
-                <DialogTitle className="font-display text-2xl text-gray-900">Add a person to the portal</DialogTitle>
+                <p className="lux-eyebrow mb-1">New Staff</p>
+                <DialogTitle className="font-display text-2xl text-gray-900">Invite a staff member</DialogTitle>
                 <DialogDescription className="text-gray-500 text-[13px]">
-                  Set their role and choose exactly which business units they'll see.
+                  Say whether they're staff or a unit head, then set their access and send the invite.
                 </DialogDescription>
               </DialogHeader>
 
@@ -533,6 +645,102 @@ export default function UserManagement() {
                       data-testid="create-email-input"
                     />
                   </div>
+                </div>
+
+                {/* Staff or unit head, decided before the password is generated.
+                    The super admin decides who heads a unit; HR applies that
+                    decision here as the invitation goes out. */}
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-[0.15em] text-gray-400 mb-2">
+                    Are they staff or a unit head?
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, head_of_unit: "" })}
+                      className={`text-left px-4 py-3 rounded-xl border transition-all ${
+                        !form.head_of_unit
+                          ? "border-[#14181D] bg-[#14181D] text-white"
+                          : "border-[#EAE7E0] hover:border-gray-300"
+                      }`}
+                      data-testid="create-kind-staff"
+                    >
+                      <p className="text-[13px] font-medium">Staff</p>
+                      <p className={`text-[11px] mt-0.5 ${!form.head_of_unit ? "text-gray-300" : "text-gray-400"}`}>
+                        Works on the projects they're added to
+                      </p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setForm({ ...form, head_of_unit: form.head_of_unit || "__pick__" })
+                      }
+                      className={`text-left px-4 py-3 rounded-xl border transition-all ${
+                        form.head_of_unit
+                          ? "border-[#1FB58A] bg-[#EAF8F3]"
+                          : "border-[#EAE7E0] hover:border-gray-300"
+                      }`}
+                      data-testid="create-kind-head"
+                    >
+                      <p className={`text-[13px] font-medium ${form.head_of_unit ? "text-[#12795C]" : "text-gray-900"}`}>
+                        Unit head
+                      </p>
+                      <p className="text-[11px] mt-0.5 text-gray-400">
+                        Opens projects and adds staff to them
+                      </p>
+                    </button>
+                  </div>
+
+                  {form.head_of_unit && (
+                    <div className="mt-3">
+                      <label className="block text-[11px] font-semibold uppercase tracking-[0.15em] text-gray-400 mb-2">
+                        Which unit do they head?
+                      </label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {ALL_UNITS.map((u) => {
+                          const on = form.head_of_unit === u.slug;
+                          const current = headOf(u.slug);
+                          return (
+                            <button
+                              key={u.slug}
+                              type="button"
+                              onClick={() =>
+                                setForm({
+                                  ...form,
+                                  head_of_unit: u.slug,
+                                  // Heading a unit you cannot open is a dead end.
+                                  accessible_units: Array.from(
+                                    new Set([...form.accessible_units, u.slug])
+                                  ),
+                                })
+                              }
+                              title={current ? `Currently headed by ${current}` : "No head yet"}
+                              className={`px-3 py-1.5 rounded-full border text-[11px] transition-all ${
+                                on
+                                  ? "border-[#1FB58A] bg-[#EAF8F3] text-[#12795C] font-medium"
+                                  : "border-[#EAE7E0] text-gray-500 hover:border-gray-300"
+                              }`}
+                              data-testid={`create-head-${u.slug}`}
+                            >
+                              {on && <Check className="w-3 h-3 inline mr-1 -mt-px" />}
+                              {u.name}
+                              {current && <span className="text-gray-400 ml-1">· {current.split(" ")[0]}</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {form.head_of_unit === "__pick__" ? (
+                        <p className="text-[11px] text-amber-600 mt-2">Choose which unit they will head.</p>
+                      ) : (
+                        headOf(form.head_of_unit) && (
+                          <p className="text-[11px] text-amber-600 mt-2">
+                            {unitName(form.head_of_unit)} is currently headed by {headOf(form.head_of_unit)} — inviting
+                            this person replaces them.
+                          </p>
+                        )
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -662,7 +870,7 @@ export default function UserManagement() {
                   data-testid="create-submit-btn"
                 >
                   {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                  Create Account
+                  Invite Staff
                 </Button>
               </div>
             </>

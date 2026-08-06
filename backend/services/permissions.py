@@ -18,6 +18,18 @@ Flags layered on top of role:
     is_hr                   employee administration
     is_executive_approver   approves at the executive gate
     is_delivery_coordinator / is_delivery_owner   delivery oversight
+
+Unit heads
+----------
+Each business unit has at most one head, recorded on the unit itself
+(`units.head_user_id`) rather than as a flag on the person. A unit is the
+thing that has a head, and only one at a time, so storing it there makes
+that a fact the database enforces: reassigning is a single write, and a
+person cannot be left as a stale head of a unit somebody else now runs.
+
+A head opens projects for their own unit and adds staff to them as
+collaborators. Ordinary staff no longer open projects at all -- they see
+the ones they were added to.
 """
 
 from typing import Any, Dict, List, Optional
@@ -51,17 +63,72 @@ def has_unit_access(user: Dict[str, Any], slug: str) -> bool:
     """Whether the user may enter a business unit.
 
     Admins see every unit. Everyone else needs it in accessible_units.
-    Note `flow` is deliberately open to all staff: the project pipeline is the
-    shared workspace, and rows inside it are scoped per-user by
-    `project_scope_filter` rather than by hiding the unit.
+
+    `flow` is the project pipeline. It used to be open to every logged-in
+    person on the reasoning that rows inside it are scoped per-user anyway --
+    but somebody with no project sees an empty pipeline, which is a menu entry
+    that only ever shows them nothing. So it now opens once they actually have
+    work in it: a project collaborator, a unit head, or an administrator.
     """
     if not slug:
         return True
     if is_admin(user):
         return True
     if slug == "flow":
-        return True
+        return bool((user or {}).get("has_projects")) or is_unit_head(user)
     return slug in ((user or {}).get("accessible_units") or [])
+
+
+def headed_units(user: Dict[str, Any]) -> List[str]:
+    """Unit slugs this person heads.
+
+    Resolved when the user is loaded and carried on the user dict, so the
+    permission checks below stay synchronous like every other rule here.
+    """
+    return list((user or {}).get("headed_units") or [])
+
+
+def is_unit_head(user: Dict[str, Any]) -> bool:
+    return bool(headed_units(user))
+
+
+def can_create_projects(user: Dict[str, Any]) -> bool:
+    """Whether this person may open a project at all.
+
+    Used to decide whether to offer the action; the unit-specific check
+    below is what actually authorises a given create.
+    """
+    return is_admin(user) or is_unit_head(user)
+
+
+def can_create_project_in_unit(user: Dict[str, Any], slug: str) -> bool:
+    """Whether this person may open a project under a particular unit.
+
+    Administrators may open one anywhere. A head is confined to the unit
+    they head: the head of Technology & Build does not open work under
+    Marketing.
+    """
+    if is_admin(user):
+        return True
+    return bool(slug) and slug in headed_units(user)
+
+
+def can_manage_project(user: Dict[str, Any], project: Dict[str, Any]) -> bool:
+    """Whether this person may edit, delete, or re-staff a project.
+
+    Administrators, and the head of the unit the project belongs to. Nobody
+    else -- a collaborator is not a manager, so being added to a project
+    does not let you rename it, delete it, or add other people to it.
+
+    Deliberately not the person who created it. The head runs the unit's
+    work, so when the head changes the new one inherits control of every
+    project in it; a previous head does not keep a private set they alone
+    can edit.
+    """
+    if is_admin(user):
+        return True
+    p = project or {}
+    return bool(p.get("unit_slug")) and p.get("unit_slug") in headed_units(user)
 
 
 def can_view_all_projects(user: Dict[str, Any]) -> bool:
@@ -148,18 +215,26 @@ def project_scope_filter(user: Dict[str, Any]) -> Dict[str, Any]:
 
     identities: List[Any] = [v for v in (uid, email, name) if v]
 
-    return {
-        "$or": [
-            {"assigned_engineer_id": uid},
-            {"assigned_to": {"$in": identities}},
-            {"team_members": {"$in": identities}},
-            {"members": {"$in": identities}},
-            {"owner_id": uid},
-            {"created_by": {"$in": identities}},
-            {"delivery_coordinator_id": uid},
-            {"executive_approver_id": uid},
-        ]
-    }
+    clauses: List[Dict[str, Any]] = [
+        {"assigned_engineer_id": uid},
+        {"assigned_to": {"$in": identities}},
+        {"team_members": {"$in": identities}},
+        {"members": {"$in": identities}},
+        {"owner_id": uid},
+        {"created_by": {"$in": identities}},
+        {"delivery_coordinator_id": uid},
+        {"executive_approver_id": uid},
+        # Staff added to a project by its unit head.
+        {"collaborator_ids": uid},
+    ]
+
+    # A head sees everything under the unit they run, including work they
+    # did not open themselves.
+    headed = headed_units(user)
+    if headed:
+        clauses.append({"unit_slug": {"$in": headed}})
+
+    return {"$or": clauses}
 
 
 def redact_candidate(candidate: Dict[str, Any], user: Dict[str, Any]) -> Dict[str, Any]:

@@ -29,6 +29,7 @@ import {
 import BuildHistory from "../components/BuildHistory";
 import DeployedTools from "../components/flowforge/DeployedTools";
 import { Button } from "../components/ui/button";
+import { useUser, canCreateProjects } from "../context/UserContext";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "../components/ui/breadcrumb";
 
 // AI Agents for Technology & Build (from Agent Registry)
@@ -219,6 +220,7 @@ const STATUS_CONFIG = {
 };
 
 const TechnologyAndBuild = () => {
+  const user = useUser();
   const [selectedPod, setSelectedPod] = useState("all");
   const [activeTab, setActiveTab] = useState("main");
 
@@ -272,13 +274,16 @@ const TechnologyAndBuild = () => {
                 Build New Tool
               </Button>
             </Link>
-            {/* Had neither an onClick nor a link, so clicking it did nothing. */}
-            <Link to="/flow/projects/new">
-              <Button className="bg-cyan-600 hover:bg-cyan-700" data-testid="tech-new-project-btn">
-                <Plus className="w-4 h-4 mr-2" />
-                New Project
-              </Button>
-            </Link>
+            {/* Had neither an onClick nor a link, so clicking it did nothing.
+                Now also limited to unit heads, who are the ones who open work. */}
+            {canCreateProjects(user) && (
+              <Link to="/flow/projects/new">
+                <Button className="bg-cyan-600 hover:bg-cyan-700" data-testid="tech-new-project-btn">
+                  <Plus className="w-4 h-4 mr-2" />
+                  New Project
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
       </div>

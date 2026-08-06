@@ -46,7 +46,7 @@ import { authAPI, flowforgeAPI, unitsAPI } from "../lib/api";
 import { toast } from "sonner";
 import { AnalyticsProvider, useAnalytics } from "../context/AnalyticsContext";
 import { useTheme } from "../context/ThemeContext";
-import { hasUnitAccess, hasFullAccess, canManageUsers } from "../context/UserContext";
+import { hasUnitAccess, hasFullAccess, canManageUsers, canCreateProjects, isUnitHead } from "../context/UserContext";
 import FlowForgeFAB from "./FlowForgeFAB";
 
 const UNITS = [
@@ -157,7 +157,7 @@ const DashboardLayoutInner = ({ children, user }) => {
     if (path === "/proposals") return "Proposals";
     if (path === "/tasks") return "Tasks";
     if (path === "/admin/approvals") return "Approval Queue";
-    if (path === "/admin/users") return "User Management";
+    if (path === "/admin/users") return "Staff Management";
     if (path.startsWith("/admin/assessments")) return "Candidate Assessments";
     if (path.startsWith("/talent")) {
       if (path === "/talent") return "Talent & Delivery";
@@ -198,26 +198,43 @@ const DashboardLayoutInner = ({ children, user }) => {
   }, []);
 
   // Only show the units this person is allowed to enter.
-  // Super admins and HR see every unit; everyone else sees their assignments (+ Flow, which is org-wide).
-  // Merge hardcoded units with admin-created dynamic units.
+  // Super admins and HR see every unit; everyone else sees their assignments.
+  //
+  // The units collection now holds a record for each of the built-in units
+  // too (a unit head is stored on the unit, so the unit has to exist as a
+  // record). Those records describe the same units this file already lists
+  // by hand, so anything already in UNITS is dropped here -- otherwise every
+  // built-in unit renders twice, once from each source.
+  const builtInSlugs = new Set(UNITS.map((u) => u.slug));
   const dynamicNavUnits = dynamicUnits
-    .filter((u) => hasUnitAccess(user, u.slug))
+    .filter((u) => !builtInSlugs.has(u.slug) && hasUnitAccess(user, u.slug))
     .map((u) => ({
       slug: u.slug,
       name: u.name,
       path: `/unit/${u.slug}`,
       icon: DYN_ICON_MAP[u.icon] || Building2,
     }));
-  const visibleUnits = [
-    ...UNITS.filter((unit) => hasUnitAccess(user, unit.slug)),
-    ...dynamicNavUnits,
-  ];
+
+  // Staff who have not been put on a project yet get no business units at
+  // all -- not Flow, not a unit page. Everything under this heading is work
+  // they have not been given, so it stays closed until their unit head adds
+  // them to a project.
+  const seesBusinessUnits =
+    hasFullAccess(user) || canManageUsers(user) || isUnitHead(user) || Boolean(user?.has_projects);
+
+  const visibleUnits = seesBusinessUnits
+    ? [...UNITS.filter((unit) => hasUnitAccess(user, unit.slug)), ...dynamicNavUnits]
+    : [];
 
   const showAdminSection = user?.role === "super_admin" || canManageUsers(user) || user?.is_hr;
 
   // Quick navigator: every destination this person can reach, searchable from the top bar
   const searchIndex = [
-    { label: "New Project", path: "/flow/projects/new", group: "Portal" },
+    // Only a unit head (or an admin) can open a project, so offering it to
+    // anyone else is a route to a refusal.
+    ...(canCreateProjects(user)
+      ? [{ label: "New Project", path: "/flow/projects/new", group: "Portal" }]
+      : []),
     { label: "Dashboard", path: "/dashboard", group: "Portal" },
     // Proposals stay out of quick search for non-administrators too; a hidden
     // menu item still reachable from the search bar is not hidden.
@@ -227,13 +244,20 @@ const DashboardLayoutInner = ({ children, user }) => {
     { label: "Feedback & IT Support", path: "/feedback", group: "Portal" },
     { label: "Tasks", path: "/tasks", group: "Portal" },
     ...visibleUnits.map((u) => ({ label: u.name, path: u.path, group: "Units" })),
-    { label: "Flow · Pipeline Board", path: "/flow/board", group: "THCO Flow" },
-    { label: "Flow · Projects", path: "/flow/projects", group: "THCO Flow" },
-    { label: "Flow · Contacts", path: "/flow/contacts", group: "THCO Flow" },
-    { label: "Flow · Calendar", path: "/flow/calendar", group: "THCO Flow" },
-    { label: "Flow · Prospects", path: "/flow/prospects", group: "THCO Flow" },
-    { label: "Flow · Tickets", path: "/flow/tickets", group: "THCO Flow" },
-    { label: "Flow · Messages", path: "/flow/messages", group: "THCO Flow" },
+    // Flow is hidden from staff who are not on a project, so it must be out
+    // of quick search for them too -- a hidden menu item still reachable from
+    // the search bar is not hidden.
+    ...(hasUnitAccess(user, "flow")
+      ? [
+          { label: "Flow · Pipeline Board", path: "/flow/board", group: "THCO Flow" },
+          { label: "Flow · Projects", path: "/flow/projects", group: "THCO Flow" },
+          { label: "Flow · Contacts", path: "/flow/contacts", group: "THCO Flow" },
+          { label: "Flow · Calendar", path: "/flow/calendar", group: "THCO Flow" },
+          { label: "Flow · Prospects", path: "/flow/prospects", group: "THCO Flow" },
+          { label: "Flow · Tickets", path: "/flow/tickets", group: "THCO Flow" },
+          { label: "Flow · Messages", path: "/flow/messages", group: "THCO Flow" },
+        ]
+      : []),
     ...(hasUnitAccess(user, "talent")
       ? [
           { label: "AI Candidate Sourcing", path: "/talent/sourcing", group: "Talent Tools" },
@@ -247,7 +271,7 @@ const DashboardLayoutInner = ({ children, user }) => {
           { label: "Duplicate Review", path: "/talent/duplicates", group: "Talent Tools" },
         ]
       : []),
-    ...(canManageUsers(user) ? [{ label: "User Management", path: "/admin/users", group: "Admin" }] : []),
+    ...(canManageUsers(user) ? [{ label: "Staff Management", path: "/admin/users", group: "Admin" }] : []),
     ...(user?.role === "super_admin" || user?.is_hr
       ? [{ label: "Candidate Assessments", path: "/admin/assessments", group: "Admin" }]
       : []),
@@ -343,7 +367,11 @@ const DashboardLayoutInner = ({ children, user }) => {
             <NavItem to="/tasks" icon={KanbanSquare} label="Tasks" active={isActive("/tasks")} collapsed={!sidebarOpen} testId="nav-tasks" />
           </div>
 
-          <SectionLabel collapsed={!sidebarOpen}>Business Units</SectionLabel>
+          {/* Hidden entirely for staff with no project: an empty heading is
+              just a reminder of rooms they cannot enter. */}
+          {visibleUnits.length > 0 && (
+            <SectionLabel collapsed={!sidebarOpen}>Business Units</SectionLabel>
+          )}
           <div className="space-y-0.5">
             {visibleUnits.map((unit) => (
               <NavItem
@@ -377,7 +405,7 @@ const DashboardLayoutInner = ({ children, user }) => {
                   <NavItem
                     to="/admin/users"
                     icon={ShieldCheck}
-                    label="User Management"
+                    label="Staff Management"
                     active={isActive("/admin/users")}
                     collapsed={!sidebarOpen}
                     testId="nav-user-management"

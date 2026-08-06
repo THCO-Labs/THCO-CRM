@@ -319,6 +319,9 @@ async def projects_summary(request: Request):
             "completed_at": p.get("completed_at"),
             "board_count": board_counts.get(pid, 0),
             "task_count": task_counts.get(pid, 0),
+            # Projects that predate unit heads are demo data, and the board
+            # should say so rather than presenting them as live work.
+            "is_demo": bool(p.get("is_demo")),
         })
     return out
 

@@ -127,7 +127,7 @@ export default function DelegationBoard() {
                 <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-400">
                   <User className="w-8 h-8 mx-auto mb-2" />
                   <p>No engineers flagged yet</p>
-                  <p className="text-xs mt-1">Go to User Management to flag engineers</p>
+                  <p className="text-xs mt-1">Go to Staff Management to flag engineers</p>
                 </div>
               )}
             </div>

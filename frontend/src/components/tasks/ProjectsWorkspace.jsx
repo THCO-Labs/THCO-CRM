@@ -75,7 +75,18 @@ export default function ProjectsWorkspace({ onSelect }) {
                 {p.status === "lost" ? null : p.stage === 10 ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
                 {p.stage_label}
               </span>
-              {p.client_name && (
+              {/* Sample data from before unit heads existed — marked so nobody
+                  mistakes it for live client work. */}
+              {p.is_demo && (
+                <span
+                  className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200"
+                  title="Sample data, not a live project"
+                  data-testid={`demo-badge-${p.id}`}
+                >
+                  Demo
+                </span>
+              )}
+              {p.client_name && !p.is_demo && (
                 <span className="text-[11px] text-gray-400 truncate max-w-[120px]">{p.client_name}</span>
               )}
             </div>

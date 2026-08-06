@@ -111,6 +111,11 @@ class UserResponse(BaseModel):
     is_legal: Optional[bool] = False
     is_engineering_coordinator: Optional[bool] = False
     is_relationship_owner: Optional[bool] = False
+    # Units this person heads. Resolved from the units collection on load, so
+    # the frontend can offer "New Project" only where it will actually work.
+    headed_units: List[str] = []
+    # Whether they are on any project. Gates THCO Flow in the sidebar.
+    has_projects: bool = False
     is_invoicing_owner: Optional[bool] = False
     is_prospect_owner: Optional[bool] = False
     is_legal: Optional[bool] = False
@@ -378,7 +383,31 @@ async def get_current_user(request: Request) -> dict:
     
     if user.get("status") == "disabled":
         raise HTTPException(status_code=403, detail="Account disabled")
-    
+
+    # Which units this person heads is held on the units themselves, so that
+    # reassigning a head is one write and nobody can be left as the stale head
+    # of a unit somebody else now runs. Resolve it here so every permission
+    # check downstream can stay synchronous.
+    user["headed_units"] = [
+        u["slug"]
+        async for u in db.units.find({"head_user_id": user["user_id"]}, {"_id": 0, "slug": 1})
+    ]
+
+    # Whether this person has any real project. The Business Units section
+    # opens on this: staff who have not been put on a project yet would
+    # otherwise be given rooms that show them nothing.
+    #
+    # Demo projects are excluded deliberately. They predate unit heads and
+    # several were created by ordinary staff, so counting them would hand
+    # somebody the pipeline on the strength of sample data rather than the
+    # work their unit head actually gave them.
+    if permissions.can_view_all_projects(user) or user["headed_units"]:
+        user["has_projects"] = True
+    else:
+        user["has_projects"] = await db.projects.count_documents(
+            {**permissions.project_scope_filter(user), "is_demo": {"$ne": True}}
+        ) > 0
+
     return user
 
 async def log_activity(user_id: str, user_name: str, action: str, unit_slug: str = "", entity_type: str = "", entity_id: str = "", details: str = ""):
@@ -948,6 +977,10 @@ async def get_me(request: Request):
         "is_invoicing_owner": user.get("is_invoicing_owner", False),
         "is_prospect_owner": user.get("is_prospect_owner", False),
         "is_it": user.get("is_it", False),
+        # Resolved per request in get_current_user. The sidebar uses these to
+        # decide whether to offer THCO Flow and the New Project action.
+        "headed_units": user.get("headed_units", []),
+        "has_projects": user.get("has_projects", False),
     }
 
 @api_router.post("/auth/logout")
@@ -1094,12 +1127,30 @@ async def create_user(user_data: dict, request: Request):
     }
     
     await db.users.insert_one(new_user)
-    
+
+    # An admin may appoint the new person head of a unit as they invite them.
+    # A unit has one head, so this replaces whoever held it.
+    head_of_unit = (user_data.get("head_of_unit") or "").strip()
+    if head_of_unit:
+        unit = await db.units.find_one({"slug": head_of_unit}, {"_id": 0, "slug": 1, "name": 1})
+        if not unit:
+            raise HTTPException(status_code=400, detail=f"No unit named {head_of_unit}")
+        await db.units.update_one(
+            {"slug": head_of_unit},
+            {"$set": {"head_user_id": user_id, "head_name": new_user["name"],
+                      "updated_at": datetime.now(timezone.utc).isoformat()}},
+        )
+        # Heading a unit you cannot open is a dead end.
+        await db.users.update_one(
+            {"user_id": user_id},
+            {"$addToSet": {"accessible_units": {"$each": [head_of_unit, "flow"]}}},
+        )
+
     await log_activity(
-        current_user["user_id"], 
-        current_user["name"], 
-        f"Created user {user_data['name']}", 
-        details=f"Role: {new_user['role']}"
+        current_user["user_id"],
+        current_user["name"],
+        f"Created staff member {user_data['name']}",
+        details=f"Role: {new_user['role']}" + (f"; head of {head_of_unit}" if head_of_unit else "")
     )
 
     # Email the new user their login details + platform link (best-effort)
@@ -2965,6 +3016,11 @@ from routers.taskboard import router as taskboard_router, set_db as set_taskboar
 set_taskboard_db(db)
 api_router.include_router(taskboard_router)
 
+# Include Notifications router (in-app notices; raised server-side only)
+from routers.notifications import router as notifications_router, set_db as set_notifications_db
+set_notifications_db(db)
+api_router.include_router(notifications_router)
+
 # Include Talent router (candidate database, CV parsing, external sourcing)
 from routers.talent import router as talent_router, set_db as set_talent_db, ensure_indexes as ensure_talent_indexes
 set_talent_db(db)
@@ -3055,6 +3111,60 @@ async def startup_scheduler():
     # without MONGO_URL, in which case `db` is None.
     if db is not None:
         await ensure_talent_indexes()
+
+
+# ==================== SEED BUSINESS UNITS ====================
+# The eleven units the company is organised into were only ever a hardcoded
+# list in the frontend; the units collection held nothing unless a super admin
+# had created a custom one. A unit head is recorded on the unit, so the unit
+# has to exist as a record before anybody can be appointed to run it.
+#
+# Seeded on boot and idempotent: an existing unit is left completely alone, so
+# a renamed or reconfigured unit is never overwritten and no head is lost.
+CANONICAL_UNITS = [
+    ("talent", "Talent & Delivery"),
+    ("thco-hr", "THCO HR"),
+    ("it-tools", "IT & THCO Tools"),
+    ("sales", "Sales & Business Dev"),
+    ("marketing", "Marketing & Brand"),
+    ("advisory", "Advisory & Consulting"),
+    ("technology", "Technology & Build"),
+    ("operations", "Operations & Finance"),
+    ("academy", "Academy & Learning"),
+    ("client-delivery", "Client Delivery"),
+]
+
+
+@app.on_event("startup")
+async def seed_units_on_boot():
+    if db is None:
+        return
+    created = 0
+    for slug, name in CANONICAL_UNITS:
+        res = await db.units.update_one(
+            {"slug": slug},
+            {"$setOnInsert": {
+                "unit_id": f"unit_{uuid.uuid4().hex[:12]}",
+                "slug": slug,
+                "name": name,
+                "description": "",
+                "icon": "layers",
+                "accent": "#1FB58A",
+                "lead": "",
+                "head_user_id": None,
+                "head_name": None,
+                "config": {"sections": {"overview": True, "tools": True, "team": True,
+                                        "flow": True, "feedback": True},
+                           "userTasks": []},
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "created_by": "system",
+            }},
+            upsert=True,
+        )
+        if res.upserted_id is not None:
+            created += 1
+    if created:
+        logger.info("Seeded %d business unit(s)", created)
 
 
 # ==================== SEED BUNDLED PROPOSALS ====================

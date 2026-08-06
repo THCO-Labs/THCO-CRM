@@ -22,7 +22,7 @@ import { Button } from "../components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../components/ui/dialog";
 import { dashboardAPI, activityAPI, authAPI, unitsAPI } from "../lib/api";
 import { useAnalytics } from "../context/AnalyticsContext";
-import { hasFullAccess, hasUnitAccess } from "../context/UserContext";
+import { hasFullAccess, hasUnitAccess, canCreateProjects, canEnterUnits } from "../context/UserContext";
 
 const UNITS = [
   {
@@ -183,8 +183,12 @@ const Dashboard = () => {
     fetchData();
   }, []);
 
+  // Mirrors the sidebar rule. Staff who have not been put on a project have
+  // not been given any of this work yet, so the whole section stays shut --
+  // including Flow, which used to be treated as open to everyone.
   const hasUnitAccess = (slug) => {
     if (hasFullAccess(user)) return true;
+    if (!canEnterUnits(user)) return false;
     if (slug === "flow") return true;
     return user?.accessible_units?.includes(slug);
   };
@@ -233,8 +237,11 @@ const Dashboard = () => {
     "code": Code, "truck": Truck, "clipboard-list": Users, "headphones": Wrench,
     "folder-kanban": FolderKanban, "lightbulb": Wrench,
   };
+  // The units collection now carries a record for the built-in units too, so
+  // anything already in UNITS is dropped here to stop each one rendering twice.
+  const builtInSlugs = new Set(UNITS.map((u) => u.slug));
   const dynamicNavUnits = dynamicUnits
-    .filter((u) => hasUnitAccess(u.slug))
+    .filter((u) => !builtInSlugs.has(u.slug) && hasUnitAccess(u.slug))
     .map((u) => ({
       name: u.name,
       slug: u.slug,
@@ -272,7 +279,8 @@ const Dashboard = () => {
   // Deliberately the same permission that already guards the button inside
   // THCO Flow -- this surfaces the action, it does not widen or narrow who
   // may take it.
-  const canCreateProject = hasUnitAccess(user, "flow");
+  // Opening a project is a unit head's job, not every Flow user's.
+  const canCreateProject = canCreateProjects(user);
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-10" data-testid="dashboard-page">
@@ -323,7 +331,10 @@ const Dashboard = () => {
         ))}
       </div>
 
-      {/* Units Section */}
+      {/* Units Section — hidden entirely for staff who are not on a project
+          yet. An empty "Your Business Units" heading only advertises what
+          they cannot open; their unit head adding them is what opens it. */}
+      {accessibleUnits.length > 0 && (
       <div>
         <div className="flex items-baseline justify-between mb-5">
           <h2 className="font-display text-[22px] text-gray-900">Your Business Units</h2>
@@ -368,6 +379,7 @@ const Dashboard = () => {
           })}
         </div>
       </div>
+      )}
 
       {/* Recent Activity */}
       {activities.length > 0 && (

@@ -956,6 +956,20 @@ export const unitsAPI = {
     const response = await apiClient.post(`/units/${slug}/invite`, data);
     return response.data;
   },
+  // Appoint, change or clear a unit's head. A unit has one head, so this
+  // replaces whoever held it. Pass null to leave the unit without one.
+  setHead: async (slug, userId) => {
+    const response = await apiClient.put(`/units/${slug}/head`, { user_id: userId || null });
+    return response.data;
+  },
+};
+
+export const notificationsAPI = {
+  list: async (params = {}) => (await apiClient.get('/notifications', { params })).data,
+  unreadCount: async () => (await apiClient.get('/notifications/unread-count')).data,
+  // Omit the id to mark everything read.
+  markRead: async (notificationId) =>
+    (await apiClient.post('/notifications/read', { notification_id: notificationId || null })).data,
 };
 
 export default apiClient;

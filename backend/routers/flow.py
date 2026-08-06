@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from services import permissions
+from services.notifications import notify_added_to_project
 from datetime import datetime, timezone, timedelta
 import uuid
 
@@ -73,6 +74,29 @@ def _generate_project_id() -> str:
     year = datetime.now(timezone.utc).year
     # Find current max number for the year
     return f"THCO-{year}-{uuid.uuid4().hex[:6].upper()}"
+
+
+async def _resolve_collaborators(user_ids: List[str]) -> List[Dict[str, Any]]:
+    """Turn submitted user ids into the name/email snapshots stored on a project.
+
+    Unknown ids are dropped rather than rejected: a stale id from a removed
+    account should not block a head from saving the rest of their team. The
+    name is denormalised so the project still reads correctly later, while
+    collaborator_ids stays the field permission checks match on.
+    """
+    wanted = [uid for uid in dict.fromkeys(user_ids or []) if uid]
+    if not wanted:
+        return []
+    found = await db.users.find(
+        {"user_id": {"$in": wanted}, "status": {"$ne": "disabled"}},
+        {"_id": 0, "user_id": 1, "name": 1, "email": 1},
+    ).to_list(length=len(wanted))
+    by_id = {u["user_id"]: u for u in found}
+    return [
+        {"user_id": uid, "name": by_id[uid].get("name"), "email": by_id[uid].get("email")}
+        for uid in wanted
+        if uid in by_id
+    ]
 
 
 async def _audit(entity_type: str, entity_id: str, action: str, user: dict, details: Optional[Dict[str, Any]] = None):
@@ -200,12 +224,40 @@ class ProjectCreate(BaseModel):
     project_type: str = "new_client"  # new_client | existing_expansion
     source: Optional[str] = ""        # who brought the prospect in
     notes: Optional[str] = ""
+    # The unit this work belongs to. A head may only open projects under the
+    # unit they head, so this decides whether the create is allowed at all.
+    unit_slug: Optional[str] = None
+    # Staff to place on the project from the outset. Each is notified.
+    collaborator_ids: List[str] = []
 
 
 @router.post("/projects")
 async def create_project(data: ProjectCreate, request: Request):
-    """Create a project at Stage 1 (Prospect)."""
+    """Create a project at Stage 1 (Prospect).
+
+    Only a unit's head opens work under it. Staff no longer create their own
+    projects -- they are added to one as a collaborator and see it appear on
+    their dashboard.
+    """
     user = await _get_user(request)
+
+    unit_slug = (data.unit_slug or "").strip() or None
+    if not permissions.is_admin(user):
+        if not permissions.is_unit_head(user):
+            raise HTTPException(
+                status_code=403,
+                detail="Only a unit head can open a project. Ask your unit head "
+                       "to create it and add you to it.",
+            )
+        if not unit_slug:
+            raise HTTPException(status_code=400, detail="Choose the unit this project belongs to")
+        if not permissions.can_create_project_in_unit(user, unit_slug):
+            raise HTTPException(
+                status_code=403,
+                detail=f"You head {', '.join(permissions.headed_units(user))}, not {unit_slug}",
+            )
+
+    collaborators = await _resolve_collaborators(data.collaborator_ids)
 
     project_id = str(uuid.uuid4())
     project_id_display = _generate_project_id()
@@ -228,8 +280,12 @@ async def create_project(data: ProjectCreate, request: Request):
         "sibling_project_id": None,
         "stage_history": [{"stage": 1, "at": _now(), "by": user.get("user_id"), "by_name": user.get("name")}],
         # ownership
+        "unit_slug": unit_slug,
         "created_by": user.get("user_id"),
         "created_by_name": user.get("name"),
+        # staff placed on the project by its unit head
+        "collaborator_ids": [c["user_id"] for c in collaborators],
+        "collaborators": collaborators,
         "delivery_owner_id": None,
         "delivery_owner_name": None,
         "pricing_owner_id": None,
@@ -269,6 +325,9 @@ async def create_project(data: ProjectCreate, request: Request):
 
     await _audit("project", project_id, "created", user, {"stage": 1, "client": data.client_name})
     await _send_stage_email(1, project, user)
+
+    if collaborators:
+        await notify_added_to_project(db, project, collaborators, user)
 
     return _serialize_project(project)
 
@@ -388,6 +447,57 @@ class ProjectEdit(BaseModel):
     source: Optional[str] = None
 
 
+class CollaboratorsSet(BaseModel):
+    # The full intended team. Sent whole rather than as add/remove deltas so
+    # two heads editing at once cannot interleave into a half-applied team.
+    collaborator_ids: List[str] = []
+
+
+@router.put("/projects/{project_id}/collaborators")
+async def set_collaborators(project_id: str, data: CollaboratorsSet, request: Request):
+    """Set the staff working on a project.
+
+    Only the head of the project's unit (or whoever opened it, or an admin)
+    may change this -- being added to a project does not let you add others.
+    Newly added people are notified; people already on it are not notified
+    again, so re-saving the same team sends nothing.
+    """
+    user = await _get_user(request)
+
+    project = await db.projects.find_one({"id": project_id}, {"_id": 0})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    permissions.require(
+        permissions.can_manage_project(user, project),
+        "Only this project's unit head can change who works on it",
+    )
+
+    before = set(project.get("collaborator_ids") or [])
+    collaborators = await _resolve_collaborators(data.collaborator_ids)
+    after_ids = [c["user_id"] for c in collaborators]
+
+    await db.projects.update_one(
+        {"id": project_id},
+        {"$set": {"collaborator_ids": after_ids, "collaborators": collaborators,
+                  "updated_at": _now()}},
+    )
+
+    added = [c for c in collaborators if c["user_id"] not in before]
+    if added:
+        await notify_added_to_project(db, project, added, user)
+
+    await _audit("project", project_id, "collaborators_set", user,
+                 {"added": len(added), "total": len(after_ids)})
+
+    return {
+        "project_id": project_id,
+        "collaborators": collaborators,
+        "added": len(added),
+        "removed": len(before - set(after_ids)),
+    }
+
+
 @router.put("/projects/{project_id}")
 async def edit_project(project_id: str, data: ProjectEdit, request: Request):
     """Correct a project's details.
@@ -405,14 +515,10 @@ async def edit_project(project_id: str, data: ProjectEdit, request: Request):
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    if not permissions.can_view_all_projects(user):
-        scope = permissions.project_scope_filter(user)
-        mine = await db.projects.find_one({"id": project_id, **scope}, {"_id": 0, "id": 1})
-        if not mine:
-            raise HTTPException(
-                status_code=403,
-                detail="You can only edit projects you are assigned to",
-            )
+    permissions.require(
+        permissions.can_manage_project(user, project),
+        "Only this project's unit head or an administrator can edit it",
+    )
 
     # The create endpoint stores the client under client_name_snapshot, so an
     # edit writing `client_name` would add a stray field the rest of the app
@@ -466,14 +572,10 @@ async def delete_project(project_id: str, request: Request, permanent: bool = Fa
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    if not permissions.can_view_all_projects(user):
-        scope = permissions.project_scope_filter(user)
-        mine = await db.projects.find_one({"id": project_id, **scope}, {"_id": 0, "id": 1})
-        if not mine:
-            raise HTTPException(
-                status_code=403,
-                detail="You can only remove projects you are assigned to",
-            )
+    permissions.require(
+        permissions.can_manage_project(user, project),
+        "Only this project's unit head or an administrator can remove it",
+    )
 
     if permanent and not permissions.is_super_admin(user):
         raise HTTPException(

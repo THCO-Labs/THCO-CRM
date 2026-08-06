@@ -1,3 +1,4 @@
+import asyncio
 import os
 import logging
 import uuid
@@ -52,9 +53,19 @@ async def send_email(to: list, subject: str, html: str, cc: list = None, templat
         if cc:
             params["cc"] = cc
 
-        resend.Emails.send(params)
+        # The Resend SDK is synchronous. Calling it directly from async code
+        # blocks the event loop, which stops the server answering anybody for
+        # as long as the send takes -- and a slow or unreachable Resend then
+        # reads to every user as the whole app hanging. Push it to a thread
+        # and cap how long it may take: a notification email is never worth
+        # holding a request open for.
+        await asyncio.wait_for(asyncio.to_thread(resend.Emails.send, params), timeout=15)
         log_entry["status"] = "sent"
         logger.info(f"Email sent: {subject} -> {to}")
+    except asyncio.TimeoutError:
+        log_entry["status"] = "failed"
+        log_entry["error"] = "timed out after 15s"
+        logger.error(f"Email timed out: {subject} -> {to}")
     except Exception as e:
         log_entry["status"] = "failed"
         log_entry["error"] = str(e)

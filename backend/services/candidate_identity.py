@@ -105,11 +105,20 @@ def _name_tokens(value: Optional[str]) -> set:
     return {t for t in normalise_name(value).split() if len(t) > 2}
 
 
-def _linkedin_slug(url: Optional[str]) -> Optional[str]:
+def linkedin_slug(url: Optional[str]) -> Optional[str]:
+    """The profile handle from a LinkedIn URL, lowercased.
+
+    Public because it is stored on the candidate as `linkedin_slug`, so that
+    matching is an indexed equality rather than a regex across every record.
+    """
     if not url:
         return None
     match = re.search(r"linkedin\.com/in/([^/?#]+)", str(url), re.IGNORECASE)
     return match.group(1).strip().lower().rstrip("/") if match else None
+
+
+# Kept for the existing internal call sites.
+_linkedin_slug = linkedin_slug
 
 
 def _github_user(url: Optional[str]) -> Optional[str]:
@@ -201,10 +210,14 @@ async def find_match(db, incoming: Dict[str, Any]) -> Dict[str, Any]:
         clauses.append({"email_normalised": email})
     if phone:
         clauses.append({"phone_normalised": phone})
+    # Matched on stored normalised forms rather than case-insensitive regex.
+    # A regex with $options "i" cannot use an index, so each of these clauses
+    # was reading the whole collection -- fine at a thousand candidates,
+    # ruinous at twenty thousand, and it degraded as the import succeeded.
     if slug:
-        clauses.append({"linkedin": {"$regex": re.escape(slug), "$options": "i"}})
-    if incoming.get("name"):
-        clauses.append({"name": {"$regex": f"^{re.escape(incoming['name'])}$", "$options": "i"}})
+        clauses.append({"linkedin_slug": slug})
+    if name_tokens:
+        clauses.append({"name_normalised": normalise_name(incoming.get("name"))})
 
     if not clauses:
         return {"decision": "create", "score": 0.0, "candidate": None, "reasons": []}

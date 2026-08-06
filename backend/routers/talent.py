@@ -38,6 +38,16 @@ async def ensure_indexes():
         ("candidates", [("status", 1)], {}),
         ("candidates", [("source", 1)], {}),
         ("candidates", [("experience_years", 1)], {}),
+        # Identity resolution matches on these on every imported document.
+        # They were written but never indexed, so each incoming CV read the
+        # whole collection -- tolerable at a thousand candidates, and the
+        # reason the bulk import slowed to a stop at five thousand.
+        ("candidates", [("email_normalised", 1)], {"sparse": True}),
+        ("candidates", [("phone_normalised", 1)], {"sparse": True}),
+        ("candidates", [("name_normalised", 1)], {"sparse": True}),
+        ("candidates", [("linkedin_slug", 1)], {"sparse": True}),
+        ("candidates", [("resume_hash", 1)], {"sparse": True}),
+        ("candidates", [("text_hash", 1)], {"sparse": True}),
         # Preferred: index the parsed CV body too, so full-text search reaches
         # CV content. Azure Cosmos DB rejects this -- raw_text holds up to 50KB
         # per document and the server errors out -- so a reduced form without

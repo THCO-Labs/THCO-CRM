@@ -3195,6 +3195,40 @@ CANONICAL_UNITS = [
 
 
 @app.on_event("startup")
+async def backfill_candidate_match_keys():
+    """Fill in the normalised fields identity matching now searches on.
+
+    Matching moved off case-insensitive regex, which could not use an index,
+    onto stored normalised values. Candidates imported before that change
+    have no `name_normalised` or `linkedin_slug`, and would quietly stop
+    matching on those routes -- so they are derived once, here, from what is
+    already on the record.
+
+    Effectively one-shot: it only touches documents missing the field.
+    """
+    if db is None:
+        return
+    from services import candidate_identity as identity
+
+    filled = 0
+    cursor = db.candidates.find(
+        {"name_normalised": {"$exists": False}},
+        {"_id": 0, "candidate_id": 1, "name": 1, "linkedin": 1},
+    )
+    async for c in cursor:
+        await db.candidates.update_one(
+            {"candidate_id": c["candidate_id"]},
+            {"$set": {
+                "name_normalised": identity.normalise_name(c.get("name")),
+                "linkedin_slug": identity.linkedin_slug(c.get("linkedin")),
+            }},
+        )
+        filled += 1
+    if filled:
+        logger.info("Backfilled match keys on %d candidate(s)", filled)
+
+
+@app.on_event("startup")
 async def label_pre_unit_head_projects():
     """Mark the projects that predate unit heads as demo data.
 

@@ -374,6 +374,10 @@ async def import_cv(db, file_bytes: bytes, filename: str,
         "filename": filename,
         "email_normalised": identity.normalise_email(parsed.get("email")),
         "phone_normalised": identity.normalise_phone(parsed.get("phone")),
+        # Stored so identity matching can compare with an indexed equality
+        # rather than a case-insensitive regex over every candidate.
+        "name_normalised": identity.normalise_name(parsed.get("name")),
+        "linkedin_slug": identity.linkedin_slug(parsed.get("linkedin")),
         "source": source.get("source", "upload"),
         "source_reference": source.get("reference"),
         "status": "new",

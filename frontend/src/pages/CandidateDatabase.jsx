@@ -38,24 +38,25 @@ const CandidateDatabase = () => {
   const [selectedCandidate, setSelectedCandidate] = useState(null);
   const [stats, setStats] = useState(null);
   const [openingCv, setOpeningCv] = useState(false);
+  const [cvView, setCvView] = useState(null); // {url, name, viewable, candidate}
 
-  // Open a CV that arrived by email. The tab has to be opened synchronously
-  // off the click or the browser treats it as an unrequested popup and blocks
-  // it, so it is opened first and pointed at the document once it arrives.
-  const openStoredCv = async (candidateId) => {
-    const tab = window.open("", "_blank");
+  // Show a CV that arrived by email.
+  //
+  // This used to open a blank tab and point it at a blob URL once the document
+  // arrived. The document was fine -- the browser simply would not render a
+  // blob in a tab it had opened as about:blank, so the tab stayed empty. Shown
+  // in a panel here instead: no popup to be blocked, no second tab to end up
+  // blank, and the recruiter stays on the candidate they were reading.
+  const openStoredCv = async (candidate) => {
     setOpeningCv(true);
     try {
-      const url = await talentAPI.openResumeFile(candidateId);
-      if (tab) {
-        tab.location = url;
-      } else {
-        window.location.assign(url);
-      }
-      // Give the tab time to load before releasing the blob.
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      const url = await talentAPI.openResumeFile(candidate.candidate_id);
+      const name = candidate.filename || "CV";
+      // Browsers render PDFs but not Word files, so those are offered as a
+      // download rather than shown in a frame that would sit empty.
+      const viewable = /\.pdf$/i.test(name);
+      setCvView({ url, name, viewable, candidate: candidate.name || "Candidate" });
     } catch (err) {
-      if (tab) tab.close();
       toast.error(
         err?.response?.status === 404
           ? "No document stored for this candidate — it was imported before CVs were kept."
@@ -64,6 +65,11 @@ const CandidateDatabase = () => {
     } finally {
       setOpeningCv(false);
     }
+  };
+
+  const closeCv = () => {
+    if (cvView?.url) URL.revokeObjectURL(cvView.url);
+    setCvView(null);
   };
 
   const loadCandidates = async () => {
@@ -527,13 +533,13 @@ const CandidateDatabase = () => {
                     {selectedCandidate.has_resume_file && (
                       <button
                         type="button"
-                        onClick={() => openStoredCv(selectedCandidate.candidate_id)}
+                        onClick={() => openStoredCv(selectedCandidate)}
                         disabled={openingCv}
                         className="flex items-center gap-1 text-xs text-blue-600 hover:underline mb-2 disabled:opacity-60"
                         data-testid="open-stored-cv"
                       >
                         <ExternalLink className="w-3 h-3" />
-                        {openingCv ? "Opening…" : "Open original CV"}
+                        {openingCv ? "Opening…" : "View original CV"}
                       </button>
                     )}
                     <div className="bg-gray-50 rounded-lg p-4 max-h-96 overflow-y-auto border border-gray-100">
@@ -544,6 +550,76 @@ const CandidateDatabase = () => {
                   </div>
                 )}
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* The CV itself. Shown here rather than in a new tab, which browsers
+          refuse to render a blob into and left blank. */}
+      <AnimatePresence>
+        {cvView && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4"
+            onClick={closeCv}
+            data-testid="cv-viewer"
+          >
+            <motion.div
+              initial={{ scale: 0.97, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.97, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-xl w-full max-w-5xl h-[90vh] flex flex-col overflow-hidden shadow-2xl"
+            >
+              <div className="flex items-center justify-between gap-4 px-5 py-3 border-b border-gray-100 shrink-0">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">{cvView.candidate}</p>
+                  <p className="text-[11px] text-gray-400 truncate">{cvView.name}</p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <a
+                    href={cvView.url}
+                    download={cvView.name}
+                    className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                    data-testid="cv-download"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Download
+                  </a>
+                  <button
+                    onClick={closeCv}
+                    className="p-1.5 hover:bg-gray-100 rounded-lg"
+                    aria-label="Close"
+                    data-testid="cv-close"
+                  >
+                    <X className="w-4 h-4 text-gray-500" />
+                  </button>
+                </div>
+              </div>
+
+              {cvView.viewable ? (
+                <iframe
+                  src={cvView.url}
+                  title={`${cvView.candidate} — CV`}
+                  className="flex-1 w-full border-0"
+                  data-testid="cv-frame"
+                />
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-8">
+                  <p className="text-sm text-gray-600">
+                    This CV is a Word document, which browsers cannot display.
+                  </p>
+                  <a
+                    href={cvView.url}
+                    download={cvView.name}
+                    className="text-sm text-blue-600 hover:underline"
+                  >
+                    Download {cvView.name}
+                  </a>
+                </div>
+              )}
             </motion.div>
           </motion.div>
         )}

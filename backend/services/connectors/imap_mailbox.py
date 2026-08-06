@@ -197,9 +197,33 @@ class ImapMailboxConnector(Connector):
                     if yielded >= limit:
                         break
 
-                    typ, data = await asyncio.to_thread(
-                        lambda u=uid: client.uid("fetch", str(u), "(BODY.PEEK[])")
-                    )
+                    # Gmail hangs up on long-lived IMAP connections, and a run
+                    # working through thousands of messages is exactly that.
+                    # A dropped socket is not a reason to lose the whole run --
+                    # reconnect and carry on from the same UID. The cursor only
+                    # advances past messages actually read, so a reconnect
+                    # cannot skip anything.
+                    typ = data = None
+                    for attempt in (1, 2, 3):
+                        try:
+                            typ, data = await asyncio.to_thread(
+                                lambda u=uid: client.uid("fetch", str(u), "(BODY.PEEK[])")
+                            )
+                            break
+                        except Exception as e:
+                            logger.warning(
+                                "IMAP fetch of UID %s failed (%s); reconnecting (attempt %d/3)",
+                                uid, e, attempt,
+                            )
+                            if attempt == 3:
+                                raise
+                            try:
+                                await asyncio.to_thread(client.logout)
+                            except Exception:
+                                pass
+                            await asyncio.sleep(2 * attempt)
+                            client = await asyncio.to_thread(self._connect)
+
                     if typ != "OK" or not data or not data[0]:
                         continue
 

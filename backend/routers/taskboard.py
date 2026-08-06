@@ -332,6 +332,12 @@ async def projects_summary(request: Request):
     ]):
         task_counts[c["_id"]] = c["count"]
 
+    # Unit heads, so each card can name who runs the unit its project sits in.
+    unit_heads = {
+        u["slug"]: u.get("head_name")
+        async for u in db.units.find({}, {"_id": 0, "slug": 1, "head_name": 1})
+    }
+
     # Stage label map (mirrors flow.py STAGES) for a human-readable status
     stage_labels = {
         1: "New Client", 2: "Coordinator Picked", 3: "Meeting Scheduled",
@@ -373,6 +379,14 @@ async def projects_summary(request: Request):
             # board, works inside it, or only reads it.
             "unit_slug": p.get("unit_slug"),
             "collaborator_ids": p.get("collaborator_ids") or [],
+            # Who is on the project, and who runs the unit it belongs to.
+            # Everybody on a project can see the rest of the team -- knowing
+            # who you are working alongside is part of being on it.
+            "collaborators": [
+                {"user_id": c.get("user_id"), "name": c.get("name")}
+                for c in (p.get("collaborators") or [])
+            ],
+            "unit_head_name": unit_heads.get(p.get("unit_slug")),
         })
     return out
 

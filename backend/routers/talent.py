@@ -38,6 +38,9 @@ async def ensure_indexes():
         ("candidates", [("status", 1)], {}),
         ("candidates", [("source", 1)], {}),
         ("candidates", [("experience_years", 1)], {}),
+        # The candidate list sorts on this. Without an index the database
+        # sorted the whole matching set in memory on every page view.
+        ("candidates", [("updated_at", -1)], {}),
         # Identity resolution matches on these on every imported document.
         # They were written but never indexed, so each incoming CV read the
         # whole collection -- tolerable at a thousand candidates, and the
@@ -341,6 +344,19 @@ async def upload_bulk_cvs(
     return {"total": len(files), "results": results}
 
 
+# Everything the candidate table renders, and nothing else. Notably excludes
+# raw_text -- the parsed CV body -- which is the bulk of a candidate document
+# and is only needed when somebody opens one.
+LIST_PROJECTION = {
+    "_id": 0,
+    "raw_text": 0,
+    "employment": 0,
+    "education": 0,
+    "certifications": 0,
+    "notes": 0,
+}
+
+
 @router.get("/candidates")
 async def list_candidates(
     request: Request,
@@ -389,10 +405,20 @@ async def list_candidates(
         filters["experience_years"] = exp_filter
 
     total = await db.candidates.count_documents(filters)
-    cursor = db.candidates.find(filters).sort("updated_at", -1).skip(skip).limit(limit)
+
+    # The list shows names, skills and status -- it has never shown the CV
+    # text, but it was sending all of it: raw_text holds up to 50KB per
+    # candidate, so a page of fifty shipped megabytes of body text nobody
+    # reads, to render a table. The full record, text included, is still one
+    # request away on the candidate itself.
+    cursor = (
+        db.candidates.find(filters, LIST_PROJECTION)
+        .sort("updated_at", -1)
+        .skip(skip)
+        .limit(limit)
+    )
     candidates = []
     async for doc in cursor:
-        doc["_id"] = str(doc["_id"])
         candidates.append(doc)
 
     return {"total": total, "skip": skip, "limit": limit, "candidates": candidates}

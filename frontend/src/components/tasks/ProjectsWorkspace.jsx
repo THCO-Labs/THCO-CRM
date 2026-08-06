@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Loader2, FolderKanban, LayoutDashboard, User, CheckCircle2, Clock } from "lucide-react";
+import { Loader2, FolderKanban, LayoutDashboard, User, Users, CheckCircle2, Clock } from "lucide-react";
 import { tasksAPI } from "../../lib/api";
 
 /**
@@ -99,13 +99,45 @@ export default function ProjectsWorkspace({ onSelect }) {
               <p className="text-[10px] font-mono text-gray-400 mb-3">{p.project_id_display}</p>
             )}
 
-            {/* Coordinator */}
-            {p.coordinator_name && (
-              <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-4">
+            {/* Who runs the unit this project belongs to. */}
+            {(p.unit_head_name || p.coordinator_name) && (
+              <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-2">
                 <User className="w-3 h-3" />
-                <span className="truncate">{p.coordinator_name}</span>
+                <span className="truncate">
+                  {p.unit_head_name || p.coordinator_name}
+                  {p.unit_head_name && <span className="text-gray-400"> · unit head</span>}
+                </span>
               </div>
             )}
+
+            {/* The team. Everybody on the project sees who else is on it --
+                knowing who you are working alongside is part of being on it. */}
+            <div className="mb-4" data-testid={`team-${p.id}`}>
+              {(p.collaborators || []).length === 0 ? (
+                <p className="text-[11px] text-gray-400">No one added yet</p>
+              ) : (
+                <div className="flex items-center gap-1 flex-wrap">
+                  <Users className="w-3 h-3 text-gray-400 shrink-0" />
+                  {p.collaborators.slice(0, 3).map((c) => (
+                    <span
+                      key={c.user_id}
+                      className="text-[11px] px-1.5 py-0.5 rounded-full bg-[#F7F6F3] border border-[#EAE7E0] text-gray-600"
+                      title={c.name}
+                    >
+                      {(c.name || "").split(" ")[0]}
+                    </span>
+                  ))}
+                  {p.collaborators.length > 3 && (
+                    <span
+                      className="text-[11px] text-gray-400"
+                      title={p.collaborators.map((c) => c.name).join(", ")}
+                    >
+                      +{p.collaborators.length - 3} more
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Counts */}
             <div className="flex items-center gap-4 pt-3 border-t border-gray-100">

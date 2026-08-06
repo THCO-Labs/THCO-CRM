@@ -40,6 +40,28 @@ const CandidateDatabase = () => {
   const [openingCv, setOpeningCv] = useState(false);
   const [cvView, setCvView] = useState(null); // {url, name, viewable, candidate}
 
+  // The list no longer carries the CV body -- sending every candidate's full
+  // text to draw a table was most of what made the page slow. Opening one
+  // fetches the whole record, so the row appears immediately and the text
+  // arrives a moment later rather than holding up the list for everybody.
+  const openCandidate = async (row) => {
+    if (selectedCandidate?.candidate_id === row.candidate_id) {
+      setSelectedCandidate(null);
+      return;
+    }
+    setSelectedCandidate(row); // show what we already have, at once
+    try {
+      const full = await talentAPI.getCandidate(row.candidate_id);
+      // Guard against a slow response for a candidate the user has since
+      // closed or moved on from.
+      setSelectedCandidate((cur) =>
+        cur && cur.candidate_id === row.candidate_id ? { ...cur, ...full } : cur
+      );
+    } catch {
+      /* the summary is still on screen; only the CV text is missing */
+    }
+  };
+
   // Show a CV that arrived by email.
   //
   // This used to open a blank tab and point it at a blob URL once the document
@@ -325,7 +347,7 @@ const CandidateDatabase = () => {
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors cursor-pointer"
-                      onClick={() => setSelectedCandidate(selectedCandidate?.candidate_id === c.candidate_id ? null : c)}
+                      onClick={() => openCandidate(c)}
                     >
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">

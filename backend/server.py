@@ -3012,6 +3012,23 @@ async def run_scheduled_job(request: Request, job: str):
 async def healthz():
     return {"status": "ok"}
 
+
+@app.get("/version")
+async def version():
+    """Which commit this container is actually running.
+
+    Deliberately unauthenticated and outside /api, so the deploy can check it
+    before anything else exists. A green deploy is not evidence that new code
+    is serving -- the health check answers just as happily from the old
+    container -- and two commits once sat "deployed" for an afternoon while
+    production kept running the previous build. This makes that visible in one
+    request instead of being inferred from behaviour.
+    """
+    return {
+        "sha": os.environ.get("BUILD_SHA", "unknown"),
+        "built_at": os.environ.get("BUILD_TIME", "unknown"),
+    }
+
 @api_router.get("/notifications/badge")
 async def get_notification_badge(request: Request):
     """Get notification badge counts for the logged-in user's role."""

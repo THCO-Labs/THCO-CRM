@@ -62,6 +62,10 @@ jobs:
           cache-from: type=registry,ref=${{ secrets.ACR_NAME }}.azurecr.io/thco-crm:buildcache
           cache-to: type=registry,ref=${{ secrets.ACR_NAME }}.azurecr.io/thco-crm:buildcache,mode=max
           provenance: false
+          # Baked into the image so the running app can say which commit it is.
+          build-args: |
+            BUILD_SHA=${{ github.sha }}
+            BUILD_TIME=${{ github.event.repository.updated_at }}
 
       - name: Roll the container app onto the new image
         run: |
@@ -70,21 +74,27 @@ jobs:
             --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
             --image "${{ secrets.ACR_NAME }}.azurecr.io/${IMAGE_NAME}:${GITHUB_SHA}"
 
-      - name: Wait for the app to report healthy
+      # Waits for THIS commit to be the one answering, not merely for something
+      # to answer. /healthz returns 200 from the previous container just as
+      # readily, so polling it proved only that the app was up -- which is how
+      # two commits reported a successful deploy while production carried on
+      # serving the build before them.
+      - name: Wait for this commit to be the one serving
         run: |
           fqdn=$(az containerapp show \
             --name "${{ secrets.AZURE_CONTAINERAPP_NAME }}" \
             --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
             --query properties.configuration.ingress.fqdn -o tsv)
-          echo "Polling https://${fqdn}/healthz"
-          for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' "https://${fqdn}/healthz" || true)
-            if [ "$code" = "200" ]; then
-              echo "Healthy after ${i} attempt(s): https://${fqdn}"
+          echo "Waiting for ${GITHUB_SHA} at https://${fqdn}/version"
+          for i in $(seq 1 40); do
+            live=$(curl -s --max-time 30 "https://${fqdn}/version" \
+                   | sed -n 's/.*"sha"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+            if [ "$live" = "$GITHUB_SHA" ]; then
+              echo "Live after ${i} attempt(s): ${live}"
               exit 0
             fi
-            echo "  attempt $i: HTTP ${code:-none}"
-            sleep 10
+            echo "  attempt $i: serving ${live:-nothing}"
+            sleep 15
           done
-          echo "App did not become healthy within 5 minutes."
+          echo "::error::${GITHUB_SHA} never came up. Production is still serving ${live:-an unknown build}."
           exit 1

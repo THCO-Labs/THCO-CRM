@@ -62,10 +62,19 @@ RUN useradd --create-home --uid 10001 appuser \
     && chown -R appuser:appuser /app
 USER appuser
 
+# Stamped by the deploy with the commit being built, and reported by
+# /api/version. Without it, whether a deploy actually reached production can
+# only be inferred from behaviour -- which is how two commits sat "deployed"
+# for an afternoon while the old code kept serving.
+ARG BUILD_SHA=unknown
+ARG BUILD_TIME=unknown
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PORT=8000 \
-    TESSERACT_CMD=/usr/bin/tesseract
+    TESSERACT_CMD=/usr/bin/tesseract \
+    BUILD_SHA=${BUILD_SHA} \
+    BUILD_TIME=${BUILD_TIME}
 
 EXPOSE 8000
 

@@ -7,6 +7,7 @@ import {
   Check,
   Trash2,
   KeyRound,
+  Pencil,
   ShieldCheck,
   Users as UsersIcon,
   Loader2,
@@ -74,6 +75,8 @@ export default function UserManagement() {
   const [editUser, setEditUser] = useState(null);
   const [editUnits, setEditUnits] = useState([]);
   const [editRole, setEditRole] = useState("team_member");
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
 
   // Password reset
@@ -251,21 +254,43 @@ export default function UserManagement() {
     setEditUser(u);
     setEditUnits(u.accessible_units || []);
     setEditRole(u.role);
+    // Name and email are correctable too: an invitation sent to a mistyped
+    // address reaches nobody, and previously nothing in the interface could
+    // fix it.
+    setEditName(u.name || "");
+    setEditEmail(u.email || "");
   };
 
   const saveEdit = async () => {
+    const name = editName.trim();
+    const email = editEmail.trim().toLowerCase();
+    if (!name) return toast.error("Name cannot be empty");
+    if (!email) return toast.error("Email cannot be empty");
+
     setSavingEdit(true);
     try {
       const payload = { accessible_units: editUnits };
       if (editRole !== editUser.role) payload.role = editRole;
+      if (name !== editUser.name) payload.name = name;
+      if (email !== (editUser.email || "").toLowerCase()) payload.email = email;
+
       await usersAPI.update(editUser.user_id, payload);
       setUsers((prev) =>
-        prev.map((x) => (x.user_id === editUser.user_id ? { ...x, accessible_units: editUnits, role: editRole } : x))
+        prev.map((x) =>
+          x.user_id === editUser.user_id
+            ? { ...x, accessible_units: editUnits, role: editRole, name, email }
+            : x
+        )
       );
-      toast.success("Access updated");
+      const fixedLogin = payload.email !== undefined;
+      toast.success(
+        fixedLogin
+          ? `Saved — ${name} now signs in with ${email}`
+          : "Saved"
+      );
       setEditUser(null);
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Failed to update access");
+      toast.error(e.response?.data?.detail || "Could not save the changes");
     } finally {
       setSavingEdit(false);
     }
@@ -535,12 +560,12 @@ export default function UserManagement() {
                       <button
                         onClick={() => openEdit(u)}
                         className="text-left group"
-                        title="Manage access"
+                        title="Edit name, email, role and units"
                         data-testid={`edit-access-${u.user_id}`}
                       >
                         <UnitChips u={u} />
                         <span className="block text-[10px] text-[#A9834E] opacity-0 group-hover:opacity-100 transition-opacity mt-1">
-                          Manage access →
+                          Edit →
                         </span>
                       </button>
                     </td>
@@ -580,6 +605,19 @@ export default function UserManagement() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-end gap-1">
+                        {/* An explicit action rather than only a click on the
+                            units cell -- correcting a mistyped name or email
+                            is not something to have to discover. */}
+                        {canEditTarget(u) && (
+                          <button
+                            onClick={() => openEdit(u)}
+                            className="p-2 text-gray-300 hover:text-[#A9834E] transition-colors"
+                            title="Edit name, email, role and units"
+                            data-testid={`edit-staff-${u.user_id}`}
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                        )}
                         {canEditTarget(u) && (
                           <button
                             onClick={() => setResetTarget(u)}
@@ -927,14 +965,46 @@ export default function UserManagement() {
       <Dialog open={!!editUser} onOpenChange={(o) => !o && setEditUser(null)}>
         <DialogContent className="bg-white border-[#EAE7E0] max-w-lg rounded-2xl">
           <DialogHeader>
-            <p className="lux-eyebrow mb-1">Access Control</p>
+            <p className="lux-eyebrow mb-1">Edit Staff</p>
             <DialogTitle className="font-display text-2xl text-gray-900">{editUser?.name}</DialogTitle>
             <DialogDescription className="text-gray-500 text-[13px]">
-              Choose the role and the exact units this person can see in their portal.
+              Correct their details, role and unit access. Everything here can be changed
+              after the invitation has gone out.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-5 mt-2">
+            {/* Details, correctable after the invite. A mistyped address means
+                the invitation reached nobody and the account cannot be signed
+                into, and nothing here could previously fix it. */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-[0.15em] text-gray-400 mb-2">Full name</label>
+                <input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-[#EAE7E0] rounded-xl text-[13px] outline-none focus:border-[#C6A15B] focus:ring-2 focus:ring-[#C6A15B]/15"
+                  data-testid="edit-name-input"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-[0.15em] text-gray-400 mb-2">Email</label>
+                <input
+                  type="email"
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-[#EAE7E0] rounded-xl text-[13px] outline-none focus:border-[#C6A15B] focus:ring-2 focus:ring-[#C6A15B]/15"
+                  data-testid="edit-email-input"
+                />
+              </div>
+            </div>
+            {editEmail.trim().toLowerCase() !== (editUser?.email || "").toLowerCase() && (
+              <p className="text-[11px] text-amber-600 -mt-2" data-testid="edit-email-warning">
+                This changes the address they sign in with. They will need to be told, and the
+                original invitation will no longer work.
+              </p>
+            )}
+
             <div>
               <label className="block text-[11px] font-semibold uppercase tracking-[0.15em] text-gray-400 mb-2">Role</label>
               <div className="grid grid-cols-3 gap-2">

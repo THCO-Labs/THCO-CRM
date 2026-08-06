@@ -124,6 +124,10 @@ class UserResponse(BaseModel):
 
 class UserUpdate(BaseModel):
     name: Optional[str] = None
+    # Correctable after the invite goes out. A mistyped address is the
+    # likeliest mistake and the worst one -- the invitation reaches nobody,
+    # and the account cannot be signed into.
+    email: Optional[EmailStr] = None
     password: Optional[str] = None
     role: Optional[str] = None
     accessible_units: Optional[List[str]] = None
@@ -1216,6 +1220,19 @@ async def update_user(user_id: str, updates: UserUpdate, request: Request):
         raise HTTPException(status_code=403, detail="Cannot change your own role")
     
     update_dict = {k: v for k, v in updates.model_dump().items() if v is not None}
+
+    # A corrected address must still be unique, and is stored lowercase to
+    # match how sign-in looks it up.
+    if "email" in update_dict:
+        new_email = str(update_dict["email"]).strip().lower()
+        if new_email != (target_user.get("email") or "").lower():
+            clash = await db.users.find_one(
+                {"email": new_email, "user_id": {"$ne": user_id}}, {"_id": 0, "user_id": 1}
+            )
+            if clash:
+                raise HTTPException(status_code=400, detail="Another account already uses that email")
+        update_dict["email"] = new_email
+
     new_password = update_dict.pop("password", None)
     if new_password:
         if len(new_password) < 6:

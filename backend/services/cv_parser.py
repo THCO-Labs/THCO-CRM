@@ -2,6 +2,7 @@ import io
 import os
 import re
 import logging
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from pathlib import Path
 
@@ -609,12 +610,93 @@ def extract_linkedin(text: str) -> Optional[str]:
     return f"https://{match.group(0)}" if match else None
 
 
-def extract_experience_years(text: str) -> Optional[float]:
-    all_years = YEARS_PATTERN.findall(text)
-    if not all_years:
+# A self-description: "5+ years of experience", "over 7 years' experience".
+# Requires the word experience nearby, so a line about a company's 77-year
+# history or a 30-year mortgage is not read as a career length.
+_YEARS_OF_EXPERIENCE = re.compile(
+    r"(\d{1,2})\s*\+?\s*(?:years?|yrs?)[\s'’]*(?:of\s+)?"
+    r"(?:relevant\s+|professional\s+|progressive\s+|hands[-\s]?on\s+|proven\s+|combined\s+)?"
+    r"(?:work\s+|working\s+|industry\s+)?experience",
+    re.IGNORECASE,
+)
+
+# Nobody has a professional career outside this range. Anything else came
+# from a number that happened to sit next to the word "years".
+_MIN_YEARS, _MAX_YEARS = 0.5, 50
+
+
+def _years_from_employment(text: str) -> Optional[float]:
+    """Career length derived from the dates in the experience section.
+
+    Most CVs never state a total -- they list jobs and leave you to add up.
+    Taking the earliest start to the latest end covers those, and it is
+    also the more trustworthy figure when a CV states one that disagrees.
+    """
+    entries = extract_employment(text)
+    if not entries:
         return None
-    values = [int(y) for y in all_years if y.isdigit()]
-    return float(max(values)) if values else None
+
+    now = datetime.now(timezone.utc).year
+    starts, ends = [], []
+    for e in entries:
+        for key, bucket in (("start", starts), ("end", ends)):
+            raw = str(e.get(key) or "").strip()
+            if re.match(r"(?i)^(present|current|date|now|till)", raw):
+                bucket.append(now)
+                continue
+            found = re.search(r"(19|20)\d{2}", raw)
+            if found:
+                bucket.append(int(found.group(0)))
+
+    if not starts:
+        return None
+    first = min(starts)
+    last = max(ends) if ends else now
+    # A typo can put an end date before a start; fall back to today.
+    if last < first:
+        last = now
+    if not (1950 <= first <= now):
+        return None
+
+    span = last - first
+    return float(span) if _MIN_YEARS <= span <= _MAX_YEARS else None
+
+
+def extract_experience_years(text: str) -> Optional[float]:
+    """How long this person has been working.
+
+    Previously the largest number anywhere in the document that happened to
+    precede the word "years" -- which is how somebody ended up credited with
+    77 years of experience. Two sources now, both bounded to a career that
+    could actually have happened:
+
+      1. what the CV says about itself ("6 years of experience"), taking the
+         largest such claim, since a CV that mentions several is usually
+         breaking a total into specialisms;
+      2. failing that, the span of the jobs listed.
+    """
+    text = text or ""
+
+    stated = [int(m.group(1)) for m in _YEARS_OF_EXPERIENCE.finditer(text)]
+    plausible = [float(v) for v in stated if _MIN_YEARS <= v <= _MAX_YEARS]
+    if plausible:
+        return max(plausible)
+
+    from_jobs = _years_from_employment(text)
+    if from_jobs is not None:
+        return from_jobs
+
+    # Last resort: a bare "7 years" with no "experience" beside it, and only
+    # from the opening of the CV, where the summary lives. Confining it there
+    # is what keeps it honest -- the same phrasing deeper in the document is
+    # usually a course length, a contract term or a company's age.
+    opening = text[:1200]
+    loose = [
+        int(m.group(1))
+        for m in YEARS_PATTERN.finditer(opening)
+        if _MIN_YEARS <= int(m.group(1)) <= _MAX_YEARS
+    ]
+    return float(max(loose)) if loose else None
 
 
 NIGERIAN_LOCATIONS = [

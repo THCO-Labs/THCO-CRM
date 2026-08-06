@@ -281,6 +281,10 @@ async def create_project(data: ProjectCreate, request: Request):
         "stage_history": [{"stage": 1, "at": _now(), "by": user.get("user_id"), "by_name": user.get("name")}],
         # ownership
         "unit_slug": unit_slug,
+        # Explicitly not demo. Written on every new project so the one-off
+        # migration that labels the pre-unit-head projects can recognise those
+        # by the absence of this field, and never touch anything created since.
+        "is_demo": False,
         "created_by": user.get("user_id"),
         "created_by_name": user.get("name"),
         # staff placed on the project by its unit head

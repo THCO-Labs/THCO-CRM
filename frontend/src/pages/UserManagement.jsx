@@ -582,11 +582,18 @@ export default function UserManagement() {
                             <KeyRound className="w-4 h-4" />
                           </button>
                         )}
-                        {isSuperAdmin && u.user_id !== currentUser?.user_id && (
+                        {/* Whoever can invite can remove: HR handles both ends
+                            of a departure without needing a super admin. Only
+                            a super admin may remove another super admin. */}
+                        {canEditTarget(u) && u.user_id !== currentUser?.user_id && (
                           <button
                             onClick={() => setDeleteTarget(u)}
                             className="p-2 text-gray-300 hover:text-red-500 transition-colors"
-                            title="Remove user"
+                            title={
+                              unitHeaded(u.user_id)
+                                ? `Remove staff — leaves ${unitHeaded(u.user_id).name} without a head`
+                                : "Remove staff"
+                            }
                             data-testid={`delete-user-${u.user_id}`}
                           >
                             <Trash2 className="w-4 h-4" />

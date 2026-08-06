@@ -739,6 +739,11 @@ export const flowAPI = {
   // Correcting details after creation. Scoped server-side: a team member may
   // only edit a project they are assigned to.
   updateProject: async (id, data) => (await apiClient.put(`/flow/projects/${id}`, data)).data,
+  // The whole intended team, not a delta — two heads editing at once cannot
+  // then interleave into a half-applied list. Newly added people are notified;
+  // people already on it are not notified again.
+  setCollaborators: async (id, collaboratorIds) =>
+    (await apiClient.put(`/flow/projects/${id}/collaborators`, { collaborator_ids: collaboratorIds })).data,
   // Archives by default; the record is restorable rather than destroyed.
   deleteProject: async (id, permanent = false) =>
     (await apiClient.delete(`/flow/projects/${id}`, { params: { permanent } })).data,
@@ -956,6 +961,10 @@ export const unitsAPI = {
     const response = await apiClient.post(`/units/${slug}/invite`, data);
     return response.data;
   },
+  // The staff assigned to one unit. Open to that unit's head as well as
+  // administrators, so a head can pick a project team without needing the
+  // full staff directory.
+  listStaff: async (slug) => (await apiClient.get(`/units/${slug}/staff`)).data,
   // Appoint, change or clear a unit's head. A unit has one head, so this
   // replaces whoever held it. Pass null to leave the unit without one.
   setHead: async (slug, userId) => {

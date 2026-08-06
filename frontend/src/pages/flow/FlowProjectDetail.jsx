@@ -3,6 +3,7 @@ import { Link, useParams, useNavigate, useSearchParams } from "react-router-dom"
 import { toast } from "sonner";
 import FlowShell from "./FlowShell";
 import { flowAPI, authAPI } from "../../lib/api";
+import CollaboratorPicker from "../../components/flow/CollaboratorPicker";
 import { Button } from "../../components/ui/button";
 import {
   Loader2, ArrowLeft, ChevronRight, Building2, Globe, User, ArrowRight,
@@ -24,6 +25,10 @@ export default function FlowProjectDetail() {
   const [editing, setEditing] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [form, setForm] = useState({});
+  // Project team
+  const [teamOpen, setTeamOpen] = useState(false);
+  const [teamIds, setTeamIds] = useState([]);
+  const [savingTeam, setSavingTeam] = useState(false);
 
   const openEdit = () => {
     setForm({
@@ -67,6 +72,39 @@ export default function FlowProjectDetail() {
     if (project && searchParams.get("edit") === "1" && !editing) openEdit();
     /* eslint-disable-next-line */
   }, [project]);
+
+  // Who works on this project. A unit head (or an administrator) adds and
+  // removes people at any time; everybody else sees the list read-only.
+  const canManageTeam =
+    me &&
+    (["super_admin", "mini_admin"].includes(me.role) ||
+      me.is_hr ||
+      (project?.unit_slug && (me.headed_units || []).includes(project.unit_slug)));
+
+  const openTeam = () => {
+    setTeamIds((project?.collaborator_ids || []).slice());
+    setTeamOpen(true);
+  };
+
+  const saveTeam = async () => {
+    setSavingTeam(true);
+    try {
+      const res = await flowAPI.setCollaborators(id, teamIds);
+      const added = res.added || 0;
+      const removed = res.removed || 0;
+      toast.success(
+        added || removed
+          ? `Team updated — ${added} added, ${removed} removed`
+          : "No change to the team"
+      );
+      setTeamOpen(false);
+      load();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Could not update the team");
+    } finally {
+      setSavingTeam(false);
+    }
+  };
 
   const handleAdvance = (target) => {
     // Stages requiring structured input → open modal
@@ -147,6 +185,67 @@ export default function FlowProjectDetail() {
               <span className="px-3 py-1 bg-[#1B4332] text-white text-xs font-semibold rounded-full" data-testid="current-stage">Stage {stage} — {STAGES[stage]?.label}</span>
             )}
           </div>
+        </div>
+
+        {/* Who is on this project. Staff no longer open their own work, so
+            this list is how somebody comes to have any -- and it has to be
+            changeable at any time, as people move between projects. */}
+        <div className="mb-5 p-4 bg-[#F7F6F3] border border-[#EAE7E0] rounded-xl" data-testid="project-team">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <h3 className="text-sm font-semibold text-gray-900">Project team</h3>
+            {canManageTeam && !teamOpen && (
+              <Button variant="outline" size="sm" onClick={openTeam} data-testid="manage-team-btn">
+                <User className="w-3.5 h-3.5 mr-1.5" />
+                Add or remove staff
+              </Button>
+            )}
+          </div>
+
+          {!teamOpen && (
+            <div className="flex flex-wrap gap-1.5">
+              {(project.collaborators || []).length === 0 ? (
+                <p className="text-xs text-gray-400">
+                  Nobody is on this project yet
+                  {canManageTeam ? " — add staff and they'll be notified." : "."}
+                </p>
+              ) : (
+                project.collaborators.map((c) => (
+                  <span
+                    key={c.user_id}
+                    className="px-2.5 py-1 rounded-full bg-white border border-[#EAE7E0] text-[12px] text-gray-700"
+                  >
+                    {c.name}
+                  </span>
+                ))
+              )}
+            </div>
+          )}
+
+          {teamOpen && (
+            <div data-testid="team-editor">
+              <p className="text-xs text-gray-500 mb-3">
+                Tick everyone who works on this project. Newly added people get an email and a
+                notification; anyone unticked is removed and loses access to it.
+              </p>
+              <div className="mb-3">
+                <CollaboratorPicker
+                  unitSlug={project.unit_slug}
+                  value={teamIds}
+                  onChange={setTeamIds}
+                  disabled={savingTeam}
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setTeamOpen(false)} className="text-gray-500">
+                  Cancel
+                </Button>
+                <Button size="sm" onClick={saveTeam} disabled={savingTeam} data-testid="save-team-btn">
+                  {savingTeam ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : null}
+                  Save team
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Correcting details. Stage and ownership are not here on purpose --

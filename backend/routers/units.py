@@ -166,6 +166,34 @@ async def update_unit(slug: str, data: UnitUpdate, request: Request):
     return serialize(unit)
 
 
+@router.get("/{slug}/staff")
+async def list_unit_staff(slug: str, request: Request):
+    """The people assigned to a unit, for its head to pick a project team from.
+
+    The full staff directory is administrators-only, but a head has to be able
+    to see who is in their own unit or they cannot staff their own projects.
+    So this returns just that unit's people, and only name and email -- enough
+    to choose somebody, not a copy of the directory.
+    """
+    user = await _current(request)
+    permissions.require(
+        permissions.is_admin(user) or slug in permissions.headed_units(user),
+        "You can only see the staff of a unit you head",
+    )
+
+    people = await db.users.find(
+        {"accessible_units": slug, "status": {"$ne": "disabled"}},
+        {"_id": 0, "user_id": 1, "name": 1, "email": 1, "role": 1},
+    ).sort("name", 1).to_list(length=500)
+
+    unit = await db.units.find_one({"slug": slug}, {"_id": 0, "head_user_id": 1})
+    head_id = (unit or {}).get("head_user_id")
+    for p in people:
+        p["is_head"] = p["user_id"] == head_id
+
+    return {"slug": slug, "staff": people, "total": len(people)}
+
+
 @router.put("/{slug}/head")
 async def set_unit_head(slug: str, data: UnitHeadSet, request: Request):
     """Appoint, change or clear the head of a unit.

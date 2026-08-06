@@ -1236,27 +1236,69 @@ async def update_user(user_id: str, updates: UserUpdate, request: Request):
 
 @api_router.delete("/users/{user_id}")
 async def delete_user(user_id: str, request: Request):
+    """Remove a staff member.
+
+    Open to anyone who can invite staff, not super admins alone -- HR does
+    the hiring and the leaving, and having to find a super admin to complete
+    a departure is how stale accounts survive.
+    """
     current_user = await get_current_user(request)
-    if current_user["role"] != "super_admin":
-        raise HTTPException(status_code=403, detail="Only super admins can delete users")
-    
+    permissions.require(
+        permissions.can_manage_users(current_user),
+        "Only an administrator can remove staff",
+    )
+
     if current_user["user_id"] == user_id:
         raise HTTPException(status_code=403, detail="Cannot delete yourself")
-    
+
     target_user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
+    # Mirrors the create rule: minting and removing a super admin are both
+    # reserved, so a mini admin cannot delete the account above their own.
+    if target_user.get("role") == "super_admin" and not permissions.is_super_admin(current_user):
+        raise HTTPException(
+            status_code=403,
+            detail="Only a super administrator can remove another super administrator",
+        )
+
+    # A unit whose head no longer exists is a unit nobody can open work
+    # under, and nothing would say why. Clear the role and name the unit so
+    # the administrator knows to appoint a replacement.
+    orphaned = [
+        u["slug"]
+        async for u in db.units.find({"head_user_id": user_id}, {"_id": 0, "slug": 1})
+    ]
+    if orphaned:
+        await db.units.update_many(
+            {"head_user_id": user_id},
+            {"$set": {"head_user_id": None, "head_name": None,
+                      "updated_at": datetime.now(timezone.utc).isoformat()}},
+        )
+
+    # Drop them from any project team, so a departed colleague does not linger
+    # on the board as a collaborator.
+    await db.projects.update_many(
+        {"collaborator_ids": user_id},
+        {"$pull": {"collaborator_ids": user_id, "collaborators": {"user_id": user_id}}},
+    )
+
     await db.users.delete_one({"user_id": user_id})
     await db.user_sessions.delete_many({"user_id": user_id})
-    
+    await db.notifications.delete_many({"user_id": user_id})
+
     await log_activity(
         current_user["user_id"],
         current_user["name"],
-        f"Deleted user {target_user['name']}"
+        f"Removed staff member {target_user['name']}",
+        details=(f"Left {', '.join(orphaned)} without a head" if orphaned else ""),
     )
-    
-    return {"message": "User deleted successfully"}
+
+    return {
+        "message": "Staff member removed",
+        "units_left_without_a_head": orphaned,
+    }
 
 # ==================== LOGIN RECORDS ROUTES ====================
 
@@ -3133,6 +3175,31 @@ CANONICAL_UNITS = [
     ("academy", "Academy & Learning"),
     ("client-delivery", "Client Delivery"),
 ]
+
+
+@app.on_event("startup")
+async def label_pre_unit_head_projects():
+    """Mark the projects that predate unit heads as demo data.
+
+    Every project created before this release was opened without a unit,
+    because there were no units to open one under, and Victor confirmed they
+    were all demo. They are labelled rather than deleted so nothing vanishes
+    from anybody's dashboard -- but the label matters beyond cosmetics: demo
+    projects do not count towards `has_projects`, so sample data cannot be
+    what opens the pipeline for a staff member.
+
+    Matches on the absence of the field rather than on unit_slug, because
+    create_project now always writes is_demo. That makes this effectively
+    one-shot: after the first boot nothing is left to match, and a project
+    an administrator later opens without a unit is never swept up by it.
+    """
+    if db is None:
+        return
+    res = await db.projects.update_many(
+        {"is_demo": {"$exists": False}}, {"$set": {"is_demo": True}}
+    )
+    if res.modified_count:
+        logger.info("Labelled %d pre-unit-head project(s) as demo", res.modified_count)
 
 
 @app.on_event("startup")

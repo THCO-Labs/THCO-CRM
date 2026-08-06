@@ -37,6 +37,41 @@ export const SHARED_EDIT_PERMISSIONS = {
   assignTasks: false,
 };
 
+// Somebody on the project. The board is where they post progress on work
+// they were given, so cards are theirs to add, edit, move and assign — it is
+// only the shape of the board, which their unit head decides, that they do
+// not change. Unlike a public share link this is a known colleague, so
+// deleting and assigning are not withheld.
+export const COLLABORATOR_PERMISSIONS = {
+  manageBoards: false,
+  createTasks: true,
+  editTasks: true,
+  moveTasks: true,
+  deleteTasks: true,
+  assignTasks: true,
+};
+
 export function permissionsFromCanManage(canManage) {
   return canManage ? FULL_PERMISSIONS : READ_ONLY_PERMISSIONS;
+}
+
+/**
+ * What this person may do on one project's board.
+ *
+ * Three levels, matching the server: the unit head (and administrators) shape
+ * the board; collaborators work inside it; everybody else reads.
+ */
+export function permissionsForProject(user, project) {
+  if (!user || !project) return READ_ONLY_PERMISSIONS;
+
+  const manages =
+    user.role === "super_admin" ||
+    user.role === "mini_admin" ||
+    Boolean(user.is_hr) ||
+    Boolean(user.is_delivery_coordinator) ||
+    (project.unit_slug && (user.headed_units || []).includes(project.unit_slug));
+
+  if (manages) return FULL_PERMISSIONS;
+  if ((project.collaborator_ids || []).includes(user.user_id)) return COLLABORATOR_PERMISSIONS;
+  return READ_ONLY_PERMISSIONS;
 }

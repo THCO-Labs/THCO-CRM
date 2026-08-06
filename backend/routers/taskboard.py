@@ -198,10 +198,16 @@ def serialize(doc: dict) -> dict:
 
 
 def _is_coordinator(user: dict) -> bool:
-    """A Project Coordinator can mutate boards/cards. Reuses the app's existing
-    is_delivery_coordinator role flag (same gate as flow.py Stage 1→2)."""
+    """Whether this person may manage the shared label vocabulary.
+
+    Labels are global rather than per-project, so this is not tied to one
+    board: administrators, unit heads and the older delivery-coordinator
+    role. A head running her unit's boards needs to be able to create the
+    labels those boards use without asking somebody else.
+    """
     return bool(
-        user.get("role") == "super_admin"
+        permissions.is_admin(user)
+        or permissions.is_unit_head(user)
         or user.get("is_delivery_coordinator")
     )
 
@@ -209,7 +215,10 @@ def _is_coordinator(user: dict) -> bool:
 async def _require_coordinator(request: Request) -> dict:
     user = await _current(request)
     if not _is_coordinator(user):
-        raise HTTPException(status_code=403, detail="Only a Project Coordinator can perform this action")
+        raise HTTPException(
+            status_code=403,
+            detail="Only a unit head or an administrator can manage labels",
+        )
     return user
 
 
@@ -241,6 +250,44 @@ async def _board_for_access(user: dict, board_id: str) -> dict:
         raise HTTPException(status_code=404, detail="Board not found")
     await _assert_project_access(user, board.get("project_id"))
     return board
+
+
+async def _project_or_404(project_id: Optional[str]) -> dict:
+    project = await db.projects.find_one({"id": project_id}, {"_id": 0})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return project
+
+
+async def _require_board_manager(request: Request, project_id: Optional[str]) -> tuple:
+    """For changing a board's shape: the project's unit head, or an admin.
+
+    Boards used to be gated on the delivery-coordinator flag alone, which no
+    unit head carries -- so the person now responsible for a project could
+    open it and then find its board read-only.
+    """
+    user = await _current(request)
+    project = await _project_or_404(project_id)
+    permissions.require(
+        permissions.can_manage_boards(user, project),
+        "Only this project's unit head or an administrator can change its boards",
+    )
+    return user, project
+
+
+async def _require_board_user(request: Request, project_id: Optional[str]) -> tuple:
+    """For working inside a board: anybody on the project.
+
+    Collaborators post their progress here, so cards are theirs to add, edit
+    and move even though the board layout is not.
+    """
+    user = await _current(request)
+    project = await _project_or_404(project_id)
+    permissions.require(
+        permissions.can_use_board(user, project),
+        "You can only work on the board of a project you are on",
+    )
+    return user, project
 
 
 async def _next_board_position(project_id: str) -> int:
@@ -322,6 +369,10 @@ async def projects_summary(request: Request):
             # Projects that predate unit heads are demo data, and the board
             # should say so rather than presenting them as live work.
             "is_demo": bool(p.get("is_demo")),
+            # The board UI decides from these whether this viewer shapes the
+            # board, works inside it, or only reads it.
+            "unit_slug": p.get("unit_slug"),
+            "collaborator_ids": p.get("collaborator_ids") or [],
         })
     return out
 
@@ -339,8 +390,7 @@ def _new_share_token() -> str:
 
 @router.get("/projects/{project_id}/share")
 async def get_share(project_id: str, request: Request):
-    user = await _require_coordinator(request)
-    await _assert_project_access(user, project_id)
+    user, _ = await _require_board_manager(request, project_id)
     share = await db.task_shares.find_one({"project_id": project_id}, {"_id": 0})
     if not share:
         return {"exists": False}
@@ -351,8 +401,7 @@ async def get_share(project_id: str, request: Request):
 async def generate_share(project_id: str, request: Request):
     """Create this project's share link. Idempotent — if one already exists
     it's returned as-is rather than rotated (use /regenerate for that)."""
-    user = await _require_coordinator(request)
-    await _assert_project_access(user, project_id)
+    user, _ = await _require_board_manager(request, project_id)
     existing = await db.task_shares.find_one({"project_id": project_id}, {"_id": 0})
     if existing:
         return {"exists": True, **existing}
@@ -379,8 +428,7 @@ async def generate_share(project_id: str, request: Request):
 async def regenerate_share(project_id: str, request: Request):
     """Rotate the token. The old token stops resolving immediately since only
     the current `share_token` value is ever looked up."""
-    user = await _require_coordinator(request)
-    await _assert_project_access(user, project_id)
+    user, _ = await _require_board_manager(request, project_id)
     existing = await db.task_shares.find_one({"project_id": project_id}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="No share link exists for this project yet")
@@ -396,8 +444,7 @@ async def regenerate_share(project_id: str, request: Request):
 
 @router.patch("/projects/{project_id}/share")
 async def update_share(project_id: str, data: ShareUpdate, request: Request):
-    user = await _require_coordinator(request)
-    await _assert_project_access(user, project_id)
+    user, _ = await _require_board_manager(request, project_id)
     existing = await db.task_shares.find_one({"project_id": project_id}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="No share link exists for this project yet")
@@ -549,8 +596,7 @@ async def list_boards(request: Request, project_id: str):
 
 @router.post("/boards")
 async def create_board(data: BoardCreate, request: Request):
-    user = await _require_coordinator(request)
-    await _assert_project_access(user, data.project_id)
+    user, _ = await _require_board_manager(request, data.project_id)
     title = data.title.strip()
     if not title:
         raise HTTPException(status_code=400, detail="Board title cannot be empty")
@@ -586,8 +632,10 @@ async def create_board(data: BoardCreate, request: Request):
 
 @router.patch("/boards/{board_id}")
 async def update_board(board_id: str, data: BoardUpdate, request: Request):
-    user = await _require_coordinator(request)
-    existing = await _board_for_access(user, board_id)
+    existing = await db.task_boards.find_one({"board_id": board_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Board not found")
+    await _require_board_manager(request, existing.get("project_id"))
 
     update = {k: v for k, v in data.dict(exclude_unset=True).items() if v is not None}
     if "title" in update:
@@ -611,8 +659,10 @@ async def update_board(board_id: str, data: BoardUpdate, request: Request):
 
 @router.delete("/boards/{board_id}")
 async def delete_board(board_id: str, request: Request):
-    user = await _require_coordinator(request)
-    await _board_for_access(user, board_id)
+    existing = await db.task_boards.find_one({"board_id": board_id}, {"_id": 0, "project_id": 1})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Board not found")
+    await _require_board_manager(request, existing.get("project_id"))
     res = await db.task_boards.delete_one({"board_id": board_id})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Board not found")
@@ -626,8 +676,10 @@ async def delete_board(board_id: str, request: Request):
 # ---------------------------------------------------------------------------
 @router.post("/boards/{board_id}/cards")
 async def create_card(board_id: str, data: CardCreate, request: Request):
-    user = await _require_coordinator(request)
-    board = await _board_for_access(user, board_id)
+    board = await db.task_boards.find_one({"board_id": board_id}, {"_id": 0})
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
+    user, _ = await _require_board_user(request, board.get("project_id"))
 
     title = data.title.strip()
     if not title:
@@ -654,11 +706,10 @@ async def create_card(board_id: str, data: CardCreate, request: Request):
 
 @router.patch("/cards/{card_id}")
 async def update_card(card_id: str, data: CardUpdate, request: Request):
-    user = await _require_coordinator(request)
     existing = await db.task_cards.find_one({"card_id": card_id}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="Card not found")
-    await _assert_project_access(user, existing.get("project_id"))
+    await _require_board_user(request, existing.get("project_id"))
 
     update = {k: v for k, v in data.dict(exclude_unset=True).items() if v is not None}
     if "title" in update and not update["title"].strip():
@@ -678,11 +729,10 @@ async def update_card(card_id: str, data: CardUpdate, request: Request):
 
 @router.delete("/cards/{card_id}")
 async def delete_card(card_id: str, request: Request):
-    user = await _require_coordinator(request)
     existing = await db.task_cards.find_one({"card_id": card_id}, {"_id": 0, "project_id": 1})
     if not existing:
         raise HTTPException(status_code=404, detail="Card not found")
-    await _assert_project_access(user, existing.get("project_id"))
+    await _require_board_user(request, existing.get("project_id"))
     await db.task_cards.delete_one({"card_id": card_id})
     return {"deleted": True}
 
@@ -692,14 +742,18 @@ async def delete_card(card_id: str, request: Request):
 # ---------------------------------------------------------------------------
 @router.post("/reorder")
 async def reorder(data: ReorderRequest, request: Request):
-    user = await _require_coordinator(request)
+    user = await _current(request)
     now = now_iso()
 
     # Every board named in the payload -- both those being reordered and those
     # cards are being dropped into -- must be one this caller may touch, or a
-    # single request could rearrange another team's board.
+    # single request could rearrange another team's board. Moving a card is
+    # part of working the board, so collaborators may do it.
     for board_id in {*data.board_order, *(i.board_id for i in data.cards)}:
-        await _board_for_access(user, board_id)
+        b = await db.task_boards.find_one({"board_id": board_id}, {"_id": 0, "project_id": 1})
+        if not b:
+            raise HTTPException(status_code=404, detail="Board not found")
+        await _require_board_user(request, b.get("project_id"))
 
     # 1. Reorder boards
     for index, board_id in enumerate(data.board_order):

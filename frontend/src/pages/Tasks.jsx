@@ -5,7 +5,7 @@ import TaskBoard from "../components/tasks/TaskBoard";
 import ShareModal from "../components/tasks/ShareModal";
 import { useUser } from "../context/UserContext";
 import { tasksAPI } from "../lib/api";
-import { permissionsFromCanManage } from "../components/tasks/permissions";
+import { permissionsForProject } from "../components/tasks/permissions";
 
 /**
  * Tasks page — project-centric Trello-style workspace.
@@ -23,10 +23,11 @@ export default function Tasks() {
   const [selected, setSelected] = useState(null); // project object or null
   const [shareOpen, setShareOpen] = useState(false);
 
-  // Project Coordinator = existing is_delivery_coordinator role flag (or super_admin)
-  const canManage =
-    user?.role === "super_admin" || Boolean(user?.is_delivery_coordinator);
-  const permissions = permissionsFromCanManage(canManage);
+  // What this person may do depends on the project, not on their account
+  // alone: a unit head shapes their own unit's boards, collaborators work
+  // inside the boards of projects they are on, everybody else reads.
+  const permissions = permissionsForProject(user, selected);
+  const canManage = permissions.manageBoards;
 
   const projectId = selected?.id;
   const api = useMemo(

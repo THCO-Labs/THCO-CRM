@@ -1177,9 +1177,16 @@ async def gmail_import_status(request: Request):
     """
     await require_talent_access(request)
     connector = _mail_connector()
-    status = connector.check_access()
 
     cursor = await db.import_cursors.find_one({"connector": "gmail"}, {"_id": 0})
+
+    # Pass the cursor so the connector can say how much is genuinely left,
+    # rather than only how large the mailbox is.
+    try:
+        status = connector.check_access(since=(cursor or {}).get("cursor"))
+    except TypeError:
+        # The Gmail API connector takes no cursor.
+        status = connector.check_access()
     last_run = await db.import_runs.find_one(
         {"connector": "gmail"}, {"_id": 0}, sort=[("ran_at", -1)]
     )

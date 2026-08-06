@@ -100,17 +100,34 @@ class ImapMailboxConnector(Connector):
         client.select(self.folder, readonly=True)
         return client
 
-    def check_access(self) -> dict:
-        """Confirm the mailbox is reachable, reported separately from importing."""
+    def check_access(self, since: Optional[str] = None) -> dict:
+        """Confirm the mailbox is reachable, reported separately from importing.
+
+        Reports the size of the inbox and, separately, how much of it the
+        importer actually has to work through. Those are very different
+        numbers -- the importer only looks at mail carrying a document -- and
+        showing only the inbox total made the backlog look like tens of
+        thousands of messages when most of them are ordinary correspondence
+        the import will never open.
+        """
         if not self.is_configured():
             return {"ok": False, "reason": "GMAIL_CV_MAILBOX or GMAIL_IMAP_PASSWORD is not set"}
         try:
             client = self._connect()
             typ, data = client.uid("search", None, "ALL")
             total = len(data[0].split()) if data and data[0] else 0
+
+            matching = self._search_uids(client, None)
+            since_uid = int(since) if since and str(since).isdigit() else None
+            remaining = [u for u in matching if since_uid is None or u > since_uid]
+
             client.logout()
             return {"ok": True, "mailbox": self.mailbox, "folder": self.folder,
-                    "messages_total": total}
+                    "messages_total": total,
+                    # Mail carrying a PDF/DOC attachment -- the only mail the
+                    # importer opens.
+                    "with_documents": len(matching),
+                    "remaining": len(remaining)}
         except imaplib.IMAP4.error as e:
             text = str(e)
             if "AUTHENTICATIONFAILED" in text.upper() or "Invalid credentials" in text:

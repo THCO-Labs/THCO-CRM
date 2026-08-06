@@ -131,6 +131,31 @@ def can_manage_project(user: Dict[str, Any], project: Dict[str, Any]) -> bool:
     return bool(p.get("unit_slug")) and p.get("unit_slug") in headed_units(user)
 
 
+def can_manage_boards(user: Dict[str, Any], project: Dict[str, Any]) -> bool:
+    """Whether this person may change a project board's structure.
+
+    Adding, renaming and deleting boards is the head's job -- they decide
+    how their unit's work is laid out. Administrators and HR keep it too,
+    as does the delivery coordinator role that ran boards before units had
+    heads.
+    """
+    return can_manage_project(user, project) or bool((user or {}).get("is_delivery_coordinator"))
+
+
+def can_use_board(user: Dict[str, Any], project: Dict[str, Any]) -> bool:
+    """Whether this person may work inside a project's board.
+
+    Everybody on the project, collaborators included. The board is where
+    staff post progress on the work they were given, so being able to add
+    and move cards is the point of being on the project at all -- it is
+    only the shape of the board they do not decide.
+    """
+    if can_manage_boards(user, project):
+        return True
+    uid = (user or {}).get("user_id")
+    return bool(uid) and uid in ((project or {}).get("collaborator_ids") or [])
+
+
 def can_view_all_projects(user: Dict[str, Any]) -> bool:
     """Admins and delivery oversight roles see the whole portfolio."""
     u = user or {}

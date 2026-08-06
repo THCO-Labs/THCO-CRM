@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
+import { useUser, canManageUsers } from "../context/UserContext";
 import { 
   UserCog, 
   ArrowLeft, 
@@ -103,6 +104,7 @@ const SAMPLE_EMPLOYEES = [
 const DEPARTMENTS = ["Executive", "Technology", "Sales", "Operations", "Marketing", "Advisory", "Academy", "Delivery", "Talent"];
 
 const THCOHRPage = () => {
+  const user = useUser();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("all");
   const [activeTab, setActiveTab] = useState("main");
@@ -158,10 +160,18 @@ const THCOHRPage = () => {
                 Build New Tool
               </Button>
             </Link>
-            <Button className="bg-emerald-600 hover:bg-emerald-700">
-              <Plus className="w-4 h-4 mr-2" />
-              Add Employee
-            </Button>
+            {/* Had neither an onClick nor a link, so clicking it did nothing.
+                Staff are invited in one place -- Staff Management -- and this
+                opens that form directly rather than describing where to find
+                it. Hidden from anybody who could not use it. */}
+            {canManageUsers(user) && (
+              <Link to="/admin/users?invite=1">
+                <Button className="bg-emerald-600 hover:bg-emerald-700" data-testid="hr-add-staff-btn">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Staff
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
       </div>

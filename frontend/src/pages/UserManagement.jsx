@@ -110,6 +110,14 @@ export default function UserManagement() {
     fetchUnits();
   }, [fetchUsers, fetchUnits]);
 
+  // Arriving from "Add Staff" elsewhere in the app opens the invite form
+  // directly, rather than landing here and having to find the button.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("invite") === "1") {
+      setCreateOpen(true);
+    }
+  }, []);
+
   const unitName = (slug) =>
     units.find((u) => u.slug === slug)?.name ||
     ALL_UNITS.find((u) => u.slug === slug)?.name ||

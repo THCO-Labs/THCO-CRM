@@ -139,6 +139,7 @@ class UserUpdate(BaseModel):
     engineer_capacity_override: Optional[int] = None
     device_lock_enabled: Optional[bool] = None
     allowed_device_fingerprint: Optional[str] = None
+    headed_units: Optional[List[str]] = None
 
 class LoginRecordResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")

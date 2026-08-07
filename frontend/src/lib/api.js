@@ -749,6 +749,7 @@ export const flowAPI = {
     (await apiClient.delete(`/flow/projects/${id}`, { params: { permanent } })).data,
   restoreProject: async (id) => (await apiClient.post(`/flow/projects/${id}/restore`)).data,
   listArchivedProjects: async () => (await apiClient.get('/flow/projects-archived')).data,
+  userProjects: async (userId) => (await apiClient.get(`/flow/projects/user/${userId}`)).data,
   transitionStage: async (id, target_stage, note = '', payload = {}) =>
     (await apiClient.post(`/flow/projects/${id}/transition`, { target_stage, note, payload })).data,
   loseProject: async (id, reason) =>

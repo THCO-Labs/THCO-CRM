@@ -92,7 +92,7 @@ export default function TaskCard({ card, boardId, permissions = READ_ONLY_PERMIS
         <div className="flex-1 min-w-0">
           <button
             type="button"
-            onClick={() => onRename(card)}
+            onClick={() => onEdit(card)}
             data-testid={`task-title-${id}`}
             className="block text-left text-sm font-medium text-gray-900 hover:text-[#8F7340] transition-colors break-words"
           >
@@ -114,9 +114,14 @@ export default function TaskCard({ card, boardId, permissions = READ_ONLY_PERMIS
                 </span>
               )}
               {card.description && (
-                <span className="flex items-center gap-1" title="Has description">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onEdit(card); }}
+                  className="flex items-center gap-1 hover:text-gray-700 cursor-pointer"
+                  title="View description"
+                >
                   <AlignLeft className="w-3 h-3" />
-                </span>
+                </button>
               )}
               {card.assignees?.length > 0 && (
                 <div className="flex -space-x-1.5" title={card.assignees.map((a) => typeof a === "object" ? a.name : a).join(", ")}>

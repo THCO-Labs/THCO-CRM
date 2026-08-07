@@ -21,7 +21,7 @@ export default function TaskMenu({ canEdit = true, canDelete = true, onEdit, onD
           data-testid="task-menu-trigger"
           // stopPropagation so the click doesn't start a drag / open card
           onClick={(e) => e.stopPropagation()}
-          className="p-1 rounded-md text-gray-400 hover:text-gray-700 hover:bg-black/[0.06] opacity-0 group-hover:opacity-100 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C6A15B]/40 focus-visible:opacity-100"
+          className="p-1 rounded-md text-gray-400 hover:text-gray-700 hover:bg-black/[0.06] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C6A15B]/40"
         >
           <MoreHorizontal className="w-4 h-4" />
         </button>

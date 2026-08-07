@@ -16,8 +16,9 @@ export default function EditableTitle({
   placeholder = "Untitled",
   ariaLabel,
   testId,
+  startEditing = false,
 }) {
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(startEditing);
   const [draft, setDraft] = useState(value);
   const inputRef = useRef(null);
 
@@ -26,11 +27,16 @@ export default function EditableTitle({
     if (!editing) setDraft(value);
   }, [value, editing]);
 
-  // Autofocus + select-all on edit start
+  // Autofocus + select-all on edit start (delay for dropdown-menu close)
   useEffect(() => {
     if (editing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
+      const timer = setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+          inputRef.current.select();
+        }
+      }, 50);
+      return () => clearTimeout(timer);
     }
   }, [editing]);
 

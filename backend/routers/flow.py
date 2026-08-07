@@ -559,6 +559,21 @@ async def edit_project(project_id: str, data: ProjectEdit, request: Request):
     return {"message": "Project updated", "changed": list(before), "project": _serialize_project(updated)}
 
 
+@router.get("/projects/user/{user_id}")
+async def projects_for_user(user_id: str, request: Request):
+    """Return all projects a specific user created or collaborates on.
+
+    Only administrators and HR may look up another person's projects.
+    """
+    u = await _get_user(request)
+    if not permissions.is_admin(u) and not u.get("is_hr"):
+        raise HTTPException(status_code=403, detail="Only admins and HR may view another person's projects")
+
+    created = await db.projects.find({"created_by": user_id}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    collab = await db.projects.find({"collaborator_ids": user_id, "created_by": {"$ne": user_id}}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return {"created": [_serialize_project(p) for p in created], "collaborating": [_serialize_project(p) for p in collab]}
+
+
 @router.delete("/projects/{project_id}")
 async def delete_project(project_id: str, request: Request, permanent: bool = False):
     """Remove a project.

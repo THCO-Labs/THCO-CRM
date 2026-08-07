@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Loader2, FolderKanban, LayoutDashboard, User, Users, CheckCircle2, Clock } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Loader2, FolderKanban, LayoutDashboard, User, Users, CheckCircle2, Clock, ArrowUpRight } from "lucide-react";
 import { tasksAPI } from "../../lib/api";
 
 /**
@@ -92,9 +93,20 @@ export default function ProjectsWorkspace({ onSelect }) {
             </div>
 
             {/* Name */}
-            <h3 className="font-display text-lg text-gray-900 mb-1 group-hover:text-[#8F7340] transition-colors truncate">
-              {p.name}
-            </h3>
+            <div className="flex items-start gap-1 mb-1 group/name">
+              <h3 className="font-display text-lg text-gray-900 group-hover/name:text-[#8F7340] transition-colors flex-1 min-w-0">
+                <span className="truncate block">{p.name}</span>
+              </h3>
+              <Link
+                to={`/flow/projects/${p.id}?edit=1`}
+                onClick={(e) => e.stopPropagation()}
+                className="shrink-0 p-0.5 rounded opacity-0 group-hover/name:opacity-100 hover:bg-gray-100 transition-all"
+                title="Edit project details"
+                data-testid={`edit-btn-${p.id}`}
+              >
+                <ArrowUpRight className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600" />
+              </Link>
+            </div>
             {p.project_id_display && (
               <p className="text-[10px] font-mono text-gray-400 mb-3">{p.project_id_display}</p>
             )}

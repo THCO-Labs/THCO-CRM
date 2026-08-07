@@ -67,6 +67,7 @@ export default function BoardColumn({
         {editingTitle ? (
           <EditableTitle
             value={board.title}
+            startEditing
             testId={`board-title-${board.board_id}`}
             onCommit={(t) => {
               onRenameBoard(board.board_id, t);

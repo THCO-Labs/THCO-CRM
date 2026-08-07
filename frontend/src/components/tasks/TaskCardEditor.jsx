@@ -43,6 +43,7 @@ export default function TaskCardEditor({ card, open, onClose, onSave, permission
   const [labels, setLabels] = useState([]); // [{label_id, name, color}]
   const [assignees, setAssignees] = useState([]); // [{user_id, name, email, ...}]
   const [dueDate, setDueDate] = useState(null); // ISO datetime
+  const [editing, setEditing] = useState(false);
 
   // Hydrate from the card whenever it changes / opens
   useEffect(() => {
@@ -53,6 +54,7 @@ export default function TaskCardEditor({ card, open, onClose, onSave, permission
       setLabels(normalizeLabels(card.labels));
       setAssignees(normalizeAssignees(card.assignees));
       setDueDate(card.due_date || null);
+      setEditing(false);
     }
   }, [card, open]);
 
@@ -75,44 +77,80 @@ export default function TaskCardEditor({ card, open, onClose, onSave, permission
       }));
     }
     onSave(card.card_id, data);
+    setEditing(false);
     onClose();
   };
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent
-        className="sm:max-w-[520px] p-0 gap-0 overflow-hidden bg-[#F6F1EA] dark:bg-[#161E1B] border-[#EAE7E0] dark:border-[#2A303B]"
+        className={`p-0 gap-0 overflow-hidden bg-[#F6F1EA] dark:bg-[#161E1B] border-[#EAE7E0] dark:border-[#2A303B] ${editing ? "sm:max-w-[520px]" : "sm:max-w-[380px]"}`}
         data-testid="task-editor"
       >
         {/* Header — primary background */}
-        <div className="px-6 pt-5 pb-4 border-b border-[#EAE7E0] dark:border-[#2A303B]">
+        <div className={`${editing ? "px-6 pt-5 pb-4" : "px-5 pt-4 pb-3"} border-b border-[#EAE7E0] dark:border-[#2A303B]`}>
           <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-[#A9834E] dark:text-[#1FB58A] mb-1">
-            Edit Task
+            {editing ? "Edit Task" : "Task Details"}
           </p>
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            data-testid="editor-title"
-            placeholder="Task title"
-            className="w-full bg-transparent font-display text-xl text-gray-900 dark:text-[#F2F0EB] placeholder:text-gray-400 focus:outline-none"
-          />
+          {editing || !permissions.editTasks ? (
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              data-testid="editor-title"
+              placeholder="Task title"
+              className="w-full bg-transparent font-display text-xl text-gray-900 dark:text-[#F2F0EB] placeholder:text-gray-400 focus:outline-none"
+              readOnly={!permissions.editTasks}
+            />
+          ) : (
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-xl text-gray-900 dark:text-[#F2F0EB]">{title}</h2>
+              <button
+                onClick={() => setEditing(true)}
+                className="text-xs text-[#8F7340] hover:underline font-medium"
+                data-testid="editor-edit-btn"
+              >
+                Edit
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Body — secondary surface */}
-        <div className="px-6 py-5 space-y-5 bg-white/70 dark:bg-[#1A2622]">
+        <div className={`${editing ? "px-6 py-5 space-y-5" : "px-5 py-3 space-y-3"} bg-white/70 dark:bg-[#1A2622]`}>
           {/* Description */}
           <Field icon={AlignLeft} label="Description">
-            <Textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-              placeholder="Add a more detailed description…"
-              data-testid="editor-description"
-              className="resize-none bg-white dark:bg-[#10141A] border-[#EAE7E0] dark:border-[#2A303B] text-gray-900 dark:text-[#E6E4DF] placeholder:text-gray-400 focus-visible:ring-[#C6A15B]/40 dark:focus-visible:ring-[#1FB58A]/40 focus-visible:border-[#C6A15B] dark:focus-visible:border-[#1FB58A]"
-            />
+            {editing || !permissions.editTasks ? (
+              <Textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
+                placeholder="Add a more detailed description…"
+                data-testid="editor-description"
+                className="resize-none bg-white dark:bg-[#10141A] border-[#EAE7E0] dark:border-[#2A303B] text-gray-900 dark:text-[#E6E4DF] placeholder:text-gray-400 focus-visible:ring-[#C6A15B]/40 dark:focus-visible:ring-[#1FB58A]/40 focus-visible:border-[#C6A15B] dark:focus-visible:border-[#1FB58A]"
+                readOnly={!permissions.editTasks}
+              />
+            ) : (
+              <div>
+                {description ? (
+                  <p className="text-sm text-gray-700 dark:text-[#E6E4DF] whitespace-pre-wrap leading-relaxed">{description}</p>
+                ) : (
+                  <p className="text-sm text-gray-400 italic">No description yet.</p>
+                )}
+                {permissions.editTasks && (
+                  <button
+                    onClick={() => setEditing(true)}
+                    className="mt-2 text-xs text-[#8F7340] hover:underline font-medium"
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
+            )}
           </Field>
 
-          {/* Priority */}
+          {/* Extra fields — only when editing */}
+          {editing && (
+          <>
           <Field icon={Flag} label="Priority">
             <div className="flex flex-wrap gap-1.5" data-testid="editor-priority">
               {PRIORITIES.map((p) => (
@@ -174,9 +212,12 @@ export default function TaskCardEditor({ card, open, onClose, onSave, permission
           <Field icon={CalendarClock} label="Due Date & Time">
             <DateTimePicker value={dueDate} onChange={setDueDate} />
           </Field>
+          </>
+          )}
         </div>
 
-        {/* Footer */}
+        {/* Footer — only when editing */}
+        {editing && (
         <DialogFooter className="px-6 py-4 border-t border-[#EAE7E0] dark:border-[#2A303B] bg-[#F6F1EA] dark:bg-[#161E1B]">
           <Button
             variant="outline"
@@ -194,6 +235,7 @@ export default function TaskCardEditor({ card, open, onClose, onSave, permission
             Save Changes
           </Button>
         </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   );

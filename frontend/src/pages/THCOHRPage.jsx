@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useUser, canManageUsers } from "../context/UserContext";
+import { usersAPI, flowAPI, unitsAPI } from "../lib/api";
 import { 
   UserCog, 
   ArrowLeft, 
@@ -85,22 +86,6 @@ const TOOLS = [
   }
 ];
 
-// Sample employee data
-const SAMPLE_EMPLOYEES = [
-  { id: 1, name: "Joshua", role: "CEO & Founder", department: "Executive", status: "active", joinDate: "2020-01-01" },
-  { id: 2, name: "Ayo", role: "Managing Director", department: "Executive", status: "active", joinDate: "2020-03-15" },
-  { id: 3, name: "Victoria", role: "Operations Manager", department: "Operations", status: "active", joinDate: "2021-02-01" },
-  { id: 4, name: "Rebecca", role: "Sales Lead", department: "Sales", status: "active", joinDate: "2021-06-15" },
-  { id: 5, name: "Emmanuel", role: "IT & Tools Lead", department: "Technology", status: "active", joinDate: "2022-01-10" },
-  { id: 6, name: "James", role: "Solution Architect", department: "Technology", status: "active", joinDate: "2022-03-20" },
-  { id: 7, name: "Christiana", role: "Advisory Lead", department: "Advisory", status: "active", joinDate: "2021-09-01" },
-  { id: 8, name: "Havilah", role: "Marketing Lead", department: "Marketing", status: "active", joinDate: "2022-05-15" },
-  { id: 9, name: "Babatunde", role: "Academy Lead", department: "Academy", status: "active", joinDate: "2022-08-01" },
-  { id: 10, name: "Kenny", role: "Project Partner", department: "Delivery", status: "active", joinDate: "2023-01-15" },
-  { id: 11, name: "Amalina", role: "Talent Lead", department: "Talent", status: "active", joinDate: "2023-03-01" },
-  { id: 12, name: "Isaiah", role: "Client Delivery Lead", department: "Delivery", status: "active", joinDate: "2023-06-01" },
-];
-
 const DEPARTMENTS = ["Executive", "Technology", "Sales", "Operations", "Marketing", "Advisory", "Academy", "Delivery", "Talent"];
 
 const THCOHRPage = () => {
@@ -108,16 +93,68 @@ const THCOHRPage = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("all");
   const [activeTab, setActiveTab] = useState("main");
+  const [employees, setEmployees] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [unitMap, setUnitMap] = useState({});
+  const [selectedPerson, setSelectedPerson] = useState(null);
+  const [personProjects, setPersonProjects] = useState(null);
+  const directoryRef = useRef(null);
 
-  const filteredEmployees = SAMPLE_EMPLOYEES.filter(emp => {
-    const matchesSearch = emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          emp.role.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesDept = selectedDepartment === "all" || emp.department === selectedDepartment;
+  useEffect(() => {
+    const fetchEmployees = async () => {
+      try {
+        const data = await usersAPI.getAll();
+        setEmployees(data || []);
+      } catch {
+        setEmployees([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchEmployees();
+  }, []);
+
+  useEffect(() => {
+    const fetchUnits = async () => {
+      try {
+        const data = await unitsAPI.list();
+        const map = {};
+        (Array.isArray(data) ? data : []).forEach(u => {
+          if (u.slug && u.name) map[u.slug] = u.name;
+        });
+        setUnitMap(map);
+      } catch { /* ignore */ }
+    };
+    fetchUnits();
+  }, []);
+
+  const openPerson = async (emp) => {
+    setSelectedPerson(emp);
+    setPersonProjects(null);
+    try {
+      const data = await flowAPI.userProjects(emp.user_id);
+      setPersonProjects(data);
+    } catch {
+      setPersonProjects({ created: [], collaborating: [] });
+    }
+  };
+
+  const unitNames = (emp) => {
+    const headed = (emp.headed_units || []).map(s => unitMap[s] || s).join(", ");
+    const acc = (emp.accessible_units || []).map(s => unitMap[s] || s).join(", ");
+    return headed || acc || "—";
+  };
+
+  const filteredEmployees = employees.filter(emp => {
+    const matchesSearch = (emp.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (emp.role || "").toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesDept = selectedDepartment === "all" || (emp.headed_units || []).includes(selectedDepartment.toLowerCase().replace(/\s+/g, "-")) || (emp.accessible_units || []).includes(selectedDepartment.toLowerCase().replace(/\s+/g, "-"));
     return matchesSearch && matchesDept;
   });
 
   const departmentCounts = DEPARTMENTS.reduce((acc, dept) => {
-    acc[dept] = SAMPLE_EMPLOYEES.filter(e => e.department === dept).length;
+    const slug = dept.toLowerCase().replace(/\s+/g, "-");
+    acc[dept] = employees.filter(e => (e.headed_units || []).includes(slug) || (e.accessible_units || []).includes(slug)).length;
     return acc;
   }, {});
 
@@ -206,7 +243,7 @@ const THCOHRPage = () => {
               <Users className="w-5 h-5 text-emerald-600" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-gray-900">{SAMPLE_EMPLOYEES.length}</p>
+              <p className="text-2xl font-bold text-gray-900">{loading ? "..." : employees.length}</p>
               <p className="text-sm text-gray-500">Team Members</p>
             </div>
           </div>
@@ -322,6 +359,7 @@ const THCOHRPage = () => {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.1 }}
                   className="group bg-white rounded-2xl border border-gray-100 overflow-hidden hover:border-gray-200 hover:shadow-lg transition-all duration-300 cursor-pointer"
+                  onClick={() => directoryRef.current?.scrollIntoView({ behavior: "smooth" })}
                   data-testid={`tool-card-${tool.slug}`}
                 >
                   <div className={`h-2 bg-gradient-to-r ${tool.gradient}`}></div>
@@ -391,7 +429,7 @@ const THCOHRPage = () => {
       </div>
 
       {/* Employee Directory Preview */}
-      <div>
+      <div ref={directoryRef}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-[11px] font-semibold uppercase tracking-widest text-gray-400">Team Directory</h2>
           <div className="flex items-center gap-2">
@@ -421,23 +459,28 @@ const THCOHRPage = () => {
         
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
-            {filteredEmployees.map((employee, index) => (
+            {loading ? (
+              <div className="col-span-full text-center py-12 text-gray-400">Loading team...</div>
+            ) : filteredEmployees.length === 0 ? (
+              <div className="col-span-full text-center py-12 text-gray-400">No team members found</div>
+            ) : filteredEmployees.map((employee, index) => (
               <motion.div
-                key={employee.id}
+                key={employee.user_id || index}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: index * 0.03 }}
+                onClick={() => openPerson(employee)}
                 className="flex items-center gap-4 p-4 rounded-xl border border-gray-100 hover:border-gray-200 hover:bg-gray-50 transition-all cursor-pointer"
-                data-testid={`employee-card-${employee.id}`}
+                data-testid={`employee-card-${employee.user_id}`}
               >
                 <div className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-500 flex items-center justify-center text-white font-semibold">
-                  {employee.name.charAt(0)}
+                  {(employee.name || "?").charAt(0)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-gray-900 truncate">{employee.name}</p>
-                  <p className="text-sm text-gray-500 truncate">{employee.role}</p>
+                  <p className="font-medium text-gray-900 truncate">{employee.name || "Unknown"}</p>
+                  <p className="text-sm text-gray-500 truncate">{employee.role || "Staff"}</p>
                   <span className="text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-                    {employee.department}
+                    {unitNames(employee)}
                   </span>
                 </div>
               </motion.div>
@@ -446,6 +489,65 @@ const THCOHRPage = () => {
         </div>
       </div>
       </>
+      )}
+
+      {/* Person detail modal */}
+      {selectedPerson && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setSelectedPerson(null)}>
+          <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()} data-testid="person-modal">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-500 flex items-center justify-center text-white font-bold text-lg">
+                  {(selectedPerson.name || "?").charAt(0)}
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">{selectedPerson.name}</h3>
+                  <p className="text-sm text-gray-500">{selectedPerson.email}</p>
+                </div>
+              </div>
+              <button onClick={() => setSelectedPerson(null)} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+            </div>
+            <div className="p-6 space-y-6">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-gray-400 font-semibold mb-2">Units</p>
+                <p className="text-sm text-gray-700">{unitNames(selectedPerson)}</p>
+              </div>
+
+              <div>
+                <p className="text-xs uppercase tracking-wide text-gray-400 font-semibold mb-3">
+                  {personProjects === null ? "Loading projects..." : `Projects (${(personProjects?.created?.length || 0) + (personProjects?.collaborating?.length || 0)})`}
+                </p>
+                {personProjects === null ? (
+                  <div className="text-sm text-gray-400">Loading...</div>
+                ) : (
+                  <div className="space-y-3">
+                    {(personProjects.created || []).length === 0 && (personProjects.collaborating || []).length === 0 && (
+                      <p className="text-sm text-gray-400">No projects found</p>
+                    )}
+                    {(personProjects.created || []).map(p => (
+                      <Link key={p.id} to={`/flow/projects/${p.id}`} className="block p-3 rounded-lg border border-gray-100 hover:border-[#C6A15B]/50 hover:bg-gray-50 transition-all">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-gray-900">{p.name || p.project_id_display}</span>
+                          <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Created</span>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-1">{p.stage_label || `Stage ${p.stage}`}</p>
+                      </Link>
+                    ))}
+                    {(personProjects.collaborating || []).map(p => (
+                      <Link key={p.id} to={`/flow/projects/${p.id}`} className="block p-3 rounded-lg border border-gray-100 hover:border-[#C6A15B]/50 hover:bg-gray-50 transition-all">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-gray-900">{p.name || p.project_id_display}</span>
+                          <span className="text-[10px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">Collaborator</span>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-1">{p.stage_label || `Stage ${p.stage}`}</p>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Back to Dashboard */}

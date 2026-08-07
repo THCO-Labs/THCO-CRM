@@ -392,10 +392,10 @@ async def get_current_user(request: Request) -> dict:
     # reassigning a head is one write and nobody can be left as the stale head
     # of a unit somebody else now runs. Resolve it here so every permission
     # check downstream can stay synchronous.
-    user["headed_units"] = [
+    user["headed_units"] = list(set([
         u["slug"]
         async for u in db.units.find({"head_user_id": user["user_id"]}, {"_id": 0, "slug": 1})
-    ]
+    ] + (user.get("headed_units") if isinstance(user.get("headed_units"), list) else [])))
 
     # Whether this person has any real project. The Business Units section
     # opens on this: staff who have not been put on a project yet would

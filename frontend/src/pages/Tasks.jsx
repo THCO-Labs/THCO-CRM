@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { ArrowLeft, Share2 } from "lucide-react";
+import { useLocation } from "react-router-dom";
 import ProjectsWorkspace from "../components/tasks/ProjectsWorkspace";
 import TaskBoard from "../components/tasks/TaskBoard";
 import ShareModal from "../components/tasks/ShareModal";
@@ -22,6 +23,12 @@ export default function Tasks() {
   const user = useUser();
   const [selected, setSelected] = useState(null); // project object or null
   const [shareOpen, setShareOpen] = useState(false);
+  const location = useLocation();
+
+  // When navigating back to /tasks (sidebar click), reset to project list
+  useEffect(() => {
+    setSelected(null);
+  }, [location.key]);
 
   // What this person may do depends on the project, not on their account
   // alone: a unit head shapes their own unit's boards, collaborators work

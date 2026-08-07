@@ -8,6 +8,7 @@ import BoardMenu from "./BoardMenu";
 import TaskCard from "./TaskCard";
 import AddTask from "./AddTask";
 import TaskCardEditor from "./TaskCardEditor";
+import TaskDetail from "./TaskDetail";
 import { READ_ONLY_PERMISSIONS } from "./permissions";
 
 /**
@@ -30,6 +31,7 @@ export default function BoardColumn({
   const [editingTitle, setEditingTitle] = useState(false);
   const [renamingCardId, setRenamingCardId] = useState(null);
   const [editorCard, setEditorCard] = useState(null);
+  const [viewCard, setViewCard] = useState(null);
 
   const { setNodeRef: setColumnRef, attributes, listeners, transform, transition, isDragging } =
     useSortable({ id: board.board_id, data: { type: "board", boardId: board.board_id }, disabled: !permissions.manageBoards });
@@ -108,6 +110,7 @@ export default function BoardColumn({
                 boardId={board.board_id}
                 permissions={permissions}
                 onRename={() => permissions.editTasks && setRenamingCardId(card.card_id)}
+                onView={(c) => setViewCard(c)}
                 onEdit={(c) => setEditorCard(c)}
                 onDelete={onDeleteCard}
               />
@@ -152,6 +155,12 @@ export default function BoardColumn({
         onClose={() => setEditorCard(null)}
         onSave={onEditCard}
         permissions={permissions}
+      />
+
+      {/* Task detail popup */}
+      <TaskDetail
+        card={viewCard}
+        onClose={() => setViewCard(null)}
       />
     </div>
   );

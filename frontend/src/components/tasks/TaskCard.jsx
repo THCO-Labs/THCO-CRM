@@ -14,7 +14,7 @@ import { READ_ONLY_PERMISSIONS } from "./permissions";
  * `isOverlay` renders a non-sortable, elevated copy used as the drag preview
  * (so the original slot can remain as a placeholder -> no flicker).
  */
-export default function TaskCard({ card, boardId, permissions = READ_ONLY_PERMISSIONS, onRename, onEdit, onDelete, isOverlay }) {
+export default function TaskCard({ card, boardId, permissions = READ_ONLY_PERMISSIONS, onRename, onEdit, onView, onDelete, isOverlay }) {
   const id = card.card_id;
 
   const sortable = useSortable({
@@ -92,7 +92,7 @@ export default function TaskCard({ card, boardId, permissions = READ_ONLY_PERMIS
         <div className="flex-1 min-w-0">
           <button
             type="button"
-            onClick={() => onEdit(card)}
+            onClick={() => onView(card)}
             data-testid={`task-title-${id}`}
             className="block text-left text-sm font-medium text-gray-900 hover:text-[#8F7340] transition-colors break-words"
           >
@@ -116,7 +116,7 @@ export default function TaskCard({ card, boardId, permissions = READ_ONLY_PERMIS
               {card.description && (
                 <button
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); onEdit(card); }}
+                  onClick={(e) => { e.stopPropagation(); onView(card); }}
                   className="flex items-center gap-1 hover:text-gray-700 cursor-pointer"
                   title="View description"
                 >

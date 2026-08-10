@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import FlowShell from "./FlowShell";
@@ -25,6 +25,7 @@ export default function FlowProjectDetail() {
   const [editing, setEditing] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [form, setForm] = useState({});
+  const editRef = useRef(null);
   // Project team
   const [teamOpen, setTeamOpen] = useState(false);
   const [teamIds, setTeamIds] = useState([]);
@@ -42,6 +43,14 @@ export default function FlowProjectDetail() {
       notes: project?.notes || "",
     });
     setEditing(true);
+    // The form opens below the team panel, off the bottom of most screens, so
+    // pressing Edit details looked like it did nothing at all. Bring it into
+    // view and put the cursor in the first field, so the button visibly does
+    // something and you can start typing.
+    requestAnimationFrame(() => {
+      editRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      editRef.current?.querySelector("input")?.focus();
+    });
   };
 
   const saveEdit = async () => {
@@ -214,12 +223,12 @@ export default function FlowProjectDetail() {
             <Button
               variant="outline"
               size="sm"
-              onClick={openEdit}
+              onClick={() => (editing ? setEditing(false) : openEdit())}
               data-testid="edit-project-btn"
-              className="text-gray-600 hover:text-gray-900"
+              className={editing ? "border-[#1B4332] text-[#1B4332] bg-[#1B4332]/5" : "text-gray-600 hover:text-gray-900"}
             >
               <Pencil className="w-3.5 h-3.5 mr-1.5" />
-              Edit details
+              {editing ? "Close editor" : "Edit details"}
             </Button>
             {isLost ? (
               <span className="px-3 py-1 bg-red-100 text-red-700 text-xs font-semibold rounded-full">LOST</span>
@@ -363,7 +372,7 @@ export default function FlowProjectDetail() {
             those move through the pipeline actions below, which record who
             changed them. */}
         {editing && (
-          <div className="mb-5 p-5 bg-[#F7F6F3] border border-[#EAE7E0] rounded-xl" data-testid="edit-project-form">
+          <div ref={editRef} className="mb-5 p-5 bg-[#F7F6F3] border border-[#EAE7E0] rounded-xl" data-testid="edit-project-form">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold text-gray-900">Edit project details</h3>
               <button onClick={() => setEditing(false)} className="text-gray-400 hover:text-gray-600">

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import FlowShell from "./FlowShell";
-import { flowAPI, authAPI } from "../../lib/api";
+import { flowAPI, authAPI, unitsAPI } from "../../lib/api";
 import CollaboratorPicker from "../../components/flow/CollaboratorPicker";
 import { Button } from "../../components/ui/button";
 import {
@@ -29,6 +29,8 @@ export default function FlowProjectDetail() {
   const [teamOpen, setTeamOpen] = useState(false);
   const [teamIds, setTeamIds] = useState([]);
   const [savingTeam, setSavingTeam] = useState(false);
+  const [staff, setStaff] = useState([]);
+  const [savingManager, setSavingManager] = useState(false);
 
   const openEdit = () => {
     setForm({
@@ -80,6 +82,39 @@ export default function FlowProjectDetail() {
     (["super_admin", "mini_admin"].includes(me.role) ||
       me.is_hr ||
       (project?.unit_slug && (me.headed_units || []).includes(project.unit_slug)));
+
+  const isAdmin =
+    me && (["super_admin", "mini_admin"].includes(me.role) || me.is_hr);
+
+  // The unit's people, for both the manager picker and the team editor.
+  useEffect(() => {
+    if (!isAdmin || !project?.unit_slug || staff.length) return;
+    (async () => {
+      try {
+        const data = await unitsAPI.listStaff(project.unit_slug);
+        setStaff(data?.staff || []);
+      } catch {
+        /* the picker simply stays empty */
+      }
+    })();
+  }, [isAdmin, project?.unit_slug, staff.length]);
+
+  const changeManager = async (userId) => {
+    setSavingManager(true);
+    try {
+      const res = await flowAPI.setProjectManager(id, userId);
+      toast.success(
+        res.project_manager_name
+          ? `${res.project_manager_name} now manages this project`
+          : "Handed back to the unit's manager"
+      );
+      load();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Could not change the project manager");
+    } finally {
+      setSavingManager(false);
+    }
+  };
 
   const openTeam = () => {
     setTeamIds((project?.collaborator_ids || []).slice());
@@ -186,6 +221,37 @@ export default function FlowProjectDetail() {
             )}
           </div>
         </div>
+
+        {/* Who runs this project. A unit's manager runs everything in it,
+            which is the right default and the wrong fit when one project
+            belongs to somebody else -- so an administrator can hand a single
+            project over without making that person run the whole unit. */}
+        {isAdmin && (
+          <div className="mb-5 p-4 bg-[#F7F6F3] border border-[#EAE7E0] rounded-xl" data-testid="project-manager">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold text-gray-900">Project manager</h3>
+                <p className="text-[11px] text-gray-500 mt-0.5">
+                  {project.project_manager_name
+                    ? `${project.project_manager_name} runs this project.`
+                    : "Managed by whoever runs this project's unit."}
+                </p>
+              </div>
+              <select
+                value={project.project_manager_id || ""}
+                disabled={savingManager}
+                onChange={(e) => changeManager(e.target.value || null)}
+                className="shrink-0 max-w-[210px] text-[12px] border border-[#EAE7E0] rounded-lg px-2.5 py-1.5 bg-white outline-none focus:border-[#C6A15B] disabled:opacity-50"
+                data-testid="project-manager-select"
+              >
+                <option value="">— the unit's manager —</option>
+                {staff.map((p) => (
+                  <option key={p.user_id} value={p.user_id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
 
         {/* Who is on this project. Staff no longer open their own work, so
             this list is how somebody comes to have any -- and it has to be

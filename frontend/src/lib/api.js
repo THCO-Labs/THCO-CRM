@@ -744,6 +744,10 @@ export const flowAPI = {
   // people already on it are not notified again.
   setCollaborators: async (id, collaboratorIds) =>
     (await apiClient.put(`/flow/projects/${id}/collaborators`, { collaborator_ids: collaboratorIds })).data,
+  // Name the person running this particular project. Null hands it back to
+  // whoever manages the unit. Administrators only.
+  setProjectManager: async (id, userId) =>
+    (await apiClient.put(`/flow/projects/${id}/manager`, { user_id: userId || null })).data,
   // Archives by default; the record is restorable rather than destroyed.
   deleteProject: async (id, permanent = false) =>
     (await apiClient.delete(`/flow/projects/${id}`, { params: { permanent } })).data,

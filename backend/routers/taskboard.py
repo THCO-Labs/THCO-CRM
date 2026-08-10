@@ -386,7 +386,12 @@ async def projects_summary(request: Request):
                 {"user_id": c.get("user_id"), "name": c.get("name")}
                 for c in (p.get("collaborators") or [])
             ],
-            "unit_head_name": unit_heads.get(p.get("unit_slug")),
+            # This project's own manager if one is named, otherwise whoever
+            # runs its unit. A project handed to somebody specific should say
+            # so rather than crediting the unit's manager.
+            "unit_head_name": p.get("project_manager_name") or unit_heads.get(p.get("unit_slug")),
+            "project_manager_name": p.get("project_manager_name"),
+            "project_manager_id": p.get("project_manager_id"),
         })
     return out
 

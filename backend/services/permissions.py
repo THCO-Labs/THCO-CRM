@@ -116,18 +116,22 @@ def can_create_project_in_unit(user: Dict[str, Any], slug: str) -> bool:
 def can_manage_project(user: Dict[str, Any], project: Dict[str, Any]) -> bool:
     """Whether this person may edit, delete, or re-staff a project.
 
-    Administrators, and the head of the unit the project belongs to. Nobody
-    else -- a collaborator is not a manager, so being added to a project
-    does not let you rename it, delete it, or add other people to it.
+    Three ways to hold it: an administrator; the manager of the unit the
+    project belongs to; or somebody named manager of this project in
+    particular. That last one lets an administrator hand a single project to
+    whoever is actually running it, without making them responsible for
+    every project in the unit.
 
-    Deliberately not the person who created it. The head runs the unit's
-    work, so when the head changes the new one inherits control of every
-    project in it; a previous head does not keep a private set they alone
-    can edit.
+    Deliberately not the person who created it. Responsibility follows the
+    role, so when a manager is replaced the new one inherits control; the
+    previous one does not keep a private set only they can edit.
     """
     if is_admin(user):
         return True
     p = project or {}
+    uid = (user or {}).get("user_id")
+    if uid and p.get("project_manager_id") == uid:
+        return True
     return bool(p.get("unit_slug")) and p.get("unit_slug") in headed_units(user)
 
 

@@ -451,6 +451,73 @@ class ProjectEdit(BaseModel):
     source: Optional[str] = None
 
 
+class ProjectManagerSet(BaseModel):
+    # Null hands the project back to whoever manages its unit.
+    user_id: Optional[str] = None
+
+
+@router.put("/projects/{project_id}/manager")
+async def set_project_manager(project_id: str, data: ProjectManagerSet, request: Request):
+    """Name the person running this particular project.
+
+    A unit's manager runs everything in it, which is the right default and the
+    wrong fit when one project belongs to somebody else. An administrator can
+    hand a single project over without making that person responsible for the
+    whole unit; clearing it returns the project to the unit's manager.
+
+    Administrators only. Who is accountable for a project is not a decision to
+    delegate to whoever currently holds it.
+    """
+    user = await _get_user(request)
+    permissions.require_admin(user)
+
+    project = await db.projects.find_one({"id": project_id}, {"_id": 0})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    previous = project.get("project_manager_name")
+
+    if not data.user_id:
+        await db.projects.update_one(
+            {"id": project_id},
+            {"$set": {"project_manager_id": None, "project_manager_name": None,
+                      "updated_at": _now()}},
+        )
+        await _audit("project", project_id, "manager_cleared", user, {"previous": previous})
+        return {"project_id": project_id, "project_manager_name": None, "previous": previous}
+
+    person = await db.users.find_one(
+        {"user_id": data.user_id, "status": {"$ne": "disabled"}},
+        {"_id": 0, "user_id": 1, "name": 1, "email": 1},
+    )
+    if not person:
+        raise HTTPException(status_code=404, detail="That person does not have an active account")
+
+    await db.projects.update_one(
+        {"id": project_id},
+        {"$set": {"project_manager_id": person["user_id"],
+                  "project_manager_name": person.get("name"),
+                  "updated_at": _now()}},
+    )
+    # Running a project you cannot see would be a dead end.
+    await db.projects.update_one(
+        {"id": project_id, "collaborator_ids": {"$ne": person["user_id"]}},
+        {"$addToSet": {"collaborator_ids": person["user_id"],
+                       "collaborators": {"user_id": person["user_id"],
+                                         "name": person.get("name"),
+                                         "email": person.get("email")}}},
+    )
+    await _audit("project", project_id, "manager_set", user,
+                 {"manager": person.get("name"), "previous": previous})
+
+    return {
+        "project_id": project_id,
+        "project_manager_id": person["user_id"],
+        "project_manager_name": person.get("name"),
+        "previous": previous,
+    }
+
+
 class CollaboratorsSet(BaseModel):
     # The full intended team. Sent whole rather than as add/remove deltas so
     # two heads editing at once cannot interleave into a half-applied team.

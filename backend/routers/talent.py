@@ -79,6 +79,14 @@ async def ensure_indexes():
                                  ("ai_summary", "text")],
          {"name": "external_candidate_search_idx"}),
 
+        # Stored CV documents. This collection had no index at all, so opening
+        # one candidate's CV scanned every document in it -- each averaging
+        # 280KB -- which is gigabytes read to return a single file, and why
+        # viewing a CV went from instant to minutes as the import filled it.
+        # Compound so the newest version is found by the index rather than by
+        # sorting whatever the scan turned up.
+        ("resume_files", [("candidate_id", 1), ("version", -1)], {}),
+
         ("candidate_sources", [("candidate_id", 1)], {}),
         ("candidate_sources", [("source_type", 1)], {}),
 

@@ -370,8 +370,11 @@ async def list_projects(
 @router.get("/projects/board")
 async def board(request: Request):
     """Kanban board — projects grouped by 10 new stages with track migration of legacy data."""
-    await _get_user(request)
-    cursor = db.projects.find({}, {"_id": 0}).sort("created_at", -1)
+    user = await _get_user(request)
+    # The board read every project in the database. The list beside it was
+    # scoped, so a manager saw their own work in one view and everybody's in
+    # the other.
+    cursor = db.projects.find(permissions.project_scope_filter(user), {"_id": 0}).sort("created_at", -1)
     projects = await cursor.to_list(1000)
     board: Dict[int, List[dict]] = {i: [] for i in range(1, 11)}
     for p in projects:
@@ -417,10 +420,23 @@ async def board(request: Request):
 
 @router.get("/projects/{project_id}")
 async def get_project(project_id: str, request: Request):
-    await _get_user(request)
+    user = await _get_user(request)
     project = await db.projects.find_one({"id": project_id}, {"_id": 0})
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+
+    # The list was scoped and this was not, so a project nobody could find
+    # was still readable to anyone who knew its id -- including a colleague's
+    # client engagement in the same unit, with its notes and stage history.
+    if not permissions.can_view_all_projects(user):
+        mine = await db.projects.find_one(
+            {"id": project_id, **permissions.project_scope_filter(user)}, {"_id": 0, "id": 1}
+        )
+        if not mine:
+            raise HTTPException(
+                status_code=403,
+                detail="You can only open projects you manage or work on",
+            )
     # Attach milestones, tickets
     milestones = await db.milestones.find({"project_id": project_id}, {"_id": 0}).sort("target_date", 1).to_list(100)
     tickets = await db.tickets.find({"project_id": project_id}, {"_id": 0}).sort("created_at", -1).to_list(200)
@@ -940,6 +956,14 @@ async def project_contacts(project_id: str, request: Request):
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    if not permissions.can_view_all_projects(user):
+        mine = await db.projects.find_one(
+            {"id": project_id, **permissions.project_scope_filter(user)}, {"_id": 0, "id": 1}
+        )
+        if not mine:
+            raise HTTPException(status_code=403, detail="You can only open projects you manage or work on")
+
+
     client_name = project.get("client_name_snapshot") or ""
     client_id = project.get("client_id")
 
@@ -1121,10 +1145,18 @@ async def build_update(project_id: str, data: BuildUpdate, request: Request):
 
 @router.get("/projects/{project_id}/build-comments")
 async def list_build_comments(project_id: str, request: Request):
-    await _get_user(request)
+    user = await _get_user(request)
     project = await db.projects.find_one({"id": project_id}, {"_id": 0, "build_comments": 1, "build_status": 1})
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+
+    if not permissions.can_view_all_projects(user):
+        mine = await db.projects.find_one(
+            {"id": project_id, **permissions.project_scope_filter(user)}, {"_id": 0, "id": 1}
+        )
+        if not mine:
+            raise HTTPException(status_code=403, detail="You can only open projects you manage or work on")
+
     return {
         "build_status": project.get("build_status"),
         "build_comments": project.get("build_comments", []),

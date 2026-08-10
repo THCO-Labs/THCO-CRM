@@ -132,12 +132,18 @@ def can_manage_project(user: Dict[str, Any], project: Dict[str, Any]) -> bool:
     uid = (user or {}).get("user_id")
     if not uid:
         return False
-    # Named on this project in particular. Two managers on one project is
-    # ordinary here, so this is a list; the older single field is still
-    # honoured for projects written before it became one.
-    if uid == p.get("project_manager_id") or uid in (p.get("project_manager_ids") or []):
-        return True
-    return bool(p.get("unit_slug")) and p.get("unit_slug") in headed_units(user)
+    # Whoever opened it, and whoever co-manages it. Two managers on one
+    # project is ordinary here, so that is a list; the older single field is
+    # still honoured for projects written before it became one.
+    #
+    # Deliberately not everyone who manages the unit: opening projects in a
+    # unit does not make a colleague's project yours to rename, restaff or
+    # delete, any more than it makes it yours to read.
+    return (
+        uid == p.get("created_by")
+        or uid == p.get("project_manager_id")
+        or uid in (p.get("project_manager_ids") or [])
+    )
 
 
 def can_manage_boards(user: Dict[str, Any], project: Dict[str, Any]) -> bool:
@@ -258,15 +264,16 @@ def project_scope_filter(user: Dict[str, Any]) -> Dict[str, Any]:
         {"created_by": {"$in": identities}},
         {"delivery_coordinator_id": uid},
         {"executive_approver_id": uid},
-        # Staff added to a project by its unit head.
+        # Staff added to a project by its manager.
         {"collaborator_ids": uid},
     ]
 
-    # A head sees everything under the unit they run, including work they
-    # did not open themselves.
-    headed = headed_units(user)
-    if headed:
-        clauses.append({"unit_slug": {"$in": headed}})
+    # Managing a unit is what lets somebody open a project in it. It is not a
+    # licence to read every project in it. A manager sees the work they
+    # started, the work they co-manage, and the work they were put on --
+    # a colleague's client engagement in the same unit is not theirs to read.
+    clauses.append({"project_manager_id": uid})
+    clauses.append({"project_manager_ids": uid})
 
     return {"$or": clauses}
 

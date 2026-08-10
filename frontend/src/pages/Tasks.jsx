@@ -15,9 +15,10 @@ import { permissionsForProject } from "../components/tasks/permissions";
  *   Task page → Projects Workspace → select a project → project's Task Board
  *
  * The project list reuses the existing (Flow) projects data source. Selecting
- * a project loads ONLY that project's boards (data isolation). Only a Project
- * Coordinator (is_delivery_coordinator / super_admin) can mutate boards/tasks,
- * and only a coordinator can generate/manage that project's public share link.
+ * a project loads ONLY that project's boards (data isolation). The project's
+ * managers -- whoever created it, whoever co-manages it, and administrators --
+ * shape the boards and own the public share link. Collaborators work inside
+ * the boards; everybody else reads.
  */
 export default function Tasks() {
   const user = useUser();

@@ -759,6 +759,13 @@ async def transition_stage(project_id: str, data: StageTransition, request: Requ
     if data.target_stage not in STAGES:
         raise HTTPException(status_code=400, detail="Invalid stage")
 
+    # Nothing checked who may move a project through the pipeline. Whoever runs
+    # the project does -- the same rule as editing or restaffing it.
+    permissions.require(
+        permissions.can_manage_project(user, project),
+        "Only this project's manager can move it through the pipeline",
+    )
+
     now = _now()
     history = project.get("stage_history", [])
     history.append({
@@ -780,10 +787,11 @@ async def transition_stage(project_id: str, data: StageTransition, request: Requ
     }
 
     # ------- STRUCTURED VALIDATORS at gate stages -------
-    # Gate 1→2: only Delivery Coordinator (is_delivery_coordinator) can pick a client, and must assign Delivery Owner
+    # Stage 2 names the person who will own delivery. It used to be reserved
+    # for whoever carried is_delivery_coordinator; nobody does, so the stage
+    # could not be reached at all. The manager check above is the gate now --
+    # the requirement that survives is naming somebody, not holding a flag.
     if target == 2:
-        if not (user.get("is_delivery_coordinator") or user.get("role") == "super_admin"):
-            raise HTTPException(status_code=403, detail="Only the Delivery Coordinator can pick a new client")
         owner_id = payload.get("delivery_owner_id")
         if not owner_id:
             raise HTTPException(status_code=400, detail="delivery_owner_id is required to advance to Stage 2")
@@ -801,24 +809,18 @@ async def transition_stage(project_id: str, data: StageTransition, request: Requ
         # who is allowed to set what
         ops_in = payload.get("operations_owner_id") or payload.get("pricing_owner_id")
         if ops_in:
-            if not (user.get("is_delivery_owner") or user.get("is_delivery_coordinator") or user.get("role") == "super_admin"):
-                raise HTTPException(status_code=403, detail="Only Delivery Owner or Coordinator can set the Operations Owner")
-            ops = await db.users.find_one({"user_id": ops_in}, {"_id": 0, "name": 1, "is_operations_owner": 1})
+            ops = await db.users.find_one({"user_id": ops_in}, {"_id": 0, "name": 1})
             if not ops:
                 raise HTTPException(status_code=404, detail="Operations Owner user not found")
-            if not ops.get("is_operations_owner"):
-                raise HTTPException(status_code=400, detail="Selected user does not hold the is_operations_owner role")
             updates["pricing_owner_id"] = ops_in  # column kept for back-compat
             updates["pricing_owner_name"] = ops["name"]
             operations_owner_id = ops_in
         if "engineer_id" in payload and payload["engineer_id"]:
-            if not (user.get("is_delivery_coordinator") or user.get("role") == "super_admin"):
-                raise HTTPException(status_code=403, detail="Only the Delivery Coordinator can assign the Engineer")
-            eng = await db.users.find_one({"user_id": payload["engineer_id"]}, {"_id": 0, "name": 1, "is_engineer": 1})
+            # Requiring the chosen person to carry is_engineer made the stage
+            # impossible: one person in the company holds it.
+            eng = await db.users.find_one({"user_id": payload["engineer_id"]}, {"_id": 0, "name": 1})
             if not eng:
                 raise HTTPException(status_code=404, detail="Engineer user not found")
-            if not eng.get("is_engineer"):
-                raise HTTPException(status_code=400, detail="Selected user does not hold the is_engineer role")
             updates["assigned_engineer_id"] = payload["engineer_id"]
             updates["assigned_engineer_name"] = eng["name"]
             engineer_id = payload["engineer_id"]
@@ -1625,16 +1627,32 @@ async def list_audit(
 # ===========================================================================
 @router.get("/users-by-role/{flag}")
 async def users_by_role(flag: str, request: Request):
-    """List active users holding a given flow role flag (for assignment dropdowns)."""
+    """People to offer for a pipeline assignment.
+
+    These flags predate project managers and are almost entirely unset -- one
+    person in the company carries is_engineer and nobody carries the rest. So
+    the dropdowns they fed came back empty, and the stages that require a name
+    could not be completed by anybody: an empty list is not a permission
+    error, it is a dead end with no explanation.
+
+    Whoever holds the flag still comes first, since that is a deliberate
+    assignment. Everybody active follows, so there is always somebody to pick.
+    """
     await _get_user(request)
     valid = {f for f, _ in FLOW_ROLE_FLAGS}
     if flag not in valid:
         raise HTTPException(status_code=400, detail="Invalid role flag")
-    users = await db.users.find(
-        {flag: True, "status": "active"},
-        {"_id": 0, "user_id": 1, "name": 1, "email": 1}
-    ).to_list(100)
-    return users
+
+    fields = {"_id": 0, "user_id": 1, "name": 1, "email": 1}
+    holders = await db.users.find({flag: True, "status": "active"}, fields).to_list(100)
+    held = {u["user_id"] for u in holders}
+    others = await db.users.find(
+        {"status": "active", "user_id": {"$nin": list(held)}}, fields
+    ).sort("name", 1).to_list(300)
+
+    for u in holders:
+        u["holds_role"] = True
+    return holders + others
 
 
 @router.get("/roles")

@@ -36,9 +36,19 @@ const webpackConfig = {
   eslint: {
     configure: {
       extends: ["plugin:react-hooks/recommended"],
+      // This block replaces the defaults rather than adding to them, so for a
+      // long time nothing checked that a name existed before it was used. A
+      // component could be moved to another file, leave its imports behind,
+      // build clean, and then throw "X is not defined" the moment somebody
+      // opened it. The build should find that, not the person using the app.
+      env: { browser: true, es2021: true },
+      parserOptions: { ecmaVersion: "latest", sourceType: "module", ecmaFeatures: { jsx: true } },
+      plugins: ["react"],
       rules: {
         "react-hooks/rules-of-hooks": "error",
         "react-hooks/exhaustive-deps": "warn",
+        "no-undef": "error",
+        "react/jsx-no-undef": "error",
       },
     },
   },

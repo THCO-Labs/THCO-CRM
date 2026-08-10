@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Upload, File, X, Check, AlertCircle, ArrowLeft, HardDrive, FolderOpen, RefreshCw, FileText, Loader2 } from "lucide-react";
+import { Upload, File, X, Check, AlertCircle, ArrowLeft, HardDrive, FolderOpen, RefreshCw, FileText, Loader2, Download } from "lucide-react";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "../components/ui/breadcrumb";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { X } from "lucide-react";
+import { X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { flowAPI } from "../../lib/api";
 import { STAGES } from "../../pages/flow/stages";
+import { Button } from "../ui/button";
 
 /**
  * The structured input two stages require before a project may advance:
@@ -14,7 +15,17 @@ import { STAGES } from "../../pages/flow/stages";
  * window to the project, losing the board and everything on screen, purely
  * because the form it needed was defined somewhere else.
  */
-const StructuredStageModal = ({ targetStage, project, me, onClose, onSubmit, transitioning }) => {
+const inputCls =
+  "w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#1B4332]/20 focus:border-[#1B4332] outline-none";
+
+const Field = ({ label, children }) => (
+  <div className="mb-4">
+    <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
+    {children}
+  </div>
+);
+
+const StructuredStageModal = ({ targetStage, project, onClose, onSubmit, transitioning }) => {
   const [note, setNote] = useState("");
   const [deliveryOwnerId, setDeliveryOwnerId] = useState(project.delivery_owner_id || "");
   const [pricingOwnerId, setPricingOwnerId] = useState(project.pricing_owner_id || "");
@@ -45,20 +56,19 @@ const StructuredStageModal = ({ targetStage, project, me, onClose, onSubmit, tra
     fetch();
   }, [targetStage]);
 
-  // Permission helpers
-  const isCoordinator = me?.is_delivery_coordinator || me?.role === "super_admin";
-  const isDeliveryOwner = me?.is_delivery_owner || me?.role === "super_admin";
-
+  // Whoever manages the project advances it. This used to be gated here on
+  // is_delivery_coordinator / is_delivery_owner — flags no account has ever
+  // held, so the fields were locked and the form unusable for everybody. The
+  // real check lives on the server, which asks whether you manage the project.
   const submit = (e) => {
     e.preventDefault();
     if (targetStage === 2) {
       if (!deliveryOwnerId) { toast.error("Select a Delivery Owner"); return; }
-      if (!isCoordinator) { toast.error("Only the Delivery Coordinator can pick the client"); return; }
       onSubmit(2, note, { delivery_owner_id: deliveryOwnerId });
     }
     if (targetStage === 5) {
       if (!pricingOwnerId) { toast.error("Select an Operations Owner"); return; }
-      if (!engineerId) { toast.error("Select an Engineer (Coordinator only)"); return; }
+      if (!engineerId) { toast.error("Select an Engineer"); return; }
       onSubmit(5, note, { operations_owner_id: pricingOwnerId, engineer_id: engineerId });
     }
   };
@@ -77,39 +87,38 @@ const StructuredStageModal = ({ targetStage, project, me, onClose, onSubmit, tra
           <>
             {targetStage === 2 && (
               <>
-                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
-                  Only the <strong>Delivery Coordinator</strong> can pick a new client and assign the Delivery Owner.
+                <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
+                  Name the person who owns delivery for this client. They will show on the project and can be changed later.
                 </p>
                 <Field label="Delivery Owner *">
-                  <select value={deliveryOwnerId} onChange={(e) => setDeliveryOwnerId(e.target.value)} className={inputCls} data-testid="modal-owner-select" disabled={!isCoordinator}>
+                  <select value={deliveryOwnerId} onChange={(e) => setDeliveryOwnerId(e.target.value)} className={inputCls} data-testid="modal-owner-select">
                     <option value="">— select Delivery Owner —</option>
                     {deliveryOwners.map(u => <option key={u.user_id} value={u.user_id}>{u.name} ({u.email})</option>)}
                   </select>
-                  {deliveryOwners.length === 0 && <p className="text-xs text-red-600 mt-1">No users hold the <code>is_delivery_owner</code> role. Ask an admin to assign one at /flow/admin/roles.</p>}
+                  {deliveryOwners.length === 0 && <p className="text-xs text-red-600 mt-1">No active staff to choose from.</p>}
                 </Field>
               </>
             )}
 
             {targetStage === 5 && (
               <>
-                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
-                  <strong>Delivery Owner</strong> fills Operations Owner. <strong>Delivery Coordinator</strong> assigns the Engineer.
-                  Submitting this will split the project into <strong>Proposal track</strong> (Stage 6, Ops) + <strong>Build track</strong> (Stage 9, Eng).
+                <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
+                  This splits the project into a <strong>Proposal track</strong> (Stage 6) and a <strong>Build track</strong> (Stage 9).
+                  Name who leads each.
                 </p>
                 <Field label="Operations Owner *">
-                  <select value={pricingOwnerId} onChange={(e) => setPricingOwnerId(e.target.value)} className={inputCls} data-testid="modal-ops-select" disabled={!(isCoordinator || isDeliveryOwner)}>
+                  <select value={pricingOwnerId} onChange={(e) => setPricingOwnerId(e.target.value)} className={inputCls} data-testid="modal-ops-select">
                     <option value="">— select Operations Owner —</option>
                     {pricingOwners.map(u => <option key={u.user_id} value={u.user_id}>{u.name} ({u.email})</option>)}
                   </select>
-                  {pricingOwners.length === 0 && <p className="text-xs text-red-600 mt-1">No users hold the <code>is_operations_owner</code> role.</p>}
+                  {pricingOwners.length === 0 && <p className="text-xs text-red-600 mt-1">No active staff to choose from.</p>}
                 </Field>
-                <Field label="Engineer * (only the Delivery Coordinator can assign)">
-                  <select value={engineerId} onChange={(e) => setEngineerId(e.target.value)} className={inputCls} data-testid="modal-engineer-select" disabled={!isCoordinator}>
+                <Field label="Engineer *">
+                  <select value={engineerId} onChange={(e) => setEngineerId(e.target.value)} className={inputCls} data-testid="modal-engineer-select">
                     <option value="">— select Engineer —</option>
                     {engineers.map(u => <option key={u.user_id} value={u.user_id}>{u.name} ({u.email})</option>)}
                   </select>
-                  {engineers.length === 0 && <p className="text-xs text-red-600 mt-1">No users hold the <code>is_engineer</code> role.</p>}
-                  {!isCoordinator && <p className="text-xs text-amber-600 mt-1">This field is locked — only a Delivery Coordinator can edit it.</p>}
+                  {engineers.length === 0 && <p className="text-xs text-red-600 mt-1">No active staff to choose from.</p>}
                 </Field>
               </>
             )}

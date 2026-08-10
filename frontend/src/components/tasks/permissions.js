@@ -58,8 +58,14 @@ export function permissionsFromCanManage(canManage) {
 /**
  * What this person may do on one project's board.
  *
- * Three levels, matching the server: the unit head (and administrators) shape
- * the board; collaborators work inside it; everybody else reads.
+ * Three levels, matching the server: the project's managers (and
+ * administrators) shape the board; collaborators work inside it; everybody
+ * else reads.
+ *
+ * This mirrors can_manage_project in backend/services/permissions.py. It used
+ * to grant control to anyone who ran the project's unit, which handed a
+ * manager full controls over a colleague's project -- the buttons appeared and
+ * then the server refused them.
  */
 export function permissionsForProject(user, project) {
   if (!user || !project) return READ_ONLY_PERMISSIONS;
@@ -68,8 +74,9 @@ export function permissionsForProject(user, project) {
     user.role === "super_admin" ||
     user.role === "mini_admin" ||
     Boolean(user.is_hr) ||
-    Boolean(user.is_delivery_coordinator) ||
-    (project.unit_slug && (user.headed_units || []).includes(project.unit_slug));
+    user.user_id === project.created_by ||
+    user.user_id === project.project_manager_id ||
+    (project.project_manager_ids || []).includes(user.user_id);
 
   if (manages) return FULL_PERMISSIONS;
   if ((project.collaborator_ids || []).includes(user.user_id)) return COLLABORATOR_PERMISSIONS;

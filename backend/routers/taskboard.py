@@ -423,7 +423,12 @@ async def projects_summary(request: Request):
             # so rather than crediting the unit's manager.
             "unit_head_name": p.get("project_manager_name") or unit_heads.get(p.get("unit_slug")),
             "project_manager_name": p.get("project_manager_name"),
+            # Who may shape this board, sent so the UI reaches the same verdict
+            # the server does. Managing a project means you started it or you
+            # manage it -- running its unit is not enough.
+            "created_by": p.get("created_by"),
             "project_manager_id": p.get("project_manager_id"),
+            "project_manager_ids": p.get("project_manager_ids") or [],
         })
     return out
 

@@ -17,7 +17,7 @@ Two guarantees:
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from services import candidate_identity as identity
 from services.cv_parser import (
@@ -240,8 +240,12 @@ def content_type_for(filename: str) -> str:
 
 async def _record_version(db, candidate_id: str, parsed: Dict[str, Any],
                           source: Dict[str, Any],
-                          file_bytes: Optional[bytes] = None) -> int:
-    """Store this upload as a new resume version. Never replaces an earlier one."""
+                          file_bytes: Optional[bytes] = None) -> Tuple[int, bool]:
+    """Store this upload as a new resume version. Never replaces an earlier one.
+
+    Returns the version number and whether the document itself was kept, so
+    the caller only advertises a viewable CV when there is one to view.
+    """
     version = await db.resume_versions.count_documents({"candidate_id": candidate_id}) + 1
     version_id = str(uuid.uuid4())
     filename = parsed.get("filename")
@@ -281,7 +285,7 @@ async def _record_version(db, candidate_id: str, parsed: Dict[str, Any],
         "file_stored": stored,
         "file_size": len(file_bytes) if file_bytes else None,
     })
-    return version
+    return version, stored
 
 
 async def _log_timeline(db, candidate_id: str, event: str, detail: str = "",
@@ -344,9 +348,14 @@ async def import_cv(db, file_bytes: bytes, filename: str,
             updates["phone_normalised"] = identity.normalise_phone(parsed["phone"])
 
         await db.candidates.update_one({"candidate_id": candidate_id}, {"$set": updates})
-        version = await _record_version(db, candidate_id, parsed, source, file_bytes)
-        updates_after = {"has_resume_file": True}
-        await db.candidates.update_one({"candidate_id": candidate_id}, {"$set": updates_after})
+        version, stored = await _record_version(db, candidate_id, parsed, source, file_bytes)
+        # Only claim a viewable document when one was actually stored. Setting
+        # this unconditionally put a "View original CV" button on thousands of
+        # candidates whose file had never been kept, and every click 404'd.
+        if stored:
+            await db.candidates.update_one(
+                {"candidate_id": candidate_id}, {"$set": {"has_resume_file": True}}
+            )
 
         await _log_timeline(
             db, candidate_id, "resume_updated",
@@ -388,7 +397,11 @@ async def import_cv(db, file_bytes: bytes, filename: str,
         "has_resume_file": True,
     }
     await db.candidates.insert_one(document)
-    version = await _record_version(db, candidate_id, parsed, source, file_bytes)
+    version, stored = await _record_version(db, candidate_id, parsed, source, file_bytes)
+    if not stored:
+        await db.candidates.update_one(
+            {"candidate_id": candidate_id}, {"$set": {"has_resume_file": False}}
+        )
     await _log_timeline(
         db, candidate_id, "resume_imported",
         f"Imported from {source.get('source')}", {"version": version},

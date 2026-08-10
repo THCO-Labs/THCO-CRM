@@ -166,14 +166,25 @@ async def update_unit(slug: str, data: UnitUpdate, request: Request):
     return serialize(unit)
 
 
+# The unit that builds. Projects belong to whichever unit sold or owns them,
+# but the people doing the work are engineers here, so they are offered
+# alongside the owning unit's own people when a team is being picked.
+DELIVERY_UNIT = "technology"
+
+
 @router.get("/{slug}/staff")
 async def list_unit_staff(slug: str, request: Request):
-    """The people assigned to a unit, for its head to pick a project team from.
+    """The people a project in this unit can be staffed with.
 
-    The full staff directory is administrators-only, but a head has to be able
-    to see who is in their own unit or they cannot staff their own projects.
-    So this returns just that unit's people, and only name and email -- enough
-    to choose somebody, not a copy of the directory.
+    That is the unit's own members plus Technology & Build, because a project
+    owned by Client Delivery or Talent is still built by engineers. Offering
+    only the owning unit's members meant a manager could not put the people
+    doing the work onto the project.
+
+    The full staff directory stays administrators-only. This returns names and
+    emails for two units -- enough to choose somebody, not a copy of the
+    directory -- and each person carries the unit they come from so the
+    chooser can tell a colleague from an engineer.
     """
     user = await _current(request)
     permissions.require(
@@ -181,17 +192,31 @@ async def list_unit_staff(slug: str, request: Request):
         "You can only see the staff of a unit you manage",
     )
 
+    slugs = [slug] if slug == DELIVERY_UNIT else [slug, DELIVERY_UNIT]
+    names = {
+        u["slug"]: u.get("name")
+        async for u in db.units.find({"slug": {"$in": slugs}}, {"_id": 0, "slug": 1, "name": 1})
+    }
+    heads = {
+        u["slug"]: u.get("head_user_id")
+        async for u in db.units.find({"slug": {"$in": slugs}}, {"_id": 0, "slug": 1, "head_user_id": 1})
+    }
+
     people = await db.users.find(
-        {"accessible_units": slug, "status": {"$ne": "disabled"}},
-        {"_id": 0, "user_id": 1, "name": 1, "email": 1, "role": 1},
-    ).sort("name", 1).to_list(length=500)
+        {"accessible_units": {"$in": slugs}, "status": {"$ne": "disabled"}},
+        {"_id": 0, "user_id": 1, "name": 1, "email": 1, "role": 1, "accessible_units": 1},
+    ).sort("name", 1).to_list(length=1000)
 
-    unit = await db.units.find_one({"slug": slug}, {"_id": 0, "head_user_id": 1})
-    head_id = (unit or {}).get("head_user_id")
     for p in people:
-        p["is_head"] = p["user_id"] == head_id
+        acc = p.pop("accessible_units", []) or []
+        # Somebody in both units is shown under the one that owns the project.
+        home = slug if slug in acc else DELIVERY_UNIT
+        p["unit"] = home
+        p["unit_name"] = names.get(home, home)
+        p["is_head"] = p["user_id"] == heads.get(home)
 
-    return {"slug": slug, "staff": people, "total": len(people)}
+    return {"slug": slug, "staff": people, "total": len(people),
+            "units": [{"slug": s, "name": names.get(s, s)} for s in slugs]}
 
 
 @router.put("/{slug}/head")

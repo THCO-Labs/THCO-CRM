@@ -252,6 +252,38 @@ async def _board_for_access(user: dict, board_id: str) -> dict:
     return board
 
 
+async def _announce_assignees(card: dict, before: list, after: list,
+                              board: dict, actor: dict) -> None:
+    """Tell anyone newly put on a task, and make sure they can reach it.
+
+    Being added to a project was already announced; being handed one of its
+    tasks was not, so work could be assigned to somebody who never found out
+    unless they happened to open the board. Assigning also puts them on the
+    project, since a task you cannot open is not an assignment.
+    """
+    had = {a.get("user_id") for a in (before or []) if a.get("user_id")}
+    added = [a for a in (after or []) if a.get("user_id") and a["user_id"] not in had]
+    if not added:
+        return
+
+    project = await db.projects.find_one({"id": board.get("project_id")}, {"_id": 0})
+    if not project:
+        return
+
+    for a in added:
+        await db.projects.update_one(
+            {"id": project["id"], "collaborator_ids": {"$ne": a["user_id"]}},
+            {"$addToSet": {
+                "collaborator_ids": a["user_id"],
+                "collaborators": {"user_id": a["user_id"], "name": a.get("name"),
+                                  "email": a.get("email")},
+            }},
+        )
+
+    from services.notifications import notify_assigned_to_task
+    await notify_assigned_to_task(db, card, added, project, board.get("title") or "", actor)
+
+
 async def _project_or_404(project_id: Optional[str]) -> dict:
     project = await db.projects.find_one({"id": project_id}, {"_id": 0})
     if not project:
@@ -720,6 +752,7 @@ async def create_card(board_id: str, data: CardCreate, request: Request):
         "updated_at": now_iso(),
     }
     await db.task_cards.insert_one(card)
+    await _announce_assignees(card, [], card["assignees"], board, user)
     return serialize(card)
 
 
@@ -728,7 +761,7 @@ async def update_card(card_id: str, data: CardUpdate, request: Request):
     existing = await db.task_cards.find_one({"card_id": card_id}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="Card not found")
-    await _require_board_user(request, existing.get("project_id"))
+    user, _ = await _require_board_user(request, existing.get("project_id"))
 
     update = {k: v for k, v in data.dict(exclude_unset=True).items() if v is not None}
     if "title" in update and not update["title"].strip():
@@ -743,6 +776,15 @@ async def update_card(card_id: str, data: CardUpdate, request: Request):
     update["updated_at"] = now_iso()
     await db.task_cards.update_one({"card_id": card_id}, {"$set": update})
     card = await db.task_cards.find_one({"card_id": card_id}, {"_id": 0})
+
+    # Only whoever was newly added is told; re-saving a card with the same
+    # people on it announces nothing.
+    if "assignees" in update:
+        board = await db.task_boards.find_one({"board_id": existing["board_id"]}, {"_id": 0})
+        if board:
+            await _announce_assignees(card, existing.get("assignees") or [],
+                                      update["assignees"], board, user)
+
     return serialize(card)
 
 

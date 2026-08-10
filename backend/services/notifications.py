@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 # Notification kinds. Kept as constants so the UI can branch on them without
 # matching against prose that might later be reworded.
 ADDED_TO_PROJECT = "added_to_project"
+ASSIGNED_TO_TASK = "assigned_to_task"
 REMOVED_FROM_PROJECT = "removed_from_project"
 MADE_UNIT_HEAD = "made_unit_head"
 
@@ -149,6 +150,81 @@ async def notify_added_to_project(
             # The placement itself already succeeded; losing the email must
             # not undo it, and the in-app notification still tells them.
             logger.warning("Could not email %s about project %s: %s", email, project.get("id"), e)
+
+    return {"in_app": in_app, "emailed": emailed}
+
+
+def _task_email_html(person_name: str, card_title: str, project_name: str,
+                     board_title: str, actor_name: str, link: str) -> str:
+    return f"""
+    <div style="font-family:Inter,Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;background:#0C0F13;border-radius:12px;color:#E8E6F0">
+      <div style="font-size:22px;font-weight:700;color:#C6A15B;margin-bottom:4px">THCO Control Room</div>
+      <p style="color:#9AA0AB;margin:0 0 18px">Hello, <strong style="color:#fff">{person_name}</strong></p>
+      <p style="color:#E8E6F0">
+        <strong style="color:#fff">{actor_name}</strong> has assigned you a task.
+      </p>
+      <div style="background:#161B22;border:1px solid #2a2f38;border-radius:10px;padding:16px;margin:16px 0">
+        <p style="margin:4px 0;color:#9AA0AB">Task<br><strong style="color:#fff">{card_title}</strong></p>
+        <p style="margin:12px 0 4px;color:#9AA0AB">Project<br><strong style="color:#fff">{project_name}</strong></p>
+        <p style="margin:12px 0 4px;color:#9AA0AB">List<br><strong style="color:#fff">{board_title}</strong></p>
+      </div>
+      <a href="{link}" style="display:inline-block;background:#1FB58A;color:#0C0F13;font-weight:700;padding:12px 22px;border-radius:8px;text-decoration:none">Open the board</a>
+      <p style="color:#6B7280;font-size:12px;margin-top:18px">Or copy this link into your browser: {link}</p>
+    </div>
+    """
+
+
+async def notify_assigned_to_task(db, card: Dict[str, Any], assignees: List[Dict[str, Any]],
+                                  project: Dict[str, Any], board_title: str,
+                                  actor: Dict[str, Any]) -> Dict[str, int]:
+    """Tell each person newly put on a task, in-app and by email.
+
+    Being added to a project was already announced; being handed one of its
+    tasks was not, so work could be assigned to somebody who never found out
+    unless they happened to open the board.
+    """
+    actor_id = (actor or {}).get("user_id")
+    actor_name = (actor or {}).get("name") or "A project manager"
+    title = card.get("title") or "a task"
+    project_name = (project or {}).get("name") or "a project"
+    link = f"{_app_url()}/tasks"
+
+    in_app = emailed = 0
+    for person in assignees:
+        uid = person.get("user_id")
+        if not uid or uid == actor_id:
+            continue
+
+        await create(
+            db,
+            user_id=uid,
+            kind=ASSIGNED_TO_TASK,
+            title=f"{actor_name} assigned you: {title}",
+            body=f"On {project_name} · {board_title}",
+            link="/tasks",
+            actor_id=actor_id or "",
+            actor_name=actor_name,
+            entity_type="task",
+            entity_id=card.get("card_id") or "",
+        )
+        in_app += 1
+
+        email = person.get("email")
+        if not email:
+            continue
+        try:
+            from services import send_email
+            await send_email(
+                to=[email],
+                subject=f"You've been assigned: {title}",
+                html=_task_email_html(person.get("name") or "there", title,
+                                      project_name, board_title, actor_name, link),
+                template_name="assigned_to_task",
+                context={"card_id": card.get("card_id"), "project": project_name},
+            )
+            emailed += 1
+        except Exception as e:
+            logger.warning("Could not email %s about task %s: %s", email, card.get("card_id"), e)
 
     return {"in_app": in_app, "emailed": emailed}
 

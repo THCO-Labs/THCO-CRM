@@ -742,8 +742,11 @@ export const flowAPI = {
   // The whole intended team, not a delta — two heads editing at once cannot
   // then interleave into a half-applied list. Newly added people are notified;
   // people already on it are not notified again.
-  setCollaborators: async (id, collaboratorIds) =>
-    (await apiClient.put(`/flow/projects/${id}/collaborators`, { collaborator_ids: collaboratorIds })).data,
+  setCollaborators: async (id, collaboratorIds, managerIds = []) =>
+    (await apiClient.put(`/flow/projects/${id}/collaborators`, {
+      collaborator_ids: collaboratorIds,
+      manager_ids: managerIds,
+    })).data,
   // Name the person running this particular project. Null hands it back to
   // whoever manages the unit. Administrators only.
   setProjectManager: async (id, userId) =>

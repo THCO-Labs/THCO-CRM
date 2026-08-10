@@ -129,7 +129,55 @@ export default function UserManagement() {
   const headOf = (slug) => units.find((u) => u.slug === slug)?.head_name || null;
 
   // Which unit, if any, this person currently heads.
+  // Every unit this person manages projects in. Two sources, because there
+  // are two ways to hold it: the grant carried on the person, which is how
+  // most units run with every member a manager, and being named on the unit
+  // itself, which is how Technology & Build runs with one. Reading only the
+  // second showed a single manager across the whole company.
+  const unitsManaged = (u) => {
+    const named = units.filter((x) => x.head_user_id === u.user_id).map((x) => x.slug);
+    const granted = u.headed_units || [];
+    return Array.from(new Set([...named, ...granted]))
+      .filter((s) => s !== "flow")
+      .map((s) => unitName(s))
+      .sort();
+  };
+
   const unitHeaded = (userId) => units.find((u) => u.head_user_id === userId) || null;
+
+  // Grant or take back the project-manager role for one person in one unit.
+  // Held on the person, so several people can manage the same unit -- which
+  // is how most units run.
+  const togglePM = async (slug, person, isCurrently) => {
+    const key = `pm_${slug}_${person.user_id}`;
+    setSaving((s) => ({ ...s, [key]: true }));
+    try {
+      const current = new Set(person.headed_units || []);
+      isCurrently ? current.delete(slug) : current.add(slug);
+      const next = Array.from(current).sort();
+      await usersAPI.update(person.user_id, { headed_units: next });
+
+      // A person named on the unit itself keeps the role through that route,
+      // so removing the grant alone would leave them still managing it.
+      if (isCurrently && units.find((x) => x.slug === slug)?.head_user_id === person.user_id) {
+        await unitsAPI.setHead(slug, null);
+        await fetchUnits();
+      }
+
+      setUsers((prev) =>
+        prev.map((x) => (x.user_id === person.user_id ? { ...x, headed_units: next } : x))
+      );
+      toast.success(
+        isCurrently
+          ? `${person.name} no longer manages projects in ${unitName(slug)}`
+          : `${person.name} can now manage projects in ${unitName(slug)}`
+      );
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Could not change the project manager");
+    } finally {
+      setSaving((s) => ({ ...s, [key]: false }));
+    }
+  };
 
   const changeHead = async (slug, userId) => {
     setSaving((s) => ({ ...s, [`head_${slug}`]: true }));
@@ -431,51 +479,67 @@ export default function UserManagement() {
         ))}
       </div>
 
-      {/* Unit heads — reassignable at any time, because companies reorganise
-          and the admin must be able to move the role without editing accounts. */}
+      {/* Who manages projects, per unit. Most units run with every member a
+          manager; Technology & Build runs with one. Both are shown, because
+          listing only the single named manager made nine of ten units look
+          leaderless while their members were managing projects daily. */}
       <div className="lux-card p-6" data-testid="unit-heads-panel">
-        <div className="flex items-start justify-between gap-4 mb-1">
-          <div>
-            <h2 className="font-display text-xl text-gray-900">Project managers</h2>
-            <p className="text-sm text-gray-500 mt-1">
-              Only a project manager can open projects for their unit and add staff to them.
-              Each unit has one head — change it whenever the company does.
-            </p>
-          </div>
+        <div>
+          <h2 className="font-display text-xl text-gray-900">Project managers</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            A project manager opens projects for their unit, staffs them and runs their
+            boards. Tick anyone to grant it; untick to take it back.
+          </p>
         </div>
         <div className="lux-divider my-5" />
-        <div className="grid gap-3 md:grid-cols-2">
-          {ALL_UNITS.map((u) => {
-            const head = units.find((x) => x.slug === u.slug);
-            const busy = saving[`head_${u.slug}`];
+        <div className="space-y-4">
+          {ALL_UNITS.map((unit) => {
+            const members = users.filter(
+              (p) => p.status !== "disabled" && (p.accessible_units || []).includes(unit.slug)
+            );
+            const named = units.find((x) => x.slug === unit.slug);
+            const isPM = (p) =>
+              (p.headed_units || []).includes(unit.slug) || named?.head_user_id === p.user_id;
+            const managers = members.filter(isPM);
             return (
               <div
-                key={u.slug}
-                className="flex items-center justify-between gap-3 border border-[#EAE7E0] rounded-xl px-4 py-3"
-                data-testid={`unit-head-row-${u.slug}`}
+                key={unit.slug}
+                className="border border-[#EAE7E0] rounded-xl px-4 py-3"
+                data-testid={`unit-head-row-${unit.slug}`}
               >
-                <div className="min-w-0">
-                  <p className="text-[13px] font-medium text-gray-900 truncate">{u.name}</p>
-                  <p className="text-[11px] text-gray-400 truncate">
-                    {head?.head_name ? `Headed by ${head.head_name}` : "No head — nobody can open projects here"}
+                <div className="flex items-baseline justify-between gap-3 mb-2">
+                  <p className="text-[13px] font-medium text-gray-900">{unit.name}</p>
+                  <p className="text-[11px] text-gray-400">
+                    {members.length === 0
+                      ? "nobody assigned to this unit"
+                      : `${managers.length} of ${members.length} manage projects`}
                   </p>
                 </div>
-                <select
-                  value={head?.head_user_id || ""}
-                  disabled={busy}
-                  onChange={(e) => changeHead(u.slug, e.target.value || null)}
-                  className="shrink-0 max-w-[190px] text-[12px] border border-[#EAE7E0] rounded-lg px-2.5 py-1.5 bg-white outline-none focus:border-[#C6A15B] disabled:opacity-50"
-                  data-testid={`unit-head-select-${u.slug}`}
-                >
-                  <option value="">— no head —</option>
-                  {users
-                    .filter((p) => p.status !== "disabled")
-                    .map((p) => (
-                      <option key={p.user_id} value={p.user_id}>
-                        {p.name}
-                      </option>
-                    ))}
-                </select>
+                {members.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {members.map((p) => {
+                      const on = isPM(p);
+                      const busy = saving[`pm_${unit.slug}_${p.user_id}`];
+                      return (
+                        <button
+                          key={p.user_id}
+                          type="button"
+                          disabled={busy}
+                          onClick={() => togglePM(unit.slug, p, on)}
+                          className={`px-2.5 py-1 rounded-full border text-[11px] transition-all disabled:opacity-50 ${
+                            on
+                              ? "border-[#BFE7DA] bg-[#EAF8F3] text-[#12795C] font-medium"
+                              : "border-[#EAE7E0] text-gray-500 hover:border-gray-300"
+                          }`}
+                          title={on ? `Remove ${p.name} as a project manager here` : `Make ${p.name} a project manager here`}
+                          data-testid={`pm-toggle-${unit.slug}-${p.user_id}`}
+                        >
+                          {busy ? "…" : p.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -532,29 +596,40 @@ export default function UserManagement() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`text-[11px] font-medium px-2.5 py-1 rounded-full ${
-                          u.role === "super_admin"
-                            ? "bg-[#14181D] text-[#D6BC8A]"
-                            : u.role === "mini_admin"
-                            ? "bg-[#FBF8F1] text-[#A9834E] border border-[#E5D9C3]"
-                            : "bg-[#F7F6F3] text-gray-500 border border-[#EAE7E0]"
-                        }`}
-                      >
-                        {ROLE_LABELS[u.role] || u.role}
-                      </span>
-                      {/* Heading a unit is what lets somebody open projects,
-                          so it belongs next to the role, not buried in a tab. */}
-                      {unitHeaded(u.user_id) && (
+                    {/* Role and, separately, whether they manage projects.
+                        Stacked and never wrapped mid-phrase: side by side in a
+                        narrow column these broke across lines and read as
+                        fragments ("Admin" over "PM · THCO HR"). */}
+                    <td className="px-6 py-4 align-top">
+                      <div className="flex flex-col items-start gap-1.5">
                         <span
-                          className="ml-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full bg-[#EAF8F3] text-[#12795C] border border-[#BFE7DA]"
-                          title={`Heads ${unitHeaded(u.user_id).name} — can open projects for it`}
-                          data-testid={`heads-badge-${u.user_id}`}
+                          className={`text-[11px] font-medium px-2.5 py-1 rounded-full whitespace-nowrap ${
+                            u.role === "super_admin"
+                              ? "bg-[#14181D] text-[#D6BC8A]"
+                              : u.role === "mini_admin"
+                              ? "bg-[#FBF8F1] text-[#A9834E] border border-[#E5D9C3]"
+                              : "bg-[#F7F6F3] text-gray-500 border border-[#EAE7E0]"
+                          }`}
                         >
-                          PM · {unitHeaded(u.user_id).name}
+                          {ROLE_LABELS[u.role] || u.role}
                         </span>
-                      )}
+                        {/* Managing projects is what lets somebody open them,
+                            so it belongs beside the role. Named on one unit or
+                            granted across several -- both make you a project
+                            manager, and reading only the first left most of
+                            them unlabelled. */}
+                        {unitsManaged(u).length > 0 && (
+                          <span
+                            className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-[#EAF8F3] text-[#12795C] border border-[#BFE7DA] whitespace-nowrap max-w-full truncate"
+                            title={`Project manager — ${unitsManaged(u).join(", ")}`}
+                            data-testid={`pm-badge-${u.user_id}`}
+                          >
+                            {unitsManaged(u).length === 1
+                              ? `PM · ${unitsManaged(u)[0]}`
+                              : `PM · ${unitsManaged(u).length} units`}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4">
                       <button

@@ -11,7 +11,7 @@ import logging
 import shutil
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
-from typing import List, Optional
+from typing import Dict, List, Optional
 import uuid
 import bcrypt
 import jwt
@@ -1096,12 +1096,22 @@ async def get_users(request: Request):
         raise HTTPException(status_code=403, detail="Not authorized")
     
     users = await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(1000)
-    
-    # Convert timestamps
+
+    # Fold in the units each person is named on, the same way get_current_user
+    # does. There are two ways to hold the manager role and the stored record
+    # only carries one, so a list built from it alone showed Anabel -- named on
+    # Technology & Build -- as an ordinary team member. Every screen reading
+    # this list would otherwise have to know that and merge it again.
+    named_by_user: Dict[str, List[str]] = {}
+    async for u in db.units.find({"head_user_id": {"$ne": None}}, {"_id": 0, "slug": 1, "head_user_id": 1}):
+        named_by_user.setdefault(u["head_user_id"], []).append(u["slug"])
+
     for user in users:
         if isinstance(user.get("created_at"), str):
             user["created_at"] = datetime.fromisoformat(user["created_at"])
-    
+        granted = user.get("headed_units") if isinstance(user.get("headed_units"), list) else []
+        user["headed_units"] = sorted(set(granted) | set(named_by_user.get(user["user_id"], [])))
+
     return users
 
 @api_router.post("/users")

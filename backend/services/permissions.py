@@ -130,7 +130,12 @@ def can_manage_project(user: Dict[str, Any], project: Dict[str, Any]) -> bool:
         return True
     p = project or {}
     uid = (user or {}).get("user_id")
-    if uid and p.get("project_manager_id") == uid:
+    if not uid:
+        return False
+    # Named on this project in particular. Two managers on one project is
+    # ordinary here, so this is a list; the older single field is still
+    # honoured for projects written before it became one.
+    if uid == p.get("project_manager_id") or uid in (p.get("project_manager_ids") or []):
         return True
     return bool(p.get("unit_slug")) and p.get("unit_slug") in headed_units(user)
 

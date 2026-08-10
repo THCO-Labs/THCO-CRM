@@ -15,6 +15,7 @@ import { unitsAPI } from "../../lib/api";
  */
 export default function CollaboratorPicker({ unitSlug, value = [], onChange, disabled }) {
   const [staff, setStaff] = useState([]);
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
@@ -29,8 +30,8 @@ export default function CollaboratorPicker({ unitSlug, value = [], onChange, dis
       setLoading(true);
       setError("");
       try {
-        const data = await unitsAPI.listStaff(unitSlug);
-        if (live) setStaff(data?.staff || []);
+        const res = await unitsAPI.listStaff(unitSlug);
+        if (live) { setStaff(res?.staff || []); setData(res); }
       } catch (e) {
         if (live) setError(e.response?.data?.detail || "Could not load this unit's staff");
       } finally {
@@ -54,6 +55,21 @@ export default function CollaboratorPicker({ unitSlug, value = [], onChange, dis
         (p.email || "").toLowerCase().includes(q)
     );
   }, [staff, query]);
+
+  // The project's own unit first, the build team after it -- you generally
+  // reach for a colleague before an engineer, and the order should match.
+  const grouped = useMemo(() => {
+    const byUnit = new Map();
+    for (const p of matches) {
+      const label = p.unit_name || "Team";
+      if (!byUnit.has(label)) byUnit.set(label, []);
+      byUnit.get(label).push(p);
+    }
+    const order = (data?.units || []).map((u) => u.name);
+    return [...byUnit.entries()].sort(
+      (a, b) => (order.indexOf(a[0]) + 1 || 99) - (order.indexOf(b[0]) + 1 || 99)
+    );
+  }, [matches, data]);
 
   const toggle = (uid) =>
     onChange(value.includes(uid) ? value.filter((x) => x !== uid) : [...value, uid]);
@@ -117,31 +133,41 @@ export default function CollaboratorPicker({ unitSlug, value = [], onChange, dis
         {!loading && !error && staff.length > 0 && matches.length === 0 && (
           <p className="px-3 py-3 text-xs text-gray-400">Nobody matches "{query}"</p>
         )}
+        {/* Grouped by unit: a project owned by Client Delivery is built by
+            engineers from Technology & Build, and telling those apart matters
+            when you are choosing who does the work. */}
         {!loading &&
-          matches.map((p) => {
-            const on = value.includes(p.user_id);
-            return (
-              <button
-                key={p.user_id}
-                type="button"
-                disabled={disabled}
-                onClick={() => toggle(p.user_id)}
-                className={`w-full flex items-center justify-between gap-3 px-3 py-2 text-left transition-colors disabled:opacity-50 ${
-                  on ? "bg-[#1B4332]/5" : "hover:bg-gray-50"
-                }`}
-                data-testid={`pick-${p.user_id}`}
-              >
-                <span className="min-w-0">
-                  <span className="block text-[13px] text-gray-900 truncate">
-                    {p.name}
-                    {p.is_head && <span className="ml-1.5 text-[10px] text-[#8F7340]">project manager</span>}
-                  </span>
-                  <span className="block text-[11px] text-gray-400 truncate">{p.email}</span>
-                </span>
-                {on && <Check className="w-4 h-4 text-[#1B4332] shrink-0" />}
-              </button>
-            );
-          })}
+          grouped.map(([unitName, people]) => (
+            <div key={unitName}>
+              <p className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-[0.14em] text-gray-400 bg-[#FAFAF9] sticky top-0">
+                {unitName}
+              </p>
+              {people.map((p) => {
+                const on = value.includes(p.user_id);
+                return (
+                  <button
+                    key={p.user_id}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => toggle(p.user_id)}
+                    className={`w-full flex items-center justify-between gap-3 px-3 py-2 text-left transition-colors disabled:opacity-50 ${
+                      on ? "bg-[#1B4332]/5" : "hover:bg-gray-50"
+                    }`}
+                    data-testid={`pick-${p.user_id}`}
+                  >
+                    <span className="min-w-0">
+                      <span className="block text-[13px] text-gray-900 truncate">
+                        {p.name}
+                        {p.is_head && <span className="ml-1.5 text-[10px] text-[#8F7340]">project manager</span>}
+                      </span>
+                      <span className="block text-[11px] text-gray-400 truncate">{p.email}</span>
+                    </span>
+                    {on && <Check className="w-4 h-4 text-[#1B4332] shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
       </div>
     </div>
   );

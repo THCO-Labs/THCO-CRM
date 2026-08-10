@@ -31,6 +31,7 @@ export default function FlowProjectDetail() {
   const [savingTeam, setSavingTeam] = useState(false);
   const [staff, setStaff] = useState([]);
   const [savingManager, setSavingManager] = useState(false);
+  const [managerIds, setManagerIds] = useState([]);
 
   const openEdit = () => {
     setForm({
@@ -88,7 +89,7 @@ export default function FlowProjectDetail() {
 
   // The unit's people, for both the manager picker and the team editor.
   useEffect(() => {
-    if (!isAdmin || !project?.unit_slug || staff.length) return;
+    if (!canManageTeam || !project?.unit_slug || staff.length) return;
     (async () => {
       try {
         const data = await unitsAPI.listStaff(project.unit_slug);
@@ -97,7 +98,7 @@ export default function FlowProjectDetail() {
         /* the picker simply stays empty */
       }
     })();
-  }, [isAdmin, project?.unit_slug, staff.length]);
+  }, [canManageTeam, project?.unit_slug, staff.length]);
 
   const changeManager = async (userId) => {
     setSavingManager(true);
@@ -118,13 +119,19 @@ export default function FlowProjectDetail() {
 
   const openTeam = () => {
     setTeamIds((project?.collaborator_ids || []).slice());
+    setManagerIds((project?.project_manager_ids || []).slice());
     setTeamOpen(true);
   };
+
+  // A co-manager runs the project alongside whoever else manages it; an
+  // engineer on the same project does the work but does not staff it.
+  const toggleManager = (uid) =>
+    setManagerIds((ids) => (ids.includes(uid) ? ids.filter((x) => x !== uid) : [...ids, uid]));
 
   const saveTeam = async () => {
     setSavingTeam(true);
     try {
-      const res = await flowAPI.setCollaborators(id, teamIds);
+      const res = await flowAPI.setCollaborators(id, teamIds, managerIds);
       const added = res.added || 0;
       const removed = res.removed || 0;
       toast.success(
@@ -301,6 +308,44 @@ export default function FlowProjectDetail() {
                   disabled={savingTeam}
                 />
               </div>
+
+              {/* Two managers on one project is ordinary here. A co-manager
+                  staffs the project and runs its boards; an engineer on the
+                  same project does the work without those rights. */}
+              {teamIds.length > 0 && (
+                <div className="mb-3 pt-3 border-t border-[#EAE7E0]">
+                  <p className="text-xs text-gray-500 mb-2">
+                    Who co-manages this project? Everyone else on it is a collaborator.
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {teamIds.map((uid) => {
+                      const person = staff.find((p) => p.user_id === uid);
+                      const name =
+                        person?.name ||
+                        (project.collaborators || []).find((c) => c.user_id === uid)?.name ||
+                        uid;
+                      const on = managerIds.includes(uid);
+                      return (
+                        <button
+                          key={uid}
+                          type="button"
+                          disabled={savingTeam}
+                          onClick={() => toggleManager(uid)}
+                          className={`px-2.5 py-1 rounded-full border text-[11px] transition-all disabled:opacity-50 ${
+                            on
+                              ? "border-[#1B4332] bg-[#1B4332]/10 text-[#1B4332] font-medium"
+                              : "border-[#EAE7E0] text-gray-500 hover:border-gray-300"
+                          }`}
+                          title={on ? `${name} co-manages this project` : `Make ${name} a co-manager`}
+                          data-testid={`comanager-${uid}`}
+                        >
+                          {on ? "★ " : ""}{name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <div className="flex justify-end gap-2">
                 <Button variant="ghost" size="sm" onClick={() => setTeamOpen(false)} className="text-gray-500">
                   Cancel

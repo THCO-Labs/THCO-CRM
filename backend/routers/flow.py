@@ -520,8 +520,12 @@ async def set_project_manager(project_id: str, data: ProjectManagerSet, request:
 
 class CollaboratorsSet(BaseModel):
     # The full intended team. Sent whole rather than as add/remove deltas so
-    # two heads editing at once cannot interleave into a half-applied team.
+    # two managers editing at once cannot interleave into a half-applied team.
     collaborator_ids: List[str] = []
+    # Those among them who co-manage the project. Two managers on one project
+    # is ordinary, and a co-manager can staff it and run its boards -- an
+    # engineer on the same project cannot.
+    manager_ids: List[str] = []
 
 
 @router.put("/projects/{project_id}/collaborators")
@@ -548,9 +552,15 @@ async def set_collaborators(project_id: str, data: CollaboratorsSet, request: Re
     collaborators = await _resolve_collaborators(data.collaborator_ids)
     after_ids = [c["user_id"] for c in collaborators]
 
+    # A co-manager has to be on the project to manage it, so anyone marked a
+    # manager but left off the team is simply kept out of the manager list
+    # rather than granted rights over work they cannot see.
+    manager_ids = [uid for uid in dict.fromkeys(data.manager_ids or []) if uid in after_ids]
+
     await db.projects.update_one(
         {"id": project_id},
         {"$set": {"collaborator_ids": after_ids, "collaborators": collaborators,
+                  "project_manager_ids": manager_ids,
                   "updated_at": _now()}},
     )
 
@@ -559,11 +569,13 @@ async def set_collaborators(project_id: str, data: CollaboratorsSet, request: Re
         await notify_added_to_project(db, project, added, user)
 
     await _audit("project", project_id, "collaborators_set", user,
-                 {"added": len(added), "total": len(after_ids)})
+                 {"added": len(added), "total": len(after_ids),
+                  "managers": len(manager_ids)})
 
     return {
         "project_id": project_id,
         "collaborators": collaborators,
+        "manager_ids": manager_ids,
         "added": len(added),
         "removed": len(before - set(after_ids)),
     }

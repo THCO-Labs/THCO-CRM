@@ -393,15 +393,24 @@ async def get_current_user(request: Request) -> dict:
     # reassigning a head is one write and nobody can be left as the stale head
     # of a unit somebody else now runs. Resolve it here so every permission
     # check downstream can stay synchronous.
-    # The unit is the only place this is recorded. It was briefly merged with a
-    # copy held on the user, and the two disagreed the moment a unit changed
-    # hands: reassigning Technology & Build left the previous manager's copy
-    # intact, so they kept creating projects in a unit somebody else now ran.
-    # One writer, one reader.
-    user["headed_units"] = sorted([
+    # Which units this person manages projects in.
+    #
+    # Two sources on purpose. Most units run with every member a project
+    # manager -- they open their own work and staff it -- and that is a grant
+    # held per person, in `headed_units`. A unit may additionally name one
+    # person on the unit itself, which is how Technology & Build runs with a
+    # single manager. Neither replaces the other, so both are read.
+    #
+    # I previously collapsed this to the unit alone, on the reasoning that one
+    # fact should have one home. That was wrong: they are two different facts.
+    # Collapsing them stripped the manager grant from every member of every
+    # unit but one.
+    named = [
         u["slug"]
         async for u in db.units.find({"head_user_id": user["user_id"]}, {"_id": 0, "slug": 1})
-    ])
+    ]
+    granted = user.get("headed_units") if isinstance(user.get("headed_units"), list) else []
+    user["headed_units"] = sorted(set(named) | set(granted))
 
     # Whether this person has any real project. The Business Units section
     # opens on this: staff who have not been put on a project yet would
@@ -1227,34 +1236,9 @@ async def update_user(user_id: str, updates: UserUpdate, request: Request):
     
     update_dict = {k: v for k, v in updates.model_dump().items() if v is not None}
 
-    # Which units somebody manages lives on the units, not on them. Writing it
-    # here as well produced two answers to one question, and the stale copy won
-    # -- a manager replaced on the unit kept the privilege through their own
-    # record. So this reconciles the units instead, and never stores the field.
-    if "headed_units" in update_dict:
-        wanted = {s for s in (update_dict.pop("headed_units") or []) if s}
-        current = {
-            u["slug"]
-            async for u in db.units.find({"head_user_id": user_id}, {"_id": 0, "slug": 1})
-        }
-        for slug in wanted - current:
-            unit = await db.units.find_one({"slug": slug}, {"_id": 0, "slug": 1})
-            if not unit:
-                continue  # "flow" and other non-units are simply not manageable
-            await db.units.update_one(
-                {"slug": slug},
-                {"$set": {"head_user_id": user_id, "head_name": target_user.get("name"),
-                          "updated_at": datetime.now(timezone.utc).isoformat()}},
-            )
-        for slug in current - wanted:
-            await db.units.update_one(
-                {"slug": slug},
-                {"$set": {"head_user_id": None, "head_name": None,
-                          "updated_at": datetime.now(timezone.utc).isoformat()}},
-            )
-        # Any copy left on the record would go stale the next time a unit moved.
-        await db.users.update_one({"user_id": user_id}, {"$unset": {"headed_units": ""}})
-
+    # `headed_units` is the per-person manager grant and is stored as given.
+    # Naming one person on the unit itself is a separate thing, done through
+    # the units API; neither overwrites the other.
     # A corrected address must still be unique, and is stored lowercase to
     # match how sign-in looks it up.
     if "email" in update_dict:
@@ -3243,45 +3227,6 @@ CANONICAL_UNITS = [
     ("academy", "Academy & Learning"),
     ("client-delivery", "Client Delivery"),
 ]
-
-
-@app.on_event("startup")
-async def consolidate_headed_units():
-    """Move any manager role held on a person onto the unit, then drop the copy.
-
-    For a while this was recorded in two places, and they disagreed as soon as
-    a unit changed hands -- the person replaced on the unit kept the privilege
-    through their own record. The unit wins, because that is where an
-    administrator's reassignment lands; a copy is only promoted where the unit
-    names nobody, so a deliberate handover is never undone by this.
-
-    One-shot: it only looks at records still carrying the field.
-    """
-    if db is None:
-        return
-    promoted = cleared = 0
-    async for u in db.users.find(
-        {"headed_units": {"$exists": True, "$ne": []}},
-        {"_id": 0, "user_id": 1, "name": 1, "headed_units": 1},
-    ):
-        for slug in u.get("headed_units") or []:
-            unit = await db.units.find_one({"slug": slug}, {"_id": 0, "head_user_id": 1})
-            if unit and not unit.get("head_user_id"):
-                await db.units.update_one(
-                    {"slug": slug},
-                    {"$set": {"head_user_id": u["user_id"], "head_name": u.get("name")}},
-                )
-                promoted += 1
-        await db.users.update_one({"user_id": u["user_id"]}, {"$unset": {"headed_units": ""}})
-        cleared += 1
-    await db.users.update_many(
-        {"headed_units": {"$exists": True}}, {"$unset": {"headed_units": ""}}
-    )
-    if promoted or cleared:
-        logger.info(
-            "Consolidated manager roles: %d promoted onto their unit, %d stale copies removed",
-            promoted, cleared,
-        )
 
 
 @app.on_event("startup")

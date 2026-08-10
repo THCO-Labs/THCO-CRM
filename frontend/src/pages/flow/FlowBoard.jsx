@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import FlowShell from "./FlowShell";
-import { flowAPI } from "../../lib/api";
+import { flowAPI, authAPI } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { Loader2, Plus, Building2, GitBranch } from "lucide-react";
 import { toast } from "sonner";
+import StructuredStageModal from "../../components/flow/StructuredStageModal";
 import { STAGES, STAGE_BORDER } from "./stages";
 
 export default function FlowBoard() {
@@ -12,12 +13,17 @@ export default function FlowBoard() {
   const [loading, setLoading] = useState(true);
   const [dragging, setDragging] = useState(null); // { project, fromStage }
   const [hoverStage, setHoverStage] = useState(null);
+  const [stageModal, setStageModal] = useState(null);   // {project, targetStage}
+  const [me, setMe] = useState(null);
   const [moving, setMoving] = useState(false);
 
   const load = async () => {
     setLoading(true);
-    const d = await flowAPI.getBoard();
+    // The stage form applies the same role checks as the project page, so it
+    // needs to know who is signed in.
+    const [d, u] = await Promise.all([flowAPI.getBoard(), authAPI.getMe()]);
     setData(d);
+    setMe(u);
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
@@ -41,6 +47,27 @@ export default function FlowBoard() {
 
   const onDragLeave = () => setHoverStage(null);
 
+  // The same transition the project page performs, run from the board so the
+  // card lands where it was dropped.
+  const submitStructured = async (target, note, payload) => {
+    const { project } = stageModal;
+    setMoving(true);
+    try {
+      const res = await flowAPI.transitionStage(project.id, target, note, payload);
+      toast.success(
+        res.split_done
+          ? "Stage 5 complete — split into Proposal and Build records"
+          : `${project.name} moved to Stage ${target}`
+      );
+      setStageModal(null);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Could not move the project");
+    } finally {
+      setMoving(false);
+    }
+  };
+
   const onDrop = async (e, targetStage) => {
     e.preventDefault();
     setHoverStage(null);
@@ -56,10 +83,11 @@ export default function FlowBoard() {
       return;
     }
 
-    // Stages with required structured input — open the detail page modal instead
+    // Stages 2 and 5 need a name attached before they can advance. Ask for it
+    // here rather than sending the whole window to the project page, which
+    // threw away the board and everything else on screen to show one form.
     if (targetStage === 2 || targetStage === 5) {
-      toast.info(`Stage ${targetStage} requires structured input — opening project…`);
-      window.location.href = `/flow/projects/${project.id}`;
+      setStageModal({ project, targetStage });
       return;
     }
 
@@ -101,7 +129,7 @@ export default function FlowBoard() {
       }
     >
       <p className="text-xs text-gray-400 mb-3">
-        Drag cards to advance/revert stages. Stage 2 & 5 require structured input — clicking them opens the project detail.
+        Drag a card into another column to move it. Stages 2 and 5 ask for a name before they advance.
         After Stage 5 a project SPLITS into a Proposal record (6–8) and a Build record (9–10).
       </p>
 
@@ -177,6 +205,17 @@ export default function FlowBoard() {
           })}
         </div>
       </div>
+
+      {stageModal && (
+        <StructuredStageModal
+          targetStage={stageModal.targetStage}
+          project={stageModal.project}
+          me={me}
+          transitioning={moving}
+          onClose={() => setStageModal(null)}
+          onSubmit={submitStructured}
+        />
+      )}
     </FlowShell>
   );
 }

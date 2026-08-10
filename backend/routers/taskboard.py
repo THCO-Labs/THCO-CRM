@@ -217,7 +217,7 @@ async def _require_coordinator(request: Request) -> dict:
     if not _is_coordinator(user):
         raise HTTPException(
             status_code=403,
-            detail="Only a unit head or an administrator can manage labels",
+            detail="Only a project manager or an administrator can manage labels",
         )
     return user
 
@@ -270,7 +270,7 @@ async def _require_board_manager(request: Request, project_id: Optional[str]) ->
     project = await _project_or_404(project_id)
     permissions.require(
         permissions.can_manage_boards(user, project),
-        "Only this project's unit head or an administrator can change its boards",
+        "Only this project's project manager or an administrator can change its boards",
     )
     return user, project
 

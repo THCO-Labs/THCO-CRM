@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Plus, Zap } from "lucide-react";
 import UnitSelectionModal from "./UnitSelectionModal";
+import { FLOWFORGE_ENABLED } from "../config/features";
 
 /**
  * "Build New Tool" action.
@@ -15,6 +16,10 @@ import UnitSelectionModal from "./UnitSelectionModal";
  */
 const FlowForgeFAB = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Nothing behind it here: FlowForge needs Supabase and n8n, and this was the
+  // most inviting control in the header. See config/features.js.
+  if (!FLOWFORGE_ENABLED) return null;
 
   return (
     <>

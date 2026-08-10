@@ -117,7 +117,7 @@ export default function ProjectsWorkspace({ onSelect }) {
                 <User className="w-3 h-3" />
                 <span className="truncate">
                   {p.unit_head_name || p.coordinator_name}
-                  {p.unit_head_name && <span className="text-gray-400"> · unit head</span>}
+                  {p.unit_head_name && <span className="text-gray-400"> · project manager</span>}
                 </span>
               </div>
             )}

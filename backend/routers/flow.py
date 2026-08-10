@@ -246,8 +246,8 @@ async def create_project(data: ProjectCreate, request: Request):
         if not permissions.is_unit_head(user):
             raise HTTPException(
                 status_code=403,
-                detail="Only a unit head can open a project. Ask your unit head "
-                       "to create it and add you to it.",
+                detail="Only a project manager can open a project. Ask your unit's "
+                       "project manager to create it and add you to it.",
             )
         if not unit_slug:
             raise HTTPException(status_code=400, detail="Choose the unit this project belongs to")
@@ -474,7 +474,7 @@ async def set_collaborators(project_id: str, data: CollaboratorsSet, request: Re
 
     permissions.require(
         permissions.can_manage_project(user, project),
-        "Only this project's unit head can change who works on it",
+        "Only this project's project manager can change who works on it",
     )
 
     before = set(project.get("collaborator_ids") or [])
@@ -521,7 +521,7 @@ async def edit_project(project_id: str, data: ProjectEdit, request: Request):
 
     permissions.require(
         permissions.can_manage_project(user, project),
-        "Only this project's unit head or an administrator can edit it",
+        "Only this project's project manager or an administrator can edit it",
     )
 
     # The create endpoint stores the client under client_name_snapshot, so an
@@ -593,7 +593,7 @@ async def delete_project(project_id: str, request: Request, permanent: bool = Fa
 
     permissions.require(
         permissions.can_manage_project(user, project),
-        "Only this project's unit head or an administrator can remove it",
+        "Only this project's project manager or an administrator can remove it",
     )
 
     if permanent and not permissions.is_super_admin(user):

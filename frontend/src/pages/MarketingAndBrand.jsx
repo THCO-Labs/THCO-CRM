@@ -27,6 +27,7 @@ import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbP
 import BuildHistory from "../components/BuildHistory";
 import DeployedTools from "../components/flowforge/DeployedTools";
 
+import { FLOWFORGE_ENABLED } from "../config/features";
 // AI Agents for Marketing & Brand (from Agent Registry)
 const AI_AGENTS = [
   {
@@ -80,7 +81,7 @@ const TOOLS = [
     icon: Calendar,
     description: "Plan and schedule content across all channels",
     gradient: "from-pink-500 to-rose-600",
-    active: true
+    active: false
   },
   {
     name: "LinkedIn Scheduler",
@@ -88,7 +89,7 @@ const TOOLS = [
     icon: Linkedin,
     description: "Schedule and track LinkedIn posts and engagement",
     gradient: "from-blue-500 to-indigo-600",
-    active: true
+    active: false
   },
   {
     name: "Newsletter Manager",
@@ -196,33 +197,39 @@ const MarketingAndBrand = () => {
       </Breadcrumb>
 
       {/* Unit Header */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">
-        <div className="flex items-start justify-between">
-          <div className="flex items-start gap-6">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center shadow-lg shadow-pink-500/20">
-              <Megaphone className="w-8 h-8 text-white" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Marketing & Brand</h1>
-              <p className="text-gray-500 text-lg">
-                Content engine: 20 articles, 130+ LinkedIn posts, 4 newsletters per month
-              </p>
-              <p className="text-sm text-gray-400 mt-1">Lead: Havilah</p>
-            </div>
+      {/* Header in the dashboard's voice: an eyebrow, a display-face title
+          and quiet supporting text, rather than a coloured tile and a bold
+          sans heading. */}
+      <div className="pt-2">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="lux-eyebrow mb-3">Business Unit</p>
+            <h1 className="font-display text-4xl text-gray-900 leading-tight">Marketing & Brand</h1>
+            <p className="text-sm text-gray-500 mt-2 max-w-xl">Content engine: 20 articles, 130+ LinkedIn posts, 4 newsletters per month</p>
+            <p className="text-xs text-gray-400 mt-2">Lead: Havilah</p>
           </div>
           <div className="flex gap-3">
-            <Link to="/marketing/build/new">
+            {/* FlowForge needs Supabase and n8n, neither configured here, so this
+
+                returned 503 on every click. See config/features.js. */}
+
+            {FLOWFORGE_ENABLED && (
+
+              <Link to="/marketing/build/new">
               <Button className="bg-gradient-to-r from-[#1FB58A] to-[#3DDC97] text-white hover:opacity-90 shadow-lg shadow-emerald-500/20" data-testid="build-new-tool-btn">
                 <Zap className="w-4 h-4 mr-2" />
                 Build New Tool
               </Button>
             </Link>
-            <Button className="bg-pink-600 hover:bg-pink-700">
+
+            )}
+            <Button className="bg-pink-600 hover:bg-pink-700" disabled title="Not available yet">
               <Plus className="w-4 h-4 mr-2" />
               Create Content
             </Button>
           </div>
         </div>
+        <div className="lux-divider mt-8" />
       </div>
 
       {/* Tabs */}
@@ -268,7 +275,7 @@ const MarketingAndBrand = () => {
         <BuildHistory unit="marketing" />
       ) : activeTab === "deployed" ? (
         <div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Deployed Tools</h2>
+          <h2 className="font-display text-xl text-gray-900 mb-2">Deployed Tools</h2>
           <p className="text-sm text-gray-500 mb-6">Tools you've built and approved that are now live in the automation engine.</p>
           <DeployedTools unit="marketing" />
         </div>
@@ -282,7 +289,7 @@ const MarketingAndBrand = () => {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.1 }}
-            className="bg-white rounded-xl border border-gray-200 p-5"
+            className="bg-white rounded-xl border border-[#EAE7E0] p-5"
           >
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm text-gray-500">{data.label}</span>
@@ -291,7 +298,7 @@ const MarketingAndBrand = () => {
               </span>
             </div>
             <div className="flex items-end gap-2">
-              <span className="text-3xl font-bold text-gray-900">{data.current}</span>
+              <span className="font-display text-3xl text-gray-900">{data.current}</span>
               <span className="text-sm text-gray-400 mb-1">/ {data.target}</span>
             </div>
             <div className="mt-3 h-2 bg-gray-100 rounded-full overflow-hidden">
@@ -306,7 +313,7 @@ const MarketingAndBrand = () => {
 
       {/* AI Agents */}
       <div>
-        <h2 className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-4">AI Agents ({AI_AGENTS.length})</h2>
+        <h2 className="lux-eyebrow mb-4">AI Agents ({AI_AGENTS.length})</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {AI_AGENTS.map((agent, index) => {
             const Icon = agent.icon;
@@ -316,7 +323,7 @@ const MarketingAndBrand = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
-                className="group bg-white rounded-xl border border-gray-200 p-4 hover:border-pink-300 hover:shadow-md transition-all cursor-pointer"
+                className="group bg-white rounded-xl border border-[#EAE7E0] p-4 hover:border-pink-300 hover:shadow-md transition-all"
                 data-testid={`agent-card-${agent.id}`}
               >
                 <div className="flex items-start justify-between mb-3">
@@ -349,7 +356,7 @@ const MarketingAndBrand = () => {
 
       {/* Tools Grid */}
       <div>
-        <h2 className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-4">Marketing Tools</h2>
+        <h2 className="lux-eyebrow mb-4">Marketing Tools</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {TOOLS.map((tool, index) => {
             const Icon = tool.icon;
@@ -361,7 +368,7 @@ const MarketingAndBrand = () => {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.1 }}
-                  className="group bg-white rounded-2xl border border-gray-100 overflow-hidden hover:border-gray-200 hover:shadow-lg transition-all duration-300 cursor-pointer"
+                  className="group bg-white rounded-2xl border border-gray-100 overflow-hidden hover:border-gray-200 hover:shadow-lg transition-all duration-300"
                   data-testid={`tool-card-${tool.slug}`}
                 >
                   <div className={`h-2 bg-gradient-to-r ${tool.gradient}`}></div>
@@ -375,7 +382,7 @@ const MarketingAndBrand = () => {
                       </span>
                     </div>
                     
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2 group-hover:text-pink-600 transition-colors">
+                    <h3 className="font-display text-lg text-gray-900 mb-2 group-hover:text-pink-600 transition-colors">
                       {tool.name}
                     </h3>
                     <p className="text-sm text-gray-500 mb-4">
@@ -412,7 +419,7 @@ const MarketingAndBrand = () => {
                     </span>
                   </div>
                   
-                  <h3 className="text-lg font-semibold text-gray-700 mb-2">{tool.name}</h3>
+                  <h3 className="font-display text-lg text-gray-700 mb-2">{tool.name}</h3>
                   <p className="text-sm text-gray-400 mb-4">{tool.description}</p>
                   
                   <div className="pt-4 border-t border-gray-100">
@@ -428,7 +435,7 @@ const MarketingAndBrand = () => {
       {/* Recent Content */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-[11px] font-semibold uppercase tracking-widest text-gray-400">Recent Content</h2>
+          <h2 className="lux-eyebrow">Recent Content</h2>
           <div className="flex items-center gap-2">
             {["all", "article", "linkedin", "newsletter", "case_study"].map(type => (
               <button
@@ -447,7 +454,7 @@ const MarketingAndBrand = () => {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-2xl border border-[#EAE7E0] overflow-hidden">
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
@@ -468,7 +475,7 @@ const MarketingAndBrand = () => {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: index * 0.05 }}
-                    className="hover:bg-gray-50 cursor-pointer"
+                    className="hover:bg-gray-50"
                     data-testid={`content-row-${content.id}`}
                   >
                     <td className="px-4 py-3">

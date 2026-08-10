@@ -40,9 +40,30 @@ export default function FlowNewProject() {
     })();
   }, []);
 
-  // Administrators may open a project under any unit; a head is confined to
-  // the ones they run.
-  const selectableUnits = isAdmin ? units : units.filter((u) => headed.includes(u.slug));
+  // Administrators may open a project under any unit; a project manager is
+  // confined to the ones they run.
+  const selectableUnits = useMemo(
+    () => (isAdmin ? units : units.filter((u) => headed.includes(u.slug))),
+    [isAdmin, units, headed]
+  );
+
+  // Fill in the unit as soon as there is exactly one to choose.
+  //
+  // Two things defeated the obvious version of this. useState runs its
+  // initialiser once, on the first render, when the signed-in user is still
+  // being fetched -- so the unit was never set from initial state. And
+  // `headed_units` can name things that are not selectable units: it carries
+  // "flow", the shared pipeline, so counting it made a manager of one unit
+  // look like a manager of two, and the fill-in never fired.
+  //
+  // So this keys on what is actually offered. Until it did, the form showed
+  // "Unit · Technology & Build" while holding no unit at all: the collaborator
+  // list stayed on "choose a unit first", and saving failed asking for the
+  // unit already on screen.
+  useEffect(() => {
+    if (selectableUnits.length !== 1) return;
+    setForm((f) => (f.unit_slug ? f : { ...f, unit_slug: selectableUnits[0].slug }));
+  }, [selectableUnits]);
 
   const set = (k, v) => setForm({ ...form, [k]: v });
 

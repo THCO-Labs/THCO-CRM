@@ -27,6 +27,7 @@ import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbP
 import BuildHistory from "../components/BuildHistory";
 import DeployedTools from "../components/flowforge/DeployedTools";
 
+import { FLOWFORGE_ENABLED } from "../config/features";
 // AI Agents for Academy & Learning (from Agent Registry)
 const AI_AGENTS = [
   {
@@ -72,7 +73,7 @@ const TOOLS = [
     icon: BookOpen,
     description: "Access to Day Learning courses and AI Engineer tracks",
     gradient: "from-amber-500 to-orange-600",
-    active: true
+    active: false
   },
   {
     name: "Trainee Tracker",
@@ -80,7 +81,7 @@ const TOOLS = [
     icon: Users,
     description: "Track trainee progress, certifications, and placements",
     gradient: "from-emerald-500 to-teal-600",
-    active: true
+    active: false
   },
   {
     name: "Course Builder",
@@ -220,33 +221,39 @@ const AcademyAndLearning = () => {
       </Breadcrumb>
 
       {/* Unit Header */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">
-        <div className="flex items-start justify-between">
-          <div className="flex items-start gap-6">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg shadow-amber-500/20">
-              <GraduationCap className="w-8 h-8 text-white" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Academy & Learning</h1>
-              <p className="text-gray-500 text-lg">
-                Day Learning platform, AI Engineer tracks, brand architects training
-              </p>
-              <p className="text-sm text-gray-400 mt-1">Lead: Babatunde</p>
-            </div>
+      {/* Header in the dashboard's voice: an eyebrow, a display-face title
+          and quiet supporting text, rather than a coloured tile and a bold
+          sans heading. */}
+      <div className="pt-2">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="lux-eyebrow mb-3">Business Unit</p>
+            <h1 className="font-display text-4xl text-gray-900 leading-tight">Academy & Learning</h1>
+            <p className="text-sm text-gray-500 mt-2 max-w-xl">Day Learning platform, AI Engineer tracks, brand architects training</p>
+            <p className="text-xs text-gray-400 mt-2">Lead: Babatunde</p>
           </div>
           <div className="flex gap-3">
-            <Link to="/academy/build/new">
+            {/* FlowForge needs Supabase and n8n, neither configured here, so this
+
+                returned 503 on every click. See config/features.js. */}
+
+            {FLOWFORGE_ENABLED && (
+
+              <Link to="/academy/build/new">
               <Button className="bg-gradient-to-r from-[#1FB58A] to-[#3DDC97] text-white hover:opacity-90 shadow-lg shadow-emerald-500/20" data-testid="build-new-tool-btn">
                 <Zap className="w-4 h-4 mr-2" />
                 Build New Tool
               </Button>
             </Link>
-            <Button className="bg-amber-600 hover:bg-amber-700">
+
+            )}
+            <Button className="bg-amber-600 hover:bg-amber-700" disabled title="Not available yet">
               <Plus className="w-4 h-4 mr-2" />
               Enroll Trainee
             </Button>
           </div>
         </div>
+        <div className="lux-divider mt-8" />
       </div>
 
       {/* Tabs */}
@@ -260,7 +267,7 @@ const AcademyAndLearning = () => {
         <BuildHistory unit="academy" />
       ) : activeTab === "deployed" ? (
         <div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Deployed Tools</h2>
+          <h2 className="font-display text-xl text-gray-900 mb-2">Deployed Tools</h2>
           <p className="text-sm text-gray-500 mb-6">Tools you've built and approved that are now live in the automation engine.</p>
           <DeployedTools unit="academy" />
         </div>
@@ -271,15 +278,15 @@ const AcademyAndLearning = () => {
         <motion.div 
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-xl border border-gray-200 p-5"
+          className="bg-white rounded-xl border border-[#EAE7E0] p-5"
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
-              <Users className="w-5 h-5 text-amber-600" />
+            <div className="w-10 h-10 rounded-full border border-[#E5D9C3] bg-[#FBF8F1] flex items-center justify-center shrink-0">
+              <Users className="w-4 h-4 text-[#A9834E]" strokeWidth={1.7} />
             </div>
             <div>
-              <p className="text-2xl font-bold text-gray-900">{stats.totalTrainees}</p>
-              <p className="text-sm text-gray-500">Total Trainees</p>
+              <p className="font-display text-[26px] leading-none text-gray-900">{stats.totalTrainees}</p>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mt-1.5">Total Trainees</p>
             </div>
           </div>
         </motion.div>
@@ -288,15 +295,15 @@ const AcademyAndLearning = () => {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="bg-white rounded-xl border border-gray-200 p-5"
+          className="bg-white rounded-xl border border-[#EAE7E0] p-5"
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-              <BookOpen className="w-5 h-5 text-blue-600" />
+            <div className="w-10 h-10 rounded-full border border-[#E5D9C3] bg-[#FBF8F1] flex items-center justify-center shrink-0">
+              <BookOpen className="w-4 h-4 text-[#A9834E]" strokeWidth={1.7} />
             </div>
             <div>
-              <p className="text-2xl font-bold text-gray-900">{stats.activeTrainees}</p>
-              <p className="text-sm text-gray-500">Currently Learning</p>
+              <p className="font-display text-[26px] leading-none text-gray-900">{stats.activeTrainees}</p>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mt-1.5">Currently Learning</p>
             </div>
           </div>
         </motion.div>
@@ -305,15 +312,15 @@ const AcademyAndLearning = () => {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="bg-white rounded-xl border border-gray-200 p-5"
+          className="bg-white rounded-xl border border-[#EAE7E0] p-5"
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
-              <CheckCircle2 className="w-5 h-5 text-green-600" />
+            <div className="w-10 h-10 rounded-full border border-[#E5D9C3] bg-[#FBF8F1] flex items-center justify-center shrink-0">
+              <CheckCircle2 className="w-4 h-4 text-[#A9834E]" strokeWidth={1.7} />
             </div>
             <div>
-              <p className="text-2xl font-bold text-gray-900">{stats.placedTrainees}</p>
-              <p className="text-sm text-gray-500">Successfully Placed</p>
+              <p className="font-display text-[26px] leading-none text-gray-900">{stats.placedTrainees}</p>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mt-1.5">Successfully Placed</p>
             </div>
           </div>
         </motion.div>
@@ -322,15 +329,15 @@ const AcademyAndLearning = () => {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="bg-white rounded-xl border border-gray-200 p-5"
+          className="bg-white rounded-xl border border-[#EAE7E0] p-5"
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-emerald-600" />
+            <div className="w-10 h-10 rounded-full border border-[#E5D9C3] bg-[#FBF8F1] flex items-center justify-center shrink-0">
+              <TrendingUp className="w-4 h-4 text-[#A9834E]" strokeWidth={1.7} />
             </div>
             <div>
-              <p className="text-2xl font-bold text-gray-900">{stats.avgProgress}%</p>
-              <p className="text-sm text-gray-500">Avg Progress</p>
+              <p className="font-display text-[26px] leading-none text-gray-900">{stats.avgProgress}%</p>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mt-1.5">Avg Progress</p>
             </div>
           </div>
         </motion.div>
@@ -338,7 +345,7 @@ const AcademyAndLearning = () => {
 
       {/* Learning Tracks */}
       <div>
-        <h2 className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-4">Learning Tracks</h2>
+        <h2 className="lux-eyebrow mb-4">Learning Tracks</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {LEARNING_TRACKS.map((track, index) => (
             <motion.div
@@ -382,7 +389,7 @@ const AcademyAndLearning = () => {
 
       {/* AI Agents */}
       <div>
-        <h2 className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-4">AI Agents ({AI_AGENTS.length})</h2>
+        <h2 className="lux-eyebrow mb-4">AI Agents ({AI_AGENTS.length})</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {AI_AGENTS.map((agent, index) => {
             const Icon = agent.icon;
@@ -392,7 +399,7 @@ const AcademyAndLearning = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
-                className="group bg-white rounded-xl border border-gray-200 p-4 hover:border-amber-300 hover:shadow-md transition-all cursor-pointer"
+                className="group bg-white rounded-xl border border-[#EAE7E0] p-4 hover:border-amber-300 hover:shadow-md transition-all"
                 data-testid={`agent-card-${agent.id}`}
               >
                 <div className="flex items-start justify-between mb-3">
@@ -425,7 +432,7 @@ const AcademyAndLearning = () => {
 
       {/* Tools Grid */}
       <div>
-        <h2 className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-4">Academy Tools</h2>
+        <h2 className="lux-eyebrow mb-4">Academy Tools</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {TOOLS.map((tool, index) => {
             const Icon = tool.icon;
@@ -437,7 +444,7 @@ const AcademyAndLearning = () => {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.1 }}
-                  className="group bg-white rounded-2xl border border-gray-100 overflow-hidden hover:border-gray-200 hover:shadow-lg transition-all duration-300 cursor-pointer"
+                  className="group bg-white rounded-2xl border border-gray-100 overflow-hidden hover:border-gray-200 hover:shadow-lg transition-all duration-300"
                   data-testid={`tool-card-${tool.slug}`}
                 >
                   <div className={`h-2 bg-gradient-to-r ${tool.gradient}`}></div>
@@ -451,7 +458,7 @@ const AcademyAndLearning = () => {
                       </span>
                     </div>
                     
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2 group-hover:text-amber-600 transition-colors">
+                    <h3 className="font-display text-lg text-gray-900 mb-2 group-hover:text-amber-600 transition-colors">
                       {tool.name}
                     </h3>
                     <p className="text-sm text-gray-500 mb-4">
@@ -488,7 +495,7 @@ const AcademyAndLearning = () => {
                     </span>
                   </div>
                   
-                  <h3 className="text-lg font-semibold text-gray-700 mb-2">{tool.name}</h3>
+                  <h3 className="font-display text-lg text-gray-700 mb-2">{tool.name}</h3>
                   <p className="text-sm text-gray-400 mb-4">{tool.description}</p>
                   
                   <div className="pt-4 border-t border-gray-100">
@@ -504,7 +511,7 @@ const AcademyAndLearning = () => {
       {/* Trainees Table */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-[11px] font-semibold uppercase tracking-widest text-gray-400">
+          <h2 className="lux-eyebrow">
             Trainees {selectedTrack !== "all" && `(${selectedTrack})`}
           </h2>
           <Button variant="outline" size="sm" onClick={() => setSelectedTrack("all")}>
@@ -513,7 +520,7 @@ const AcademyAndLearning = () => {
           </Button>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-2xl border border-[#EAE7E0] overflow-hidden">
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
@@ -532,7 +539,7 @@ const AcademyAndLearning = () => {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: index * 0.05 }}
-                  className="hover:bg-gray-50 cursor-pointer"
+                  className="hover:bg-gray-50"
                   data-testid={`trainee-row-${trainee.id}`}
                 >
                   <td className="px-4 py-3">

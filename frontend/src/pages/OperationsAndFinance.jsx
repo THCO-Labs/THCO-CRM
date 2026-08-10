@@ -31,6 +31,7 @@ import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbP
 import BuildHistory from "../components/BuildHistory";
 import DeployedTools from "../components/flowforge/DeployedTools";
 
+import { FLOWFORGE_ENABLED } from "../config/features";
 // AI Agents for Operations & Finance (from Agent Registry)
 const AI_AGENTS = [
   {
@@ -103,7 +104,7 @@ const TOOLS = [
     icon: Receipt,
     description: "Track invoices, payment status, and milestones (managed by Victoria)",
     gradient: "from-red-500 to-rose-600",
-    active: true
+    active: false
   },
   {
     name: "Contract Manager",
@@ -111,7 +112,7 @@ const TOOLS = [
     icon: FileText,
     description: "Manage client contracts, renewals, and terms",
     gradient: "from-blue-500 to-indigo-600",
-    active: true
+    active: false
   },
   {
     name: "Financial Dashboard",
@@ -230,33 +231,39 @@ const OperationsAndFinance = () => {
       </Breadcrumb>
 
       {/* Unit Header */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">
-        <div className="flex items-start justify-between">
-          <div className="flex items-start gap-6">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shadow-lg shadow-red-500/20">
-              <Building2 className="w-8 h-8 text-white" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Operations & Finance</h1>
-              <p className="text-gray-500 text-lg">
-                Invoicing, contracts, financial tracking, and office administration
-              </p>
-              <p className="text-sm text-gray-400 mt-1">Lead: Victoria</p>
-            </div>
+      {/* Header in the dashboard's voice: an eyebrow, a display-face title
+          and quiet supporting text, rather than a coloured tile and a bold
+          sans heading. */}
+      <div className="pt-2">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="lux-eyebrow mb-3">Business Unit</p>
+            <h1 className="font-display text-4xl text-gray-900 leading-tight">Operations & Finance</h1>
+            <p className="text-sm text-gray-500 mt-2 max-w-xl">Invoicing, contracts, financial tracking, and office administration</p>
+            <p className="text-xs text-gray-400 mt-2">Lead: Victoria</p>
           </div>
           <div className="flex gap-3">
-            <Link to="/operations/build/new">
+            {/* FlowForge needs Supabase and n8n, neither configured here, so this
+
+                returned 503 on every click. See config/features.js. */}
+
+            {FLOWFORGE_ENABLED && (
+
+              <Link to="/operations/build/new">
               <Button className="bg-gradient-to-r from-[#1FB58A] to-[#3DDC97] text-white hover:opacity-90 shadow-lg shadow-emerald-500/20" data-testid="build-new-tool-btn">
                 <Zap className="w-4 h-4 mr-2" />
                 Build New Tool
               </Button>
             </Link>
-            <Button className="bg-red-600 hover:bg-red-700">
+
+            )}
+            <Button className="bg-red-600 hover:bg-red-700" disabled title="Not available yet">
               <Plus className="w-4 h-4 mr-2" />
               New Invoice
             </Button>
           </div>
         </div>
+        <div className="lux-divider mt-8" />
       </div>
 
       {/* Tabs */}
@@ -302,7 +309,7 @@ const OperationsAndFinance = () => {
         <BuildHistory unit="operations" />
       ) : activeTab === "deployed" ? (
         <div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Deployed Tools</h2>
+          <h2 className="font-display text-xl text-gray-900 mb-2">Deployed Tools</h2>
           <p className="text-sm text-gray-500 mb-6">Tools you've built and approved that are now live in the automation engine.</p>
           <DeployedTools unit="operations" />
         </div>
@@ -313,15 +320,15 @@ const OperationsAndFinance = () => {
         <motion.div 
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-xl border border-gray-200 p-5"
+          className="bg-white rounded-xl border border-[#EAE7E0] p-5"
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-              <DollarSign className="w-5 h-5 text-gray-600" />
+            <div className="w-10 h-10 rounded-full border border-[#E5D9C3] bg-[#FBF8F1] flex items-center justify-center shrink-0">
+              <DollarSign className="w-4 h-4 text-[#A9834E]" strokeWidth={1.7} />
             </div>
             <div>
-              <p className="text-2xl font-bold text-gray-900">${(stats.totalRevenue / 1000).toFixed(0)}K</p>
-              <p className="text-sm text-gray-500">Total Revenue</p>
+              <p className="font-display text-[26px] leading-none text-gray-900">${(stats.totalRevenue / 1000).toFixed(0)}K</p>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mt-1.5">Total Revenue</p>
             </div>
           </div>
         </motion.div>
@@ -330,15 +337,15 @@ const OperationsAndFinance = () => {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="bg-white rounded-xl border border-gray-200 p-5"
+          className="bg-white rounded-xl border border-[#EAE7E0] p-5"
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
-              <CheckCircle2 className="w-5 h-5 text-green-600" />
+            <div className="w-10 h-10 rounded-full border border-[#E5D9C3] bg-[#FBF8F1] flex items-center justify-center shrink-0">
+              <CheckCircle2 className="w-4 h-4 text-[#A9834E]" strokeWidth={1.7} />
             </div>
             <div>
-              <p className="text-2xl font-bold text-gray-900">${(stats.paidAmount / 1000).toFixed(0)}K</p>
-              <p className="text-sm text-gray-500">Collected</p>
+              <p className="font-display text-[26px] leading-none text-gray-900">${(stats.paidAmount / 1000).toFixed(0)}K</p>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mt-1.5">Collected</p>
             </div>
           </div>
         </motion.div>
@@ -347,15 +354,15 @@ const OperationsAndFinance = () => {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="bg-white rounded-xl border border-gray-200 p-5"
+          className="bg-white rounded-xl border border-[#EAE7E0] p-5"
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
-              <Clock className="w-5 h-5 text-amber-600" />
+            <div className="w-10 h-10 rounded-full border border-[#E5D9C3] bg-[#FBF8F1] flex items-center justify-center shrink-0">
+              <Clock className="w-4 h-4 text-[#A9834E]" strokeWidth={1.7} />
             </div>
             <div>
-              <p className="text-2xl font-bold text-gray-900">${(stats.pendingAmount / 1000).toFixed(0)}K</p>
-              <p className="text-sm text-gray-500">Outstanding</p>
+              <p className="font-display text-[26px] leading-none text-gray-900">${(stats.pendingAmount / 1000).toFixed(0)}K</p>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mt-1.5">Outstanding</p>
             </div>
           </div>
         </motion.div>
@@ -364,15 +371,15 @@ const OperationsAndFinance = () => {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="bg-white rounded-xl border border-gray-200 p-5"
+          className="bg-white rounded-xl border border-[#EAE7E0] p-5"
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center">
-              <AlertCircle className="w-5 h-5 text-red-600" />
+            <div className="w-10 h-10 rounded-full border border-[#E5D9C3] bg-[#FBF8F1] flex items-center justify-center shrink-0">
+              <AlertCircle className="w-4 h-4 text-[#A9834E]" strokeWidth={1.7} />
             </div>
             <div>
-              <p className="text-2xl font-bold text-gray-900">{stats.overdueCount}</p>
-              <p className="text-sm text-gray-500">Overdue</p>
+              <p className="font-display text-[26px] leading-none text-gray-900">{stats.overdueCount}</p>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mt-1.5">Overdue</p>
             </div>
           </div>
         </motion.div>
@@ -380,7 +387,7 @@ const OperationsAndFinance = () => {
 
       {/* AI Agents */}
       <div>
-        <h2 className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-4">AI Agents ({AI_AGENTS.length})</h2>
+        <h2 className="lux-eyebrow mb-4">AI Agents ({AI_AGENTS.length})</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {AI_AGENTS.map((agent, index) => {
             const Icon = agent.icon;
@@ -390,7 +397,7 @@ const OperationsAndFinance = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
-                className="group bg-white rounded-xl border border-gray-200 p-4 hover:border-red-300 hover:shadow-md transition-all cursor-pointer"
+                className="group bg-white rounded-xl border border-[#EAE7E0] p-4 hover:border-red-300 hover:shadow-md transition-all"
                 data-testid={`agent-card-${agent.id}`}
               >
                 <div className="flex items-start justify-between mb-3">
@@ -423,7 +430,7 @@ const OperationsAndFinance = () => {
 
       {/* Tools Grid */}
       <div>
-        <h2 className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-4">Finance Tools</h2>
+        <h2 className="lux-eyebrow mb-4">Finance Tools</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {TOOLS.map((tool, index) => {
             const Icon = tool.icon;
@@ -435,7 +442,7 @@ const OperationsAndFinance = () => {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.1 }}
-                  className="group bg-white rounded-2xl border border-gray-100 overflow-hidden hover:border-gray-200 hover:shadow-lg transition-all duration-300 cursor-pointer"
+                  className="group bg-white rounded-2xl border border-gray-100 overflow-hidden hover:border-gray-200 hover:shadow-lg transition-all duration-300"
                   data-testid={`tool-card-${tool.slug}`}
                 >
                   <div className={`h-2 bg-gradient-to-r ${tool.gradient}`}></div>
@@ -449,7 +456,7 @@ const OperationsAndFinance = () => {
                       </span>
                     </div>
                     
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2 group-hover:text-red-600 transition-colors">
+                    <h3 className="font-display text-lg text-gray-900 mb-2 group-hover:text-red-600 transition-colors">
                       {tool.name}
                     </h3>
                     <p className="text-sm text-gray-500 mb-4">
@@ -486,7 +493,7 @@ const OperationsAndFinance = () => {
                     </span>
                   </div>
                   
-                  <h3 className="text-lg font-semibold text-gray-700 mb-2">{tool.name}</h3>
+                  <h3 className="font-display text-lg text-gray-700 mb-2">{tool.name}</h3>
                   <p className="text-sm text-gray-400 mb-4">{tool.description}</p>
                   
                   <div className="pt-4 border-t border-gray-100">
@@ -502,7 +509,7 @@ const OperationsAndFinance = () => {
       {/* Invoice Table */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-[11px] font-semibold uppercase tracking-widest text-gray-400">Recent Invoices</h2>
+          <h2 className="lux-eyebrow">Recent Invoices</h2>
           <div className="flex items-center gap-2">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -526,14 +533,14 @@ const OperationsAndFinance = () => {
               <option value="overdue">Overdue</option>
               <option value="draft">Draft</option>
             </select>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" disabled title="Not available yet">
               <Download className="w-4 h-4 mr-2" />
               Export
             </Button>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-2xl border border-[#EAE7E0] overflow-hidden">
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
@@ -555,7 +562,7 @@ const OperationsAndFinance = () => {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: index * 0.05 }}
-                    className="hover:bg-gray-50 cursor-pointer"
+                    className="hover:bg-gray-50"
                     data-testid={`invoice-row-${invoice.id}`}
                   >
                     <td className="px-4 py-3">

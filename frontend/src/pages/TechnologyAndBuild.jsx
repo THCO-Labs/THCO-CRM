@@ -32,6 +32,7 @@ import { Button } from "../components/ui/button";
 import { useUser, canCreateProjects } from "../context/UserContext";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "../components/ui/breadcrumb";
 
+import { FLOWFORGE_ENABLED } from "../config/features";
 // AI Agents for Technology & Build (from Agent Registry)
 const AI_AGENTS = [
   {
@@ -129,7 +130,7 @@ const TOOLS = [
     icon: Layers,
     description: "Track all engineering projects and sprint progress",
     gradient: "from-cyan-500 to-blue-600",
-    active: true
+    active: false
   },
   {
     name: "Pod Assignment",
@@ -137,7 +138,7 @@ const TOOLS = [
     icon: Users,
     description: "Assign projects to engineering pods and manage capacity",
     gradient: "from-emerald-500 to-emerald-600",
-    active: true
+    active: false
   },
   {
     name: "Sprint Tracker",
@@ -253,27 +254,32 @@ const TechnologyAndBuild = () => {
       </Breadcrumb>
 
       {/* Unit Header */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">
-        <div className="flex items-start justify-between">
-          <div className="flex items-start gap-6">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
-              <Code className="w-8 h-8 text-white" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Technology & Build</h1>
-              <p className="text-gray-500 text-lg">
-                3 engineering pods, AI tools, software delivery, product development
-              </p>
-              <p className="text-sm text-gray-400 mt-1">Lead: James (Solution Architect)</p>
-            </div>
+      {/* Header in the dashboard's voice: an eyebrow, a display-face title
+          and quiet supporting text, rather than a coloured tile and a bold
+          sans heading. */}
+      <div className="pt-2">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="lux-eyebrow mb-3">Business Unit</p>
+            <h1 className="font-display text-4xl text-gray-900 leading-tight">Technology & Build</h1>
+            <p className="text-sm text-gray-500 mt-2 max-w-xl">3 engineering pods, AI tools, software delivery, product development</p>
+            <p className="text-xs text-gray-400 mt-2">Lead: James (Solution Architect)</p>
           </div>
           <div className="flex gap-3">
-            <Link to="/technology/build/new">
+            {/* FlowForge needs Supabase and n8n, neither configured here, so this
+
+                returned 503 on every click. See config/features.js. */}
+
+            {FLOWFORGE_ENABLED && (
+
+              <Link to="/technology/build/new">
               <Button className="bg-gradient-to-r from-[#1FB58A] to-[#3DDC97] text-white hover:opacity-90 shadow-lg shadow-emerald-500/20" data-testid="build-new-tool-btn">
                 <Zap className="w-4 h-4 mr-2" />
                 Build New Tool
               </Button>
             </Link>
+
+            )}
             {/* Had neither an onClick nor a link, so clicking it did nothing.
                 Now also limited to unit heads, who are the ones who open work. */}
             {canCreateProjects(user) && (
@@ -286,6 +292,7 @@ const TechnologyAndBuild = () => {
             )}
           </div>
         </div>
+        <div className="lux-divider mt-8" />
       </div>
 
       {/* Tabs */}
@@ -339,7 +346,7 @@ const TechnologyAndBuild = () => {
         <BuildHistory unit="technology" />
       ) : activeTab === "deployed" ? (
         <div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Deployed Tools</h2>
+          <h2 className="font-display text-xl text-gray-900 mb-2">Deployed Tools</h2>
           <p className="text-sm text-gray-500 mb-6">Tools you've built and approved that are now live in the automation engine.</p>
           <DeployedTools unit="technology" />
         </div>
@@ -350,15 +357,15 @@ const TechnologyAndBuild = () => {
         <motion.div 
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-xl border border-gray-200 p-5"
+          className="bg-white rounded-xl border border-[#EAE7E0] p-5"
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-cyan-100 flex items-center justify-center">
-              <Layers className="w-5 h-5 text-cyan-600" />
+            <div className="w-10 h-10 rounded-full border border-[#E5D9C3] bg-[#FBF8F1] flex items-center justify-center shrink-0">
+              <Layers className="w-4 h-4 text-[#A9834E]" strokeWidth={1.7} />
             </div>
             <div>
-              <p className="text-2xl font-bold text-gray-900">{stats.totalProjects}</p>
-              <p className="text-sm text-gray-500">Active Projects</p>
+              <p className="font-display text-[26px] leading-none text-gray-900">{stats.totalProjects}</p>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mt-1.5">Active Projects</p>
             </div>
           </div>
         </motion.div>
@@ -367,15 +374,15 @@ const TechnologyAndBuild = () => {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="bg-white rounded-xl border border-gray-200 p-5"
+          className="bg-white rounded-xl border border-[#EAE7E0] p-5"
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-              <GitBranch className="w-5 h-5 text-blue-600" />
+            <div className="w-10 h-10 rounded-full border border-[#E5D9C3] bg-[#FBF8F1] flex items-center justify-center shrink-0">
+              <GitBranch className="w-4 h-4 text-[#A9834E]" strokeWidth={1.7} />
             </div>
             <div>
-              <p className="text-2xl font-bold text-gray-900">{stats.inProgress}</p>
-              <p className="text-sm text-gray-500">In Development</p>
+              <p className="font-display text-[26px] leading-none text-gray-900">{stats.inProgress}</p>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mt-1.5">In Development</p>
             </div>
           </div>
         </motion.div>
@@ -384,15 +391,15 @@ const TechnologyAndBuild = () => {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="bg-white rounded-xl border border-gray-200 p-5"
+          className="bg-white rounded-xl border border-[#EAE7E0] p-5"
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
-              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+            <div className="w-10 h-10 rounded-full border border-[#E5D9C3] bg-[#FBF8F1] flex items-center justify-center shrink-0">
+              <CheckCircle2 className="w-4 h-4 text-[#A9834E]" strokeWidth={1.7} />
             </div>
             <div>
-              <p className="text-2xl font-bold text-gray-900">{stats.inReview}</p>
-              <p className="text-sm text-gray-500">In Review</p>
+              <p className="font-display text-[26px] leading-none text-gray-900">{stats.inReview}</p>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mt-1.5">In Review</p>
             </div>
           </div>
         </motion.div>
@@ -401,15 +408,15 @@ const TechnologyAndBuild = () => {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="bg-white rounded-xl border border-gray-200 p-5"
+          className="bg-white rounded-xl border border-[#EAE7E0] p-5"
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
-              <Users className="w-5 h-5 text-emerald-600" />
+            <div className="w-10 h-10 rounded-full border border-[#E5D9C3] bg-[#FBF8F1] flex items-center justify-center shrink-0">
+              <Users className="w-4 h-4 text-[#A9834E]" strokeWidth={1.7} />
             </div>
             <div>
-              <p className="text-2xl font-bold text-gray-900">{stats.totalEngineers}</p>
-              <p className="text-sm text-gray-500">Engineers</p>
+              <p className="font-display text-[26px] leading-none text-gray-900">{stats.totalEngineers}</p>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mt-1.5">Engineers</p>
             </div>
           </div>
         </motion.div>
@@ -417,7 +424,7 @@ const TechnologyAndBuild = () => {
 
       {/* Engineering Pods */}
       <div>
-        <h2 className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-4">Engineering Pods</h2>
+        <h2 className="lux-eyebrow mb-4">Engineering Pods</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {ENGINEERING_PODS.map((pod, index) => (
             <motion.div
@@ -467,7 +474,7 @@ const TechnologyAndBuild = () => {
 
       {/* Tools Grid */}
       <div>
-        <h2 className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-4">Development Tools</h2>
+        <h2 className="lux-eyebrow mb-4">Development Tools</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {TOOLS.map((tool, index) => {
             const Icon = tool.icon;
@@ -479,7 +486,7 @@ const TechnologyAndBuild = () => {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.1 }}
-                  className="group bg-white rounded-2xl border border-gray-100 overflow-hidden hover:border-gray-200 hover:shadow-lg transition-all duration-300 cursor-pointer"
+                  className="group bg-white rounded-2xl border border-gray-100 overflow-hidden hover:border-gray-200 hover:shadow-lg transition-all duration-300"
                   data-testid={`tool-card-${tool.slug}`}
                 >
                   <div className={`h-2 bg-gradient-to-r ${tool.gradient}`}></div>
@@ -493,7 +500,7 @@ const TechnologyAndBuild = () => {
                       </span>
                     </div>
                     
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2 group-hover:text-cyan-600 transition-colors">
+                    <h3 className="font-display text-lg text-gray-900 mb-2 group-hover:text-cyan-600 transition-colors">
                       {tool.name}
                     </h3>
                     <p className="text-sm text-gray-500 mb-4">
@@ -530,7 +537,7 @@ const TechnologyAndBuild = () => {
                     </span>
                   </div>
                   
-                  <h3 className="text-lg font-semibold text-gray-700 mb-2">{tool.name}</h3>
+                  <h3 className="font-display text-lg text-gray-700 mb-2">{tool.name}</h3>
                   <p className="text-sm text-gray-400 mb-4">{tool.description}</p>
                   
                   <div className="pt-4 border-t border-gray-100">
@@ -545,7 +552,7 @@ const TechnologyAndBuild = () => {
 
       {/* AI Agents */}
       <div>
-        <h2 className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-4">AI Agents ({AI_AGENTS.length})</h2>
+        <h2 className="lux-eyebrow mb-4">AI Agents ({AI_AGENTS.length})</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {AI_AGENTS.map((agent, index) => {
             const Icon = agent.icon;
@@ -555,7 +562,7 @@ const TechnologyAndBuild = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
-                className="group bg-white rounded-xl border border-gray-200 p-4 hover:border-cyan-300 hover:shadow-md transition-all cursor-pointer"
+                className="group bg-white rounded-xl border border-[#EAE7E0] p-4 hover:border-cyan-300 hover:shadow-md transition-all"
                 data-testid={`agent-card-${agent.id}`}
               >
                 <div className="flex items-start justify-between mb-3">
@@ -589,7 +596,7 @@ const TechnologyAndBuild = () => {
       {/* Projects Table */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-[11px] font-semibold uppercase tracking-widest text-gray-400">
+          <h2 className="lux-eyebrow">
             Projects {selectedPod !== "all" && `(${selectedPod})`}
           </h2>
           <Button variant="outline" size="sm" onClick={() => setSelectedPod("all")}>
@@ -598,7 +605,7 @@ const TechnologyAndBuild = () => {
           </Button>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-2xl border border-[#EAE7E0] overflow-hidden">
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
@@ -620,7 +627,7 @@ const TechnologyAndBuild = () => {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: index * 0.05 }}
-                    className="hover:bg-gray-50 cursor-pointer"
+                    className="hover:bg-gray-50"
                     data-testid={`project-row-${project.id}`}
                   >
                     <td className="px-4 py-3">

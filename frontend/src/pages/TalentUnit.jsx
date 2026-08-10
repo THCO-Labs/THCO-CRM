@@ -7,6 +7,7 @@ import { Button } from "../components/ui/button";
 import BuildHistory from "../components/BuildHistory";
 import DeployedTools from "../components/flowforge/DeployedTools";
 
+import { FLOWFORGE_ENABLED } from "../config/features";
 // AI Agents for Recruiting (from Agent Registry)
 const AI_AGENTS = [
   {
@@ -141,28 +142,33 @@ const TalentUnit = () => {
       </Breadcrumb>
 
       {/* Unit Header */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">
-        <div className="flex items-start justify-between">
-          <div className="flex items-start gap-6">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-              <Users className="w-8 h-8 text-white" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Talent & Delivery</h1>
-              <p className="text-gray-500 text-lg">
-                AI-powered recruiting, sourcing, and talent operations
-              </p>
-            </div>
+      {/* Header in the dashboard's voice: an eyebrow, a display-face title
+          and quiet supporting text, rather than a coloured tile and a bold
+          sans heading. */}
+      <div className="pt-2">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="lux-eyebrow mb-3">Business Unit</p>
+            <h1 className="font-display text-4xl text-gray-900 leading-tight">Talent & Delivery</h1>
+            <p className="text-sm text-gray-500 mt-2 max-w-xl">AI-powered recruiting, sourcing, and talent operations</p>
           </div>
-          
           {/* Build New Tool Button */}
-          <Link to="/talent/build/new">
+          {/* FlowForge needs Supabase and n8n, neither configured here, so this
+
+              returned 503 on every click. See config/features.js. */}
+
+          {FLOWFORGE_ENABLED && (
+
+            <Link to="/talent/build/new">
             <Button className="bg-gradient-to-r from-[#1FB58A] to-[#3DDC97] text-white hover:opacity-90 shadow-lg shadow-emerald-500/20" data-testid="build-new-tool-btn">
               <Zap className="w-4 h-4 mr-2" />
               Build New Tool
             </Button>
           </Link>
+
+          )}
         </div>
+        <div className="lux-divider mt-8" />
       </div>
 
       {/* Tabs */}
@@ -242,7 +248,7 @@ const TalentUnit = () => {
                       </span>
                     </div>
                     
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2 group-hover:text-emerald-700 transition-colors">
+                    <h3 className="font-display text-lg text-gray-900 mb-2 group-hover:text-emerald-700 transition-colors">
                       {tool.name}
                     </h3>
                     <p className="text-sm text-gray-500 mb-4">
@@ -277,7 +283,7 @@ const TalentUnit = () => {
                     </span>
                   </div>
                   
-                  <h3 className="text-lg font-semibold text-gray-700 mb-2">
+                  <h3 className="font-display text-lg text-gray-700 mb-2">
                     {tool.name}
                   </h3>
                   <p className="text-sm text-gray-400 mb-4">
@@ -298,7 +304,7 @@ const TalentUnit = () => {
 
       {/* AI Agents */}
       <div>
-        <h2 className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-4">AI Agents ({AI_AGENTS.length})</h2>
+        <h2 className="lux-eyebrow mb-4">AI Agents ({AI_AGENTS.length})</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {AI_AGENTS.map((agent, index) => {
             const Icon = agent.icon;
@@ -308,7 +314,7 @@ const TalentUnit = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
-                className={`group bg-white rounded-xl border p-4 transition-all cursor-pointer ${
+                className={`group bg-white rounded-xl border p-4 transition-all ${
                   agent.status === 'active' 
                     ? 'border-emerald-200 hover:border-emerald-400 hover:shadow-md' 
                     : 'border-gray-200 hover:border-gray-300'
@@ -369,7 +375,7 @@ const TalentUnit = () => {
         </>
       ) : activeTab === "deployed" ? (
         <div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Deployed Tools</h2>
+          <h2 className="font-display text-xl text-gray-900 mb-2">Deployed Tools</h2>
           <p className="text-sm text-gray-500 mb-6">Tools you've built and approved that are now live in the automation engine.</p>
           <DeployedTools unit="talent" />
         </div>

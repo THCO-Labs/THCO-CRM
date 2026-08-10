@@ -178,7 +178,7 @@ async def list_unit_staff(slug: str, request: Request):
     user = await _current(request)
     permissions.require(
         permissions.is_admin(user) or slug in permissions.headed_units(user),
-        "You can only see the staff of a unit you head",
+        "You can only see the staff of a unit you manage",
     )
 
     people = await db.users.find(

@@ -47,6 +47,7 @@ import {
 } from "../components/ui/dropdown-menu";
 import { toast } from "sonner";
 
+import { FLOWFORGE_ENABLED } from "../config/features";
 // AI Agents for Project Management (from Agent Registry)
 const AI_AGENTS = [
   {
@@ -224,12 +225,20 @@ const ProjectManagement = () => {
           <p className="text-gray-500 mt-1">Track projects through the THCO Operating Cycle</p>
         </div>
         <div className="flex gap-3">
-          <Link to="/project-management/build/new">
+          {/* FlowForge needs Supabase and n8n, neither configured here, so this
+
+              returned 503 on every click. See config/features.js. */}
+
+          {FLOWFORGE_ENABLED && (
+
+            <Link to="/project-management/build/new">
             <Button className="bg-gradient-to-r from-[#1FB58A] to-[#3DDC97] text-white hover:opacity-90 shadow-lg shadow-emerald-500/20" data-testid="build-new-tool-btn">
               <Zap className="w-4 h-4 mr-2" />
               Build New Tool
             </Button>
           </Link>
+
+          )}
           <Button onClick={() => setIsAddModalOpen(true)} className="bg-teal-600 hover:bg-teal-700">
             <Plus className="w-4 h-4 mr-2" />
             New Project

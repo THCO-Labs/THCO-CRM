@@ -143,7 +143,7 @@ export default function UserManagement() {
           : `${unitName(slug)} now has no head`
       );
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Could not change the unit head");
+      toast.error(e.response?.data?.detail || "Could not change the project manager");
     } finally {
       setSaving((s) => ({ ...s, [`head_${slug}`]: false }));
     }
@@ -204,7 +204,7 @@ export default function UserManagement() {
   const submitCreate = async () => {
     if (!form.name.trim() || !form.email.trim()) return toast.error("Name and email are required");
     // "__pick__" means unit head was chosen but no unit picked yet.
-    if (form.head_of_unit === "__pick__") return toast.error("Choose which unit they will head");
+    if (form.head_of_unit === "__pick__") return toast.error("Choose which unit they will manage");
     if (form.password && form.password.length < 6) return toast.error("Password must be at least 6 characters");
     setCreating(true);
     try {
@@ -397,7 +397,7 @@ export default function UserManagement() {
           <div>
             <h1 className="font-display text-4xl text-gray-900 leading-tight">Staff Management</h1>
             <p className="text-sm text-gray-500 mt-2">
-              Add staff to the portal, assign their role and units, and appoint unit heads.
+              Add staff to the portal, assign their role and units, and appoint project managers.
             </p>
           </div>
           <Button
@@ -436,9 +436,9 @@ export default function UserManagement() {
       <div className="lux-card p-6" data-testid="unit-heads-panel">
         <div className="flex items-start justify-between gap-4 mb-1">
           <div>
-            <h2 className="font-display text-xl text-gray-900">Unit heads</h2>
+            <h2 className="font-display text-xl text-gray-900">Project managers</h2>
             <p className="text-sm text-gray-500 mt-1">
-              Only a unit head can open projects for their unit and add staff to them.
+              Only a project manager can open projects for their unit and add staff to them.
               Each unit has one head — change it whenever the company does.
             </p>
           </div>
@@ -552,7 +552,7 @@ export default function UserManagement() {
                           title={`Heads ${unitHeaded(u.user_id).name} — can open projects for it`}
                           data-testid={`heads-badge-${u.user_id}`}
                         >
-                          Head · {unitHeaded(u.user_id).name}
+                          PM · {unitHeaded(u.user_id).name}
                         </span>
                       )}
                     </td>
@@ -671,7 +671,7 @@ export default function UserManagement() {
                 <p className="lux-eyebrow mb-1">New Staff</p>
                 <DialogTitle className="font-display text-2xl text-gray-900">Invite a staff member</DialogTitle>
                 <DialogDescription className="text-gray-500 text-[13px]">
-                  Say whether they're staff or a unit head, then set their access and send the invite.
+                  Say whether they're staff or a project manager, then set their access and send the invite.
                 </DialogDescription>
               </DialogHeader>
 
@@ -705,7 +705,7 @@ export default function UserManagement() {
                     decision here as the invitation goes out. */}
                 <div>
                   <label className="block text-[11px] font-semibold uppercase tracking-[0.15em] text-gray-400 mb-2">
-                    Are they staff or a unit head?
+                    Are they staff or a project manager?
                   </label>
                   <div className="grid grid-cols-2 gap-3">
                     <button
@@ -736,10 +736,10 @@ export default function UserManagement() {
                       data-testid="create-kind-head"
                     >
                       <p className={`text-[13px] font-medium ${form.head_of_unit ? "text-[#12795C]" : "text-gray-900"}`}>
-                        Unit head
+                        Project manager
                       </p>
                       <p className="text-[11px] mt-0.5 text-gray-400">
-                        Opens projects and adds staff to them
+                        Opens projects for a unit and adds staff to them
                       </p>
                     </button>
                   </div>
@@ -747,7 +747,7 @@ export default function UserManagement() {
                   {form.head_of_unit && (
                     <div className="mt-3">
                       <label className="block text-[11px] font-semibold uppercase tracking-[0.15em] text-gray-400 mb-2">
-                        Which unit do they head?
+                        Which unit do they manage?
                       </label>
                       <div className="flex flex-wrap gap-1.5">
                         {ALL_UNITS.map((u) => {
@@ -783,7 +783,7 @@ export default function UserManagement() {
                         })}
                       </div>
                       {form.head_of_unit === "__pick__" ? (
-                        <p className="text-[11px] text-amber-600 mt-2">Choose which unit they will head.</p>
+                        <p className="text-[11px] text-amber-600 mt-2">Choose which unit they will manage.</p>
                       ) : (
                         headOf(form.head_of_unit) && (
                           <p className="text-[11px] text-amber-600 mt-2">

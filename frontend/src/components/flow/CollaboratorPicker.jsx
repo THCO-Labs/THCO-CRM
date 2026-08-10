@@ -134,7 +134,7 @@ export default function CollaboratorPicker({ unitSlug, value = [], onChange, dis
                 <span className="min-w-0">
                   <span className="block text-[13px] text-gray-900 truncate">
                     {p.name}
-                    {p.is_head && <span className="ml-1.5 text-[10px] text-[#8F7340]">unit head</span>}
+                    {p.is_head && <span className="ml-1.5 text-[10px] text-[#8F7340]">project manager</span>}
                   </span>
                   <span className="block text-[11px] text-gray-400 truncate">{p.email}</span>
                 </span>

@@ -160,6 +160,7 @@ export default function BoardColumn({
       {/* Task detail popup */}
       <TaskDetail
         card={viewCard}
+        boardTitle={board.title}
         onClose={() => setViewCard(null)}
       />
     </div>

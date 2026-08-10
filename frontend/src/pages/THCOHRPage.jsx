@@ -31,6 +31,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "../components/ui/breadcrumb";
 
+import { FLOWFORGE_ENABLED } from "../config/features";
 // AI Agents for THCO HR (from Agent Registry)
 const AI_AGENTS = [
   {
@@ -58,6 +59,8 @@ const TOOLS = [
     icon: Users,
     description: "View and manage all THCO team members, roles, and departments",
     gradient: "from-emerald-500 to-emerald-600",
+    // Genuinely built: the card scrolls to the directory further down this
+    // page. The other three have nothing behind them yet and say so.
     active: true
   },
   {
@@ -66,7 +69,7 @@ const TOOLS = [
     icon: Award,
     description: "Track performance metrics, goals, and review cycles",
     gradient: "from-emerald-500 to-teal-600",
-    active: true
+    active: false
   },
   {
     name: "Leave Management",
@@ -139,11 +142,19 @@ const THCOHRPage = () => {
     }
   };
 
-  const unitNames = (emp) => {
-    const headed = (emp.headed_units || []).map(s => unitMap[s] || s).join(", ");
-    const acc = (emp.accessible_units || []).map(s => unitMap[s] || s).join(", ");
-    return headed || acc || "—";
+  // A person's units as separate names rather than one long string. Joining
+  // them meant an administrator with eleven units rendered as a single pill
+  // wrapping over four lines, which is what made the directory look broken.
+  const unitList = (emp) => {
+    const source = (emp.headed_units || []).length ? emp.headed_units : (emp.accessible_units || []);
+    return source.filter((s) => s !== "flow").map((s) => unitMap[s] || s);
   };
+
+  const roleLabel = (emp) =>
+    emp.role === "super_admin" ? "Super Admin"
+      : emp.role === "mini_admin" ? "Administrator"
+      : emp.is_hr ? "HR"
+      : "Team Member";
 
   const filteredEmployees = employees.filter(emp => {
     const matchesSearch = (emp.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -175,42 +186,51 @@ const THCOHRPage = () => {
         </BreadcrumbList>
       </Breadcrumb>
 
-      {/* Unit Header */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">
-        <div className="flex items-start justify-between">
-          <div className="flex items-start gap-6">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-              <UserCog className="w-8 h-8 text-white" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">THCO HR</h1>
-              <p className="text-gray-500 text-lg">
-                Internal HR, employee records, people operations, performance & incentives
-              </p>
-              <p className="text-sm text-gray-400 mt-1">Lead: Victoria</p>
-            </div>
+      {/* Unit header, in the dashboard's voice: an eyebrow, a display-face
+          title and quiet supporting text, rather than a coloured tile and a
+          bold sans heading. */}
+      <div className="pt-2">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="lux-eyebrow mb-3">Business Unit</p>
+            <h1 className="font-display text-4xl text-gray-900 leading-tight">THCO HR</h1>
+            <p className="text-sm text-gray-500 mt-2 max-w-xl">
+              Internal HR, employee records, people operations, performance and incentives.
+            </p>
           </div>
           <div className="flex gap-3">
-            <Link to="/thco-hr/build/new">
+            {/* FlowForge needs Supabase and n8n, neither configured here, so this
+
+                returned 503 on every click. See config/features.js. */}
+
+            {FLOWFORGE_ENABLED && (
+
+              <Link to="/thco-hr/build/new">
               <Button className="bg-gradient-to-r from-[#1FB58A] to-[#3DDC97] text-white hover:opacity-90 shadow-lg shadow-emerald-500/20" data-testid="build-new-tool-btn">
                 <Zap className="w-4 h-4 mr-2" />
                 Build New Tool
               </Button>
             </Link>
+
+            )}
             {/* Had neither an onClick nor a link, so clicking it did nothing.
                 Staff are invited in one place -- Staff Management -- and this
                 opens that form directly rather than describing where to find
                 it. Hidden from anybody who could not use it. */}
             {canManageUsers(user) && (
               <Link to="/admin/users?invite=1">
-                <Button className="bg-emerald-600 hover:bg-emerald-700" data-testid="hr-add-staff-btn">
-                  <Plus className="w-4 h-4 mr-2" />
+                <Button
+                  className="bg-[#14181D] hover:bg-[#252b33] text-white rounded-full px-6 h-11 gap-2"
+                  data-testid="hr-add-staff-btn"
+                >
+                  <Plus className="w-4 h-4" />
                   Add Staff
                 </Button>
               </Link>
             )}
           </div>
         </div>
+        <div className="lux-divider mt-8" />
       </div>
 
       {/* Tabs */}
@@ -225,85 +245,48 @@ const THCOHRPage = () => {
         <BuildHistory unit="thco-hr" />
       ) : activeTab === "deployed" ? (
         <div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Deployed Tools</h2>
+          <h2 className="font-display text-xl text-gray-900 mb-2">Deployed Tools</h2>
           <p className="text-sm text-gray-500 mb-6">Tools you've built and approved that are now live in the automation engine.</p>
           <DeployedTools unit="thco-hr" />
         </div>
       ) : (
       <>
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-xl border border-gray-200 p-5"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
-              <Users className="w-5 h-5 text-emerald-600" />
+      {/* Stat tiles in the dashboard's form: a ringed gold glyph, the figure
+          in the display face, and a spaced small-caps label underneath. The
+          previous tiles used four different accent colours, which made four
+          equal facts look like four different kinds of thing. */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { label: "Team Members", value: loading ? "…" : employees.length, icon: Users },
+          { label: "Departments", value: DEPARTMENTS.length, icon: Building2 },
+          { label: "Review Cycle", value: "Q1", icon: Star },
+          {
+            label: "Active",
+            value: loading ? "…" : employees.filter((e) => e.status !== "disabled").length,
+            icon: CheckCircle2,
+          },
+        ].map(({ label, value, icon: Icon }, i) => (
+          <motion.div
+            key={label}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.05 }}
+            className="bg-white rounded-2xl border border-[#EAE7E0] p-5 flex items-center gap-4"
+          >
+            <div className="w-10 h-10 rounded-full border border-[#E5D9C3] bg-[#FBF8F1] flex items-center justify-center shrink-0">
+              <Icon className="w-4 h-4 text-[#A9834E]" strokeWidth={1.7} />
             </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-900">{loading ? "..." : employees.length}</p>
-              <p className="text-sm text-gray-500">Team Members</p>
+            <div className="min-w-0">
+              <p className="font-display text-[26px] leading-none text-gray-900">{value}</p>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mt-1.5 truncate">{label}</p>
             </div>
-          </div>
-        </motion.div>
-
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="bg-white rounded-xl border border-gray-200 p-5"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
-              <Building2 className="w-5 h-5 text-emerald-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-900">{DEPARTMENTS.length}</p>
-              <p className="text-sm text-gray-500">Departments</p>
-            </div>
-          </div>
-        </motion.div>
-
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="bg-white rounded-xl border border-gray-200 p-5"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
-              <Star className="w-5 h-5 text-amber-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-900">Q1</p>
-              <p className="text-sm text-gray-500">Review Cycle</p>
-            </div>
-          </div>
-        </motion.div>
-
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="bg-white rounded-xl border border-gray-200 p-5"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
-              <CheckCircle2 className="w-5 h-5 text-green-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-900">100%</p>
-              <p className="text-sm text-gray-500">Active Rate</p>
-            </div>
-          </div>
-        </motion.div>
+          </motion.div>
+        ))}
       </div>
 
       {/* AI Agents */}
       <div>
-        <h2 className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-4">AI Agents ({AI_AGENTS.length})</h2>
+        <h2 className="lux-eyebrow mb-4">AI Agents ({AI_AGENTS.length})</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {AI_AGENTS.map((agent, index) => {
             const Icon = agent.icon;
@@ -313,7 +296,7 @@ const THCOHRPage = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
-                className="group bg-white rounded-xl border border-gray-200 p-4 hover:border-emerald-300 hover:shadow-md transition-all cursor-pointer"
+                className="group bg-white rounded-xl border border-[#EAE7E0] p-4 hover:border-emerald-300 hover:shadow-md transition-all"
                 data-testid={`agent-card-${agent.id}`}
               >
                 <div className="flex items-start justify-between mb-3">
@@ -346,7 +329,7 @@ const THCOHRPage = () => {
 
       {/* Tools Grid */}
       <div>
-        <h2 className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-4">HR Tools</h2>
+        <h2 className="lux-eyebrow mb-4">HR Tools</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {TOOLS.map((tool, index) => {
             const Icon = tool.icon;
@@ -373,7 +356,7 @@ const THCOHRPage = () => {
                       </span>
                     </div>
                     
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2 group-hover:text-emerald-600 transition-colors">
+                    <h3 className="font-display text-lg text-gray-900 mb-2 group-hover:text-[#8F7340] transition-colors">
                       {tool.name}
                     </h3>
                     <p className="text-sm text-gray-500 mb-4">
@@ -411,7 +394,7 @@ const THCOHRPage = () => {
                     </span>
                   </div>
                   
-                  <h3 className="text-lg font-semibold text-gray-700 mb-2">
+                  <h3 className="font-display text-lg text-gray-700 mb-2">
                     {tool.name}
                   </h3>
                   <p className="text-sm text-gray-400 mb-4">
@@ -431,7 +414,7 @@ const THCOHRPage = () => {
       {/* Employee Directory Preview */}
       <div ref={directoryRef}>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-[11px] font-semibold uppercase tracking-widest text-gray-400">Team Directory</h2>
+          <h2 className="lux-eyebrow">Team Directory</h2>
           <div className="flex items-center gap-2">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -439,14 +422,14 @@ const THCOHRPage = () => {
                 placeholder="Search team..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 w-48"
+                className="pl-10 w-56 rounded-full border-[#EAE7E0]"
                 data-testid="employee-search"
               />
             </div>
             <select 
               value={selectedDepartment}
               onChange={(e) => setSelectedDepartment(e.target.value)}
-              className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="px-3.5 py-2 text-[13px] border border-[#EAE7E0] rounded-full bg-white outline-none focus:border-[#C6A15B] focus:ring-2 focus:ring-[#C6A15B]/15"
               data-testid="department-filter"
             >
               <option value="all">All Departments</option>
@@ -457,35 +440,78 @@ const THCOHRPage = () => {
           </div>
         </div>
         
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
-            {loading ? (
-              <div className="col-span-full text-center py-12 text-gray-400">Loading team...</div>
-            ) : filteredEmployees.length === 0 ? (
-              <div className="col-span-full text-center py-12 text-gray-400">No team members found</div>
-            ) : filteredEmployees.map((employee, index) => (
-              <motion.div
+        {/* Cards of a fixed shape, matching the dashboard: a quiet surface, a
+            single accent, and one line per fact. Previously every card grew to
+            whatever its unit list needed, so one administrator stretched a row
+            to four lines and left the others floating beside it. */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {loading ? (
+            <div className="col-span-full text-center py-14 text-sm text-gray-400">Loading team…</div>
+          ) : filteredEmployees.length === 0 ? (
+            <div className="col-span-full text-center py-14 text-sm text-gray-400">No team members found</div>
+          ) : filteredEmployees.map((employee, index) => {
+            const units = unitList(employee);
+            const heads = (employee.headed_units || []).length > 0;
+            return (
+              <motion.button
+                type="button"
                 key={employee.user_id || index}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: index * 0.03 }}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: Math.min(index, 12) * 0.02 }}
                 onClick={() => openPerson(employee)}
-                className="flex items-center gap-4 p-4 rounded-xl border border-gray-100 hover:border-gray-200 hover:bg-gray-50 transition-all cursor-pointer"
+                className="text-left bg-white rounded-2xl border border-[#EAE7E0] p-5 hover:border-[#C6A15B]/50 hover:shadow-[0_2px_16px_rgba(0,0,0,0.04)] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C6A15B]/40"
                 data-testid={`employee-card-${employee.user_id}`}
               >
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-500 flex items-center justify-center text-white font-semibold">
-                  {(employee.name || "?").charAt(0)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-gray-900 truncate">{employee.name || "Unknown"}</p>
-                  <p className="text-sm text-gray-500 truncate">{employee.role || "Staff"}</p>
-                  <span className="text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-                    {unitNames(employee)}
+                <div className="flex items-start gap-3.5">
+                  <span className="shrink-0 w-11 h-11 rounded-full bg-[#14181D] text-[#D6BC8A] flex items-center justify-center text-[15px] font-semibold">
+                    {(employee.name || "?").trim().charAt(0).toUpperCase()}
                   </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[14px] font-medium text-gray-900 truncate leading-tight">
+                      {employee.name || "Unknown"}
+                    </p>
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-gray-400 mt-1">
+                      {roleLabel(employee)}
+                    </p>
+                  </div>
+                  {heads && (
+                    <span
+                      className="shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#EAF8F3] text-[#12795C] border border-[#BFE7DA]"
+                      title={`Project manager for ${units.join(", ")}`}
+                    >
+                      PM
+                    </span>
+                  )}
                 </div>
-              </motion.div>
-            ))}
-          </div>
+
+                {/* Two units named, the rest counted. A directory card is for
+                    recognising somebody, not for auditing their access. */}
+                <div className="mt-3.5 pt-3.5 border-t border-[#F0EEE9] flex flex-wrap items-center gap-1.5 min-h-[30px]">
+                  {units.length === 0 ? (
+                    <span className="text-[11px] text-gray-300">No unit assigned</span>
+                  ) : (
+                    <>
+                      {units.slice(0, 2).map((u) => (
+                        <span
+                          key={u}
+                          className="text-[11px] text-gray-600 bg-[#F7F6F3] border border-[#EAE7E0] px-2 py-0.5 rounded-full truncate max-w-[130px]"
+                          title={u}
+                        >
+                          {u}
+                        </span>
+                      ))}
+                      {units.length > 2 && (
+                        <span className="text-[11px] text-gray-400" title={units.join(", ")}>
+                          +{units.length - 2} more
+                        </span>
+                      )}
+                    </>
+                  )}
+                </div>
+              </motion.button>
+            );
+          })}
         </div>
       </div>
       </>
@@ -497,11 +523,11 @@ const THCOHRPage = () => {
           <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()} data-testid="person-modal">
             <div className="p-6 border-b border-gray-100 flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-500 flex items-center justify-center text-white font-bold text-lg">
+                <div className="w-12 h-12 rounded-full bg-[#14181D] text-[#D6BC8A] flex items-center justify-center font-semibold text-lg">
                   {(selectedPerson.name || "?").charAt(0)}
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">{selectedPerson.name}</h3>
+                  <h3 className="font-display text-xl text-gray-900">{selectedPerson.name}</h3>
                   <p className="text-sm text-gray-500">{selectedPerson.email}</p>
                 </div>
               </div>
@@ -510,7 +536,22 @@ const THCOHRPage = () => {
             <div className="p-6 space-y-6">
               <div>
                 <p className="text-xs uppercase tracking-wide text-gray-400 font-semibold mb-2">Units</p>
-                <p className="text-sm text-gray-700">{unitNames(selectedPerson)}</p>
+                {/* Every unit here -- this is the detail view, where the full
+                    picture belongs, unlike the card which names two. */}
+                <div className="flex flex-wrap gap-1.5">
+                  {unitList(selectedPerson).length === 0 ? (
+                    <span className="text-sm text-gray-400">No unit assigned</span>
+                  ) : (
+                    unitList(selectedPerson).map((u) => (
+                      <span
+                        key={u}
+                        className="text-[12px] text-gray-700 bg-[#F7F6F3] border border-[#EAE7E0] px-2.5 py-1 rounded-full"
+                      >
+                        {u}
+                      </span>
+                    ))
+                  )}
+                </div>
               </div>
 
               <div>

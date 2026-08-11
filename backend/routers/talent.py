@@ -379,7 +379,11 @@ async def list_candidates(
 ):
     await require_talent_access(request)
 
-    filters = {}
+    # Records the cleanup set aside -- business documents read as CVs, and the
+    # deck records whose people have since been imported individually. They are
+    # kept, with their uploaded file, rather than deleted; they simply do not
+    # belong in a list of candidates.
+    filters = {"hidden": {"$ne": True}}
     if status:
         filters["status"] = status
     if source:
@@ -457,9 +461,14 @@ async def text_search_candidates(
     # cursors lazily, so the query only runs while draining: iterating outside
     # this try meant the fallback could never fire and an unsupported $text
     # surfaced as a 500 instead of degrading to a slower but working search.
+    # Set-aside records stay out of search as well as out of the lists. A
+    # recruiter searching for a skill should not be handed an invoice because
+    # the word happened to appear in it.
+    visible = {"hidden": {"$ne": True}}
+
     try:
         cursor = db.candidates.find(
-            {"$text": {"$search": q}},
+            {**visible, "$text": {"$search": q}},
             {"score": {"$meta": "textScore"}},
         ).sort([("score", {"$meta": "textScore"})]).skip(skip).limit(limit)
         candidates = await _drain(cursor)
@@ -467,6 +476,7 @@ async def text_search_candidates(
         logger.warning(f"$text search unavailable ({e}); falling back to regex")
         safe = re.sub(r'[.*+?^${}()|[\]\\]', '', q)
         cursor = db.candidates.find({
+            **visible,
             "$or": [
                 {"name": {"$regex": safe, "$options": "i"}},
                 {"email": {"$regex": safe, "$options": "i"}},
@@ -1492,15 +1502,21 @@ async def merge_two_candidates(request: Request, keep: str, absorb: str):
 @router.get("/stats")
 async def talent_stats(request: Request):
     await require_talent_access(request)
-    total_candidates = await db.candidates.count_documents({})
+    # Counted on the same population the lists show. A total that includes
+    # records nobody can see is a total nobody can reconcile.
+    visible = {"hidden": {"$ne": True}}
+
+    total_candidates = await db.candidates.count_documents(visible)
     by_source = {}
     async for doc in db.candidates.aggregate([
+        {"$match": visible},
         {"$group": {"_id": "$source", "count": {"$sum": 1}}}
     ]):
         by_source[doc["_id"]] = doc["count"]
 
     by_status = {}
     async for doc in db.candidates.aggregate([
+        {"$match": visible},
         {"$group": {"_id": "$status", "count": {"$sum": 1}}}
     ]):
         by_status[doc["_id"]] = doc["count"]

@@ -1274,6 +1274,70 @@ async def gmail_import_run(
     )
 
 
+@router.post("/import/queue/fill")
+async def import_queue_fill(request: Request, since: Optional[str] = None):
+    """Put the mailbox's outstanding messages into the import queue.
+
+    One IMAP search and no downloads, so this is quick even on a mailbox of
+    tens of thousands. Re-running it adds only mail that has arrived since.
+
+    Pass `since` to queue from a specific message UID; by default it continues
+    from where the old cursor-driven import reached, so switching to the queue
+    does not re-read what has already been imported.
+    """
+    user = await require_talent_access(request)
+    permissions.require_admin(user)
+
+    from services.connectors.runner import fill_queue
+
+    connector = _mail_connector()
+    if since is None:
+        cursor = await db.import_cursors.find_one({"connector": "gmail"}, {"_id": 0})
+        since = (cursor or {}).get("cursor")
+    return await fill_queue(db, connector, since=since)
+
+
+@router.get("/import/queue/status")
+async def import_queue_status(request: Request):
+    """How much of the queue is done, in progress, and set aside."""
+    await require_talent_access(request)
+    from services import import_queue
+
+    return await import_queue.stats(db, "gmail")
+
+
+@router.post("/import/queue/run")
+async def import_queue_run(request: Request, limit: int = 100, workers: int = 3):
+    """Work the queue.
+
+    Progress is the state of the rows, not anything held here, so this can be
+    stopped at any point -- including by restarting the API -- and picked up
+    again with nothing lost but the messages currently leased, which return by
+    themselves when their leases expire.
+    """
+    user = await require_talent_access(request)
+    permissions.require_admin(user)
+
+    from services.connectors.runner import drain_queue
+
+    connector = _mail_connector()
+    access = connector.check_access()
+    if not access.get("ok"):
+        raise HTTPException(status_code=400, detail=access.get("reason", "Mailbox is not reachable"))
+
+    return await drain_queue(db, connector, limit=min(limit, 500), workers=min(max(workers, 1), 8))
+
+
+@router.post("/import/queue/retry-failed")
+async def import_queue_retry(request: Request):
+    """Return set-aside messages to the queue, for after a parser fix."""
+    user = await require_talent_access(request)
+    permissions.require_admin(user)
+    from services import import_queue
+
+    return {"requeued": await import_queue.reset_failed(db, "gmail")}
+
+
 @router.get("/import/runs")
 async def list_import_runs(request: Request, limit: int = 20):
     """Recent connector runs, newest first."""

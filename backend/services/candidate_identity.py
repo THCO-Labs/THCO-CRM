@@ -70,7 +70,16 @@ def normalise_email(value: Optional[str]) -> Optional[str]:
     local, _, domain = value.strip().lower().partition("@")
     # Gmail ignores dots and anything after a plus.
     if domain in ("gmail.com", "googlemail.com"):
-        local = local.split("+", 1)[0].replace(".", "")
+        stripped = local.split("+", 1)[0].replace(".", "")
+        # Only when something is left. A CV that runs a phone number into the
+        # address -- "+2348022747706.femooshad@gmail.com" -- has no local part
+        # before the plus, and taking it anyway produced "@gmail.com": a key
+        # that three unrelated people shared and that identity matching would
+        # have treated as the same person.
+        if stripped:
+            local = stripped
+    if not local:
+        return None
     return f"{local}@{domain}"
 
 

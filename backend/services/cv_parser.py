@@ -42,7 +42,11 @@ SKILL_PATTERN = re.compile(
     re.IGNORECASE
 )
 
-EMAIL_PATTERN = re.compile(r'[\w.+-]+@[\w-]+\.[\w.-]+')
+# The local part must begin with a letter or digit. Without that, a CV listing
+# a phone number immediately before an address yields
+# "+2348022747706.femooshad@gmail.com" as the email -- which is not one, and
+# which normalised down to a key several unrelated people shared.
+EMAIL_PATTERN = re.compile(r'[A-Za-z0-9][\w.+-]*@[\w-]+\.[\w.-]*[A-Za-z]')
 PHONE_PATTERN = re.compile(r'(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}')
 LINKEDIN_PATTERN = re.compile(r'linkedin\.com/in/[\w\-%]+', re.IGNORECASE)
 YEARS_PATTERN = re.compile(r'(\d+)[\+]?\s*(?:years?|yrs?)(?:\s*(?:of\s*)?experience)?', re.IGNORECASE)
@@ -219,6 +223,11 @@ _NAME_STOPWORDS = {
     "email", "date", "birth", "gender", "marital", "status", "statement",
     "work", "about", "me", "bio", "biodata", "portfolio", "projects",
     "declaration", "signature", "confidential",
+    # Cover-page wording from agency profile decks, which open with a title
+    # slide rather than a person. "Presented on" was being stored as the name
+    # of seventy-four candidates.
+    "presented", "prepared", "submitted", "profiles", "talent", "candidate",
+    "shortlist", "introduction", "overview", "agenda", "contents",
     # Job titles and role words. Without these the extractor happily returns
     # "SENIOR SOFTWARE ENGINEER" as somebody's name.
     "senior", "junior", "lead", "head", "chief", "officer", "manager",
@@ -595,9 +604,26 @@ def extract_portfolio(text: str) -> Optional[str]:
     return None
 
 
+# A phone number running straight into an address, which CVs that set contact
+# details on one line produce constantly: "+2348022747706.femooshad@gmail.com".
+# The digits are not part of the address, and left on they became the identity
+# the candidate was matched by.
+# The separator is optional because plenty of layouts leave none at all
+# ("+573112379170christianfdo777@..."). At least seven leading digits are
+# required, so a handle that merely starts with a year -- 2023abc@ -- is left
+# alone, and an all-digit local part like a student number is untouched
+# because letters must follow.
+_PHONE_GLUED_TO_EMAIL = re.compile(r"^\+?\d[\d\s\-()]{6,}[.\-_]?([A-Za-z][\w.+-]*)$")
+
+
 def extract_email(text: str) -> Optional[str]:
     match = EMAIL_PATTERN.search(text)
-    return match.group(0) if match else None
+    if not match:
+        return None
+    address = match.group(0)
+    local, _, domain = address.partition("@")
+    glued = _PHONE_GLUED_TO_EMAIL.match(local)
+    return f"{glued.group(1)}@{domain}" if glued else address
 
 
 def extract_phone(text: str) -> Optional[str]:

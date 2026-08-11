@@ -165,6 +165,107 @@ class ImapMailboxConnector(Connector):
             uids = [u for u in uids if u > since_uid]
         return sorted(uids)
 
+    def _documents_in(self, raw: bytes, uid: int) -> List[CandidateDocument]:
+        """The CV attachments carried by one raw message.
+
+        Shared by the streaming path and the queue's single-message path so
+        both decide identically what counts as a CV -- if these could drift,
+        the queue would import documents the old importer skipped.
+        """
+        message = email.message_from_bytes(raw)
+        sender = _sender_address(message.get("From"))
+        subject = _decode(message.get("Subject"))
+
+        received = None
+        if message.get("Date"):
+            try:
+                received = parsedate_to_datetime(message["Date"]).astimezone(
+                    timezone.utc
+                ).isoformat()
+            except Exception:
+                pass
+
+        found: List[CandidateDocument] = []
+        for part in message.walk():
+            if part.get_content_maintype() == "multipart":
+                continue
+            filename = _decode(part.get_filename())
+            if not filename:
+                continue
+            payload = part.get_payload(decode=True)
+            if not payload:
+                continue
+            if not _looks_like_cv(filename, part.get_content_type(), len(payload)):
+                continue
+
+            found.append(CandidateDocument(
+                content=payload,
+                filename=filename,
+                source=self.name,
+                reference=f"imap:{uid}",
+                sender_email=sender,
+                message_id=(message.get("Message-ID") or f"uid:{uid}").strip("<>"),
+                received_at=received,
+                subject=subject,
+                metadata={
+                    "mailbox": self.mailbox,
+                    "folder": self.folder,
+                    "transport": "imap",
+                    "uid": uid,
+                },
+            ))
+        return found
+
+    async def list_refs(self, since: Optional[str] = None) -> List[str]:
+        """UIDs of every message carrying a document, without downloading any.
+
+        This is the search the queue is filled from. It is one server-side
+        search and no body fetches, so filling a queue for a mailbox of tens of
+        thousands of messages costs about as much as a single batch used to.
+        """
+        import asyncio
+
+        if not self.is_configured():
+            return []
+
+        since_uid = int(since) if since and str(since).isdigit() else None
+        client = await asyncio.to_thread(self._connect)
+        try:
+            uids = await asyncio.to_thread(self._search_uids, client, since_uid)
+            return [str(u) for u in uids]
+        finally:
+            try:
+                await asyncio.to_thread(client.logout)
+            except Exception:
+                pass
+
+    async def fetch_ref(self, ref: str) -> List[CandidateDocument]:
+        """Open one message by UID and return the CVs attached to it.
+
+        A connection per message is deliberate. Gmail hangs up on long-lived
+        IMAP sessions, and a queue worker may sit idle between messages; a
+        pooled connection would be found dead exactly when it was needed.
+        """
+        import asyncio
+
+        if not self.is_configured():
+            return []
+
+        uid = int(ref)
+        client = await asyncio.to_thread(self._connect)
+        try:
+            typ, data = await asyncio.to_thread(
+                lambda: client.uid("fetch", str(uid), "(BODY.PEEK[])")
+            )
+            if typ != "OK" or not data or not data[0]:
+                return []
+            return self._documents_in(data[0][1], uid)
+        finally:
+            try:
+                await asyncio.to_thread(client.logout)
+            except Exception:
+                pass
+
     async def fetch(
         self, since: Optional[str] = None, limit: int = 100
     ) -> AsyncIterator[CandidateDocument]:
@@ -227,48 +328,8 @@ class ImapMailboxConnector(Connector):
                     if typ != "OK" or not data or not data[0]:
                         continue
 
-                    message = email.message_from_bytes(data[0][1])
-                    sender = _sender_address(message.get("From"))
-                    subject = _decode(message.get("Subject"))
-
-                    received = None
-                    if message.get("Date"):
-                        try:
-                            received = parsedate_to_datetime(message["Date"]).astimezone(
-                                timezone.utc
-                            ).isoformat()
-                        except Exception:
-                            pass
-
-                    for part in message.walk():
-                        if part.get_content_maintype() == "multipart":
-                            continue
-                        filename = _decode(part.get_filename())
-                        if not filename:
-                            continue
-
-                        payload = part.get_payload(decode=True)
-                        if not payload:
-                            continue
-                        if not _looks_like_cv(filename, part.get_content_type(), len(payload)):
-                            continue
-
-                        yield CandidateDocument(
-                            content=payload,
-                            filename=filename,
-                            source=self.name,
-                            reference=f"imap:{uid}",
-                            sender_email=sender,
-                            message_id=(message.get("Message-ID") or f"uid:{uid}").strip("<>"),
-                            received_at=received,
-                            subject=subject,
-                            metadata={
-                                "mailbox": self.mailbox,
-                                "folder": self.folder,
-                                "transport": "imap",
-                                "uid": uid,
-                            },
-                        )
+                    for document in self._documents_in(data[0][1], uid):
+                        yield document
                         yielded += 1
                         if yielded >= limit:
                             break

@@ -15,6 +15,7 @@ Two guarantees:
 """
 
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -87,6 +88,56 @@ _NON_CV_MARKERS = (
 )
 
 
+# Addresses that belong to the sender or the agency rather than a candidate,
+# and so should not be counted when deciding how many people a document covers.
+_NON_CANDIDATE_EMAIL = re.compile(
+    r"@(thcohq|thco)\.|noreply|no-reply|donotreply|info@|admin@|careers@|hr@|"
+    r"recruit|support@|sales@|example\.(com|org)",
+    re.IGNORECASE,
+)
+
+
+# The cover and section wording of an agency profile deck. Two or more of
+# these is the deck's own structure repeating, once per candidate inside it.
+_BUNDLE_MARKERS = re.compile(
+    r"talent profiles|candidate profile|profiles presented|shortlisted candidates",
+    re.IGNORECASE,
+)
+
+
+def people_in(text: str) -> int:
+    """How many distinct people a document appears to describe.
+
+    Counted on email addresses, which are the one identifier a CV almost always
+    carries exactly one of.
+    """
+    found = {
+        m.group(0).lower()
+        for m in re.finditer(r"[A-Za-z0-9][\w.+-]*@[\w-]+\.[\w.-]*[A-Za-z]", text or "")
+        if not _NON_CANDIDATE_EMAIL.search(m.group(0))
+    }
+    return len(found)
+
+
+def is_bundle(text: str, filename: str = "") -> tuple:
+    """Whether a document is several CVs merged into one file.
+
+    Both signals are required. Counting addresses alone is far too eager --
+    plenty of ordinary CVs list two or three referees with their emails, and on
+    this corpus a three-address rule condemned 959 documents to catch about a
+    dozen real bundles. Deck wording alone is not enough either, since a single
+    CV can say "candidate profile" about itself. Together they are specific:
+    they match the agency decks and almost nothing else.
+    """
+    text = text or ""
+    people = people_in(text)
+    if people < 3:
+        return False, ""
+    if len(_BUNDLE_MARKERS.findall(text)) >= 2 or "merged" in (filename or "").lower():
+        return True, f"appears to bundle {people} people; needs splitting before import"
+    return False, ""
+
+
 def looks_like_cv(parsed: Dict[str, Any]) -> tuple:
     """Judge whether a parsed document is actually somebody's CV.
 
@@ -97,6 +148,15 @@ def looks_like_cv(parsed: Dict[str, Any]) -> tuple:
     text = (parsed.get("raw_text") or "").lower()
     if len(text) < 200:
         return False, "document contains too little text to be a CV"
+
+    # Recruiters send bundles: several CVs merged into one PDF behind a title
+    # slide. Imported as a single document it becomes one candidate named after
+    # the cover page, and everybody inside it is lost -- which is worse than
+    # rejecting it, because it looks like it worked. Set aside for splitting
+    # instead of being silently flattened into one person.
+    bundled, why_bundled = is_bundle(parsed.get("raw_text") or "", parsed.get("filename") or "")
+    if bundled:
+        return False, why_bundled
 
     sections = sum(1 for w in _CV_SECTION_WORDS if w in text)
     negatives = sum(1 for w in _NON_CV_MARKERS if w in text)
@@ -312,9 +372,28 @@ async def import_cv(db, file_bytes: bytes, filename: str,
 
     Returns the action taken, the candidate id, the resume version number and
     -- when an existing profile was updated -- what changed.
+
+    Reading a document and deciding who it belongs to are separate steps
+    (`parse_bytes` then `persist_parsed`) because they have opposite
+    requirements: parsing is slow and independent, so several may run at once,
+    while identity resolution reads the candidate list and then writes to it,
+    which must happen one at a time or two workers will each conclude a person
+    is new and create them twice. Callers importing a single document have no
+    such concern and should keep using this.
+    """
+    parsed = parse_bytes(file_bytes, filename)
+    return await persist_parsed(db, parsed, filename, source, file_bytes)
+
+
+async def persist_parsed(db, parsed: Dict[str, Any], filename: str,
+                         source: Optional[Dict[str, Any]] = None,
+                         file_bytes: Optional[bytes] = None) -> Dict[str, Any]:
+    """Decide who an already-parsed document belongs to, and record it.
+
+    Everything here touches candidate identity, so concurrent callers must
+    serialise around it -- see the note in `import_cv`.
     """
     source = source or {"source": "upload"}
-    parsed = parse_bytes(file_bytes, filename)
 
     if not any(parsed.get(f) for f in ("name", "email", "phone")):
         return {

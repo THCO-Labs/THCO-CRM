@@ -62,6 +62,22 @@ class Connector:
         raise NotImplementedError
         yield  # pragma: no cover - makes this an async generator
 
+    async def list_refs(self, since: Optional[str] = None) -> list:
+        """Every message this connector would open, as opaque references.
+
+        Cheap by design: it locates work without downloading it, so the queue
+        can be filled in one pass and then drained a message at a time.
+        """
+        raise NotImplementedError
+
+    async def fetch_ref(self, ref: str) -> list:
+        """The documents carried by one message, by its reference.
+
+        The queue hands out one message at a time, so a connector must be able
+        to open a specific message rather than only stream a range of them.
+        """
+        raise NotImplementedError
+
     def cursor_for(self, document: CandidateDocument) -> Optional[str]:
         """The resume point this document represents.
 

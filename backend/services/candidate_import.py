@@ -149,14 +149,12 @@ def looks_like_cv(parsed: Dict[str, Any]) -> tuple:
     if len(text) < 200:
         return False, "document contains too little text to be a CV"
 
-    # Recruiters send bundles: several CVs merged into one PDF behind a title
-    # slide. Imported as a single document it becomes one candidate named after
-    # the cover page, and everybody inside it is lost -- which is worse than
-    # rejecting it, because it looks like it worked. Set aside for splitting
-    # instead of being silently flattened into one person.
-    bundled, why_bundled = is_bundle(parsed.get("raw_text") or "", parsed.get("filename") or "")
-    if bundled:
-        return False, why_bundled
+    # Note that nothing is rejected here for looking like a bundle. Whether a
+    # document holds several people is decided by trying to take it apart --
+    # see `split_out_candidates` -- because the text alone is not evidence.
+    # Agencies name ordinary single-candidate CVs "..._merged.pdf" and put
+    # their own deck wording on them, and rejecting on that discarded real
+    # people. A document only fails to import here on its own merits.
 
     sections = sum(1 for w in _CV_SECTION_WORDS if w in text)
     negatives = sum(1 for w in _NON_CV_MARKERS if w in text)
@@ -359,8 +357,35 @@ async def _log_timeline(db, candidate_id: str, event: str, detail: str = "",
     })
 
 
+def split_out_candidates(parsed: Dict[str, Any], file_bytes: bytes,
+                         filename: str) -> List[Tuple[bytes, str]]:
+    """Take a merged recruiter deck apart, or return nothing if it is not one.
+
+    Trying the split is what decides the question. A text rule cannot: agencies
+    name ordinary one-person CVs "..._merged.pdf" and carry their deck wording
+    on every page, and treating that as proof rejected real candidates. A file
+    that genuinely holds several people has several candidate sections in it,
+    and either they can be found or the file is treated as the single CV it
+    probably is.
+
+    The cheap text signals are still used, but only to decide whether opening
+    the PDF a second time is worth it -- not to decide the outcome.
+    """
+    if not (filename or "").lower().endswith(".pdf") or not file_bytes:
+        return []
+    maybe, _ = is_bundle(parsed.get("raw_text") or "", filename)
+    if not maybe:
+        return []
+
+    from services import cv_splitter
+
+    pieces = cv_splitter.split(file_bytes, filename)
+    return pieces if len(pieces) >= 2 else []
+
+
 async def import_cv(db, file_bytes: bytes, filename: str,
-                    source: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+                    source: Optional[Dict[str, Any]] = None,
+                    _split_depth: int = 0) -> Dict[str, Any]:
     """Import one CV, matching it to an existing candidate where possible.
 
     `source` describes provenance and is stored on the version record:
@@ -382,6 +407,24 @@ async def import_cv(db, file_bytes: bytes, filename: str,
     such concern and should keep using this.
     """
     parsed = parse_bytes(file_bytes, filename)
+
+    # A deck becomes its candidates, each imported as the CV it is. The depth
+    # guard is belt and braces: a piece cut out of a deck should never look
+    # like a deck itself, and if one ever did this would otherwise not stop.
+    if _split_depth == 0:
+        pieces = split_out_candidates(parsed, file_bytes, filename)
+        if pieces:
+            results = [
+                await import_cv(db, body, name, source, _split_depth=1)
+                for body, name in pieces
+            ]
+            return {
+                "action": "split",
+                "filename": filename,
+                "candidates": len(pieces),
+                "results": results,
+            }
+
     return await persist_parsed(db, parsed, filename, source, file_bytes)
 
 

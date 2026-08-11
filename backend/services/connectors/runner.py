@@ -16,7 +16,12 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from services import import_queue
-from services.candidate_import import import_cv, parse_bytes, persist_parsed
+from services.candidate_import import (
+    import_cv,
+    parse_bytes,
+    persist_parsed,
+    split_out_candidates,
+)
 from services.connectors.base import Connector
 
 logger = logging.getLogger(__name__)
@@ -161,8 +166,19 @@ async def _process_one(db, connector: Connector, row: Dict[str, Any]) -> Dict[st
     ref = row["ref"]
     documents = await connector.fetch_ref(ref)
 
-    counts = {"created": 0, "updated": 0, "rejected": 0, "failed": 0}
+    counts = {"created": 0, "updated": 0, "rejected": 0, "failed": 0, "split": 0}
     log = []
+
+    async def record(parsed, name, body):
+        async with _identity_lock:
+            outcome = await persist_parsed(
+                db, parsed, name, document.import_source(), body
+            )
+        action = outcome.get("action", "failed")
+        counts[action if action in counts else "failed"] += 1
+        log.append({"filename": name, "action": action,
+                    "candidate_id": outcome.get("candidate_id"),
+                    "reason": outcome.get("reason")})
 
     for document in documents:
         # Parsing a PDF is CPU-bound and takes seconds. Run on the event loop
@@ -174,16 +190,22 @@ async def _process_one(db, connector: Connector, row: Dict[str, Any]) -> Dict[st
         # A message with many attachments can outlast its lease honestly.
         await import_queue.extend(db, connector.name, ref, row["worker"])
 
-        async with _identity_lock:
-            outcome = await persist_parsed(
-                db, parsed, document.filename, document.import_source(), document.content
-            )
+        # A recruiter's merged deck is imported as the people inside it rather
+        # than as one candidate named after its cover page.
+        pieces = await asyncio.to_thread(
+            split_out_candidates, parsed, document.content, document.filename
+        )
+        if pieces:
+            counts["split"] += 1
+            log.append({"filename": document.filename, "action": "split",
+                        "candidates": len(pieces)})
+            for body, name in pieces:
+                piece = await asyncio.to_thread(parse_bytes, body, name)
+                await record(piece, name, body)
+                await import_queue.extend(db, connector.name, ref, row["worker"])
+            continue
 
-        action = outcome.get("action", "failed")
-        counts[action if action in counts else "failed"] += 1
-        log.append({"filename": document.filename, "action": action,
-                    "candidate_id": outcome.get("candidate_id"),
-                    "reason": outcome.get("reason")})
+        await record(parsed, document.filename, document.content)
 
     return {"documents": len(documents), **counts, "detail": log}
 
@@ -202,7 +224,7 @@ async def drain_queue(db, connector: Connector, limit: int = 200,
 
     await import_queue.ensure_indexes(db)
     started = datetime.now(timezone.utc)
-    totals = {"created": 0, "updated": 0, "rejected": 0, "failed": 0}
+    totals = {"created": 0, "updated": 0, "rejected": 0, "failed": 0, "split": 0}
     processed = errors = 0
     # Claims left to hand out. Decremented before a worker claims, so the run
     # stops at `limit` messages rather than at limit plus however many workers

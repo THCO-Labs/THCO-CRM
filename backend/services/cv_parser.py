@@ -125,8 +125,36 @@ def extract_text_from_pdf(file_bytes: bytes) -> str:
 
 def extract_text_from_docx(file_bytes: bytes) -> str:
     from docx import Document
-    doc = Document(io.BytesIO(file_bytes))
-    return '\n'.join(p.text for p in doc.paragraphs if p.text.strip())
+    try:
+        doc = Document(io.BytesIO(file_bytes))
+        return '\n'.join(p.text for p in doc.paragraphs if p.text.strip())
+    except Exception:
+        # A .docx is a zip, and python-docx gives up on the whole file when any
+        # member fails its checksum -- usually an embedded photo, while the text
+        # is perfectly readable. Losing a candidate over a corrupt image in
+        # their CV is not a good trade, so read the document part on its own.
+        return _docx_text_ignoring_damage(file_bytes)
+
+
+def _docx_text_ignoring_damage(file_bytes: bytes) -> str:
+    """Read a .docx's words directly, skipping whatever else is broken."""
+    import xml.etree.ElementTree as ET
+    import zipfile
+
+    W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
+            with z.open("word/document.xml") as f:
+                root = ET.parse(f).getroot()
+    except Exception:
+        return ""
+
+    lines = []
+    for para in root.iter(f"{W}p"):
+        text = "".join(node.text or "" for node in para.iter(f"{W}t"))
+        if text.strip():
+            lines.append(text)
+    return "\n".join(lines)
 
 
 def extract_text_from_doc(file_bytes: bytes) -> str:

@@ -31,6 +31,8 @@ import {
   Sun,
   Moon,
   KanbanSquare,
+  Menu,
+  X,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -111,6 +113,14 @@ const SectionLabel = ({ children, collapsed }) =>
 
 const DashboardLayoutInner = ({ children, user }) => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  // On a phone the sidebar is a drawer that starts shut. It used to be
+  // `fixed` below lg with nothing to hide it, so 248px of menu sat on top of a
+  // 375px screen and left a third of the page readable, with no way to move
+  // it -- `sidebarOpen` only ever changed its width.
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(
+    () => typeof window === "undefined" || window.matchMedia("(min-width: 1024px)").matches
+  );
   const [pendingApprovals, setPendingApprovals] = useState(0);
   const [dynamicUnits, setDynamicUnits] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -119,6 +129,28 @@ const DashboardLayoutInner = ({ children, user }) => {
   const navigate = useNavigate();
   const { trackAction } = useAnalytics();
   const { theme, toggleTheme } = useTheme();
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const onChange = (e) => {
+      setIsDesktop(e.matches);
+      // Rotating to landscape must not leave a drawer open over a layout that
+      // no longer needs one.
+      if (e.matches) setMobileNavOpen(false);
+    };
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  // Following a link should get you to the page, not leave you looking at the
+  // menu you tapped it from.
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [location.pathname]);
+
+  // Collapsing to icons is a desktop affordance. On a phone the drawer is
+  // either shown in full or not at all, so labels are always readable.
+  const collapsed = isDesktop && !sidebarOpen;
 
   // Fetch pending approvals count
   useEffect(() => {
@@ -296,10 +328,22 @@ const DashboardLayoutInner = ({ children, user }) => {
 
   return (
     <div className="min-h-screen bg-[#F7F6F3] flex">
+      {/* Tapping away from the drawer closes it, which is what everybody
+          expects and the only way out on a screen with no room to spare. */}
+      {mobileNavOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setMobileNavOpen(false)}
+          aria-hidden="true"
+          data-testid="sidebar-backdrop"
+        />
+      )}
+
       {/* Sidebar — deep ink with gold accents */}
       <aside
         className={`fixed lg:sticky lg:top-0 lg:h-screen inset-y-0 left-0 z-50 bg-[#0C0F13] transition-all duration-300 flex flex-col
-          ${sidebarOpen ? "w-[248px]" : "w-[72px]"}`}
+          ${collapsed ? "w-[72px]" : "w-[248px]"}
+          ${mobileNavOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0`}
       >
         {/* Aurora background */}
         <img
@@ -313,24 +357,36 @@ const DashboardLayoutInner = ({ children, user }) => {
           style={{ background: "linear-gradient(180deg, rgba(8,12,16,0.80) 0%, rgba(8,12,16,0.62) 50%, rgba(8,12,16,0.85) 100%)" }}
         />
         {/* Logo */}
-        <div className={`h-[68px] flex items-center border-b border-white/[0.06] ${sidebarOpen ? "px-5 justify-between" : "px-0 justify-center"} relative z-10`}>
+        <div className={`h-[68px] flex items-center border-b border-white/[0.06] ${collapsed ? "px-0 justify-center" : "px-5 justify-between"} relative z-10`}>
           <Link to="/dashboard" className="flex items-center gap-2.5 min-w-0">
             <span className="w-8 h-8 shrink-0 rounded-md bg-gradient-to-br from-[#C6A15B] to-[#8F7340] flex items-center justify-center">
               <span className="font-display text-[#0C0F13] text-sm font-semibold">T</span>
             </span>
-            {sidebarOpen && (
+            {!collapsed && (
               <span className="min-w-0">
                 <span className="block font-display text-white text-[15px] leading-tight tracking-wide">THCO</span>
                 <span className="block text-[8px] uppercase tracking-[0.35em] text-[#6B7280]">Control Room</span>
               </span>
             )}
           </Link>
+
+          {/* On a phone this closes the drawer. Collapsing to icons is a
+              desktop idea and would only leave a narrower obstruction. */}
+          <button
+            onClick={() => setMobileNavOpen(false)}
+            title="Close menu"
+            data-testid="sidebar-close-mobile"
+            className="lg:hidden p-1.5 text-[#9AA0AB] hover:text-white hover:bg-white/[0.08] rounded-lg transition-colors"
+          >
+            <X size={18} />
+          </button>
+
           {sidebarOpen ? (
             <button
               onClick={() => setSidebarOpen(false)}
               title="Collapse sidebar"
               data-testid="sidebar-retract-toggle"
-              className="p-1.5 text-[#9AA0AB] hover:text-white hover:bg-white/[0.08] rounded-lg transition-colors"
+              className="hidden lg:block p-1.5 text-[#9AA0AB] hover:text-white hover:bg-white/[0.08] rounded-lg transition-colors"
             >
               <PanelLeftClose size={18} />
             </button>
@@ -339,7 +395,7 @@ const DashboardLayoutInner = ({ children, user }) => {
               onClick={() => setSidebarOpen(true)}
               title="Expand sidebar"
               data-testid="sidebar-retract-toggle"
-              className="p-1.5 text-white/[0.85] hover:text-white hover:bg-white/[0.08] rounded-lg transition-colors"
+              className="hidden lg:block p-1.5 text-white/[0.85] hover:text-white hover:bg-white/[0.08] rounded-lg transition-colors"
             >
               <PanelLeftOpen size={18} />
             </button>
@@ -348,29 +404,29 @@ const DashboardLayoutInner = ({ children, user }) => {
 
         {/* Navigation */}
         <nav className="relative z-10 flex-1 py-5 px-3 overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#2a2f38_transparent]">
-          <NavItem to="/dashboard" icon={LayoutDashboard} label="Dashboard" active={isActive("/dashboard")} collapsed={!sidebarOpen} testId="nav-dashboard" />
+          <NavItem to="/dashboard" icon={LayoutDashboard} label="Dashboard" active={isActive("/dashboard")} collapsed={collapsed} testId="nav-dashboard" />
           {/* Proposals carry commercial terms and client pricing, so they are
               administrative. The API enforces this too -- hiding a menu is not
               access control. */}
           {showAdminSection && (
             <div className="mt-1">
-              <NavItem to="/proposals" icon={FileText} label="Proposals" active={isActive("/proposals")} collapsed={!sidebarOpen} testId="nav-proposals" />
+              <NavItem to="/proposals" icon={FileText} label="Proposals" active={isActive("/proposals")} collapsed={collapsed} testId="nav-proposals" />
             </div>
           )}
           {/* Everyone keeps this: it is where staff raise an IT problem, not
               the console that handles them. That console lives under
               Administration as "IT Console" and stays restricted. */}
           <div className="mt-1">
-            <NavItem to="/feedback" icon={MessageSquare} label="Feedback & IT Support" active={isActive("/feedback")} collapsed={!sidebarOpen} testId="nav-feedback" />
+            <NavItem to="/feedback" icon={MessageSquare} label="Feedback & IT Support" active={isActive("/feedback")} collapsed={collapsed} testId="nav-feedback" />
           </div>
           <div className="mt-1">
-            <NavItem to="/tasks" icon={KanbanSquare} label="Tasks" active={isActive("/tasks")} collapsed={!sidebarOpen} testId="nav-tasks" />
+            <NavItem to="/tasks" icon={KanbanSquare} label="Tasks" active={isActive("/tasks")} collapsed={collapsed} testId="nav-tasks" />
           </div>
 
           {/* Hidden entirely for staff with no project: an empty heading is
               just a reminder of rooms they cannot enter. */}
           {visibleUnits.length > 0 && (
-            <SectionLabel collapsed={!sidebarOpen}>Business Units</SectionLabel>
+            <SectionLabel collapsed={collapsed}>Business Units</SectionLabel>
           )}
           <div className="space-y-0.5">
             {visibleUnits.map((unit) => (
@@ -380,7 +436,7 @@ const DashboardLayoutInner = ({ children, user }) => {
                 icon={unit.icon}
                 label={unit.name}
                 active={isActive(unit.path)}
-                collapsed={!sidebarOpen}
+                collapsed={collapsed}
                 testId={`nav-unit-${unit.slug}`}
               />
             ))}
@@ -388,7 +444,7 @@ const DashboardLayoutInner = ({ children, user }) => {
 
           {showAdminSection && (
             <>
-              <SectionLabel collapsed={!sidebarOpen}>Administration</SectionLabel>
+              <SectionLabel collapsed={collapsed}>Administration</SectionLabel>
               <div className="space-y-0.5">
                 {user?.role === "super_admin" && (
                   <NavItem
@@ -396,7 +452,7 @@ const DashboardLayoutInner = ({ children, user }) => {
                     icon={ClipboardCheck}
                     label="Approval Queue"
                     active={isActive("/admin/approvals")}
-                    collapsed={!sidebarOpen}
+                    collapsed={collapsed}
                     badge={pendingApprovals}
                     testId="nav-approval-queue"
                   />
@@ -407,7 +463,7 @@ const DashboardLayoutInner = ({ children, user }) => {
                     icon={ShieldCheck}
                     label="Staff Management"
                     active={isActive("/admin/users")}
-                    collapsed={!sidebarOpen}
+                    collapsed={collapsed}
                     testId="nav-user-management"
                   />
                 )}
@@ -417,7 +473,7 @@ const DashboardLayoutInner = ({ children, user }) => {
                     icon={Building2}
                     label="Business Units"
                     active={isActive("/admin/business-units")}
-                    collapsed={!sidebarOpen}
+                    collapsed={collapsed}
                     testId="nav-business-units"
                   />
                 )}
@@ -427,7 +483,7 @@ const DashboardLayoutInner = ({ children, user }) => {
                     icon={ClipboardList}
                     label="Assessments"
                     active={isActive("/admin/assessments")}
-                    collapsed={!sidebarOpen}
+                    collapsed={collapsed}
                     testId="nav-assessments"
                   />
                 )}
@@ -437,7 +493,7 @@ const DashboardLayoutInner = ({ children, user }) => {
                     icon={Headphones}
                     label="IT Console"
                     active={isActive("/it-feedback")}
-                    collapsed={!sidebarOpen}
+                    collapsed={collapsed}
                     testId="nav-it-console"
                   />
                 )}
@@ -450,14 +506,14 @@ const DashboardLayoutInner = ({ children, user }) => {
         <div className="relative z-10 p-3 border-t border-white/[0.06]">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className={`w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-white/[0.06] transition-colors ${sidebarOpen ? "" : "justify-center"}`}>
+              <button className={`w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-white/[0.06] transition-colors ${collapsed ? "justify-center" : ""}`}>
                 <Avatar className="w-8 h-8 border border-white/10">
                   <AvatarImage src={user?.picture} />
                   <AvatarFallback className="bg-[#C6A15B]/20 text-[#D6BC8A] text-xs font-semibold">
                     {user?.name?.charAt(0)?.toUpperCase() || "U"}
                   </AvatarFallback>
                 </Avatar>
-                {sidebarOpen && (
+                {!collapsed && (
                   <div className="flex-1 min-w-0 text-left">
                     <p className="text-[13px] font-medium text-white truncate">{user?.name}</p>
                     <p className="text-[11px] text-[#6B7280] truncate">
@@ -517,9 +573,20 @@ const DashboardLayoutInner = ({ children, user }) => {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top Bar */}
         <header className="h-[68px] bg-[#F7F6F3]/85 backdrop-blur-md border-b border-[#EAE7E0] flex items-center justify-between px-4 lg:px-8 sticky top-0 z-30">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 lg:gap-4 min-w-0">
+            {/* The only way to reach the menu on a phone. Sized to the 44px
+                minimum a thumb can reliably hit. */}
+            <button
+              onClick={() => setMobileNavOpen(true)}
+              aria-label="Open menu"
+              data-testid="sidebar-open-mobile"
+              className="lg:hidden -ml-1 p-3 text-gray-700 hover:text-gray-900 hover:bg-black/[0.04] rounded-lg transition-colors"
+            >
+              <Menu size={20} />
+            </button>
+
             {/* Page Title */}
-            <div>
+            <div className="min-w-0">
               <p className="text-[9px] font-semibold uppercase tracking-[0.3em] text-[#A9834E] leading-none mb-1">THCO</p>
               <h1 className="font-display text-[17px] text-gray-900 leading-none">{getPageTitle()}</h1>
             </div>

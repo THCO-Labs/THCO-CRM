@@ -174,7 +174,11 @@ async def finish(db, connector: str, ref: str, outcome: Dict[str, Any]) -> None:
             "lease_until": None,
             "worker": None,
             "outcome": outcome,
-        }},
+        },
+         # An error from an earlier attempt is history once the message goes
+         # through. Left in place it reads as a current fault, and a row that
+         # says both "done" and "BadZipFile" invites the wrong conclusion.
+         "$unset": {"last_error": "", "failed_at": ""}},
     )
 
 

@@ -44,7 +44,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
-import { authAPI, flowforgeAPI, unitsAPI } from "../lib/api";
+import { authAPI, flowforgeAPI, unitsAPI, notificationsAPI } from "../lib/api";
 import { toast } from "sonner";
 import { AnalyticsProvider, useAnalytics } from "../context/AnalyticsContext";
 import { useTheme } from "../context/ThemeContext";
@@ -111,6 +111,19 @@ const SectionLabel = ({ children, collapsed }) =>
     </div>
   );
 
+const timeAgo = (iso) => {
+  if (!iso) return "";
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
+};
+
 const DashboardLayoutInner = ({ children, user }) => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   // On a phone the sidebar is a drawer that starts shut. It used to be
@@ -125,6 +138,8 @@ const DashboardLayoutInner = ({ children, user }) => {
   const [dynamicUnits, setDynamicUnits] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
   const { trackAction } = useAnalytics();
@@ -170,6 +185,54 @@ const DashboardLayoutInner = ({ children, user }) => {
     const interval = setInterval(fetchPendingApprovals, 30000);
     return () => clearInterval(interval);
   }, [user?.role]);
+
+  // Notification bell: poll the cheap unread count, and pull the full list only
+  // when the dropdown is opened.
+  const loadNotifications = async () => {
+    try {
+      const data = await notificationsAPI.list({ limit: 30 });
+      setNotifications(data.notifications || []);
+      setUnreadCount(data.unread || 0);
+    } catch (error) {
+      console.error("Failed to load notifications:", error);
+    }
+  };
+
+  useEffect(() => {
+    const refreshUnread = () => {
+      notificationsAPI.unreadCount()
+        .then((d) => setUnreadCount(d.unread || 0))
+        .catch(() => {});
+    };
+    refreshUnread();
+    const interval = setInterval(refreshUnread, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const openNotification = async (n) => {
+    if (!n.read) {
+      try {
+        await notificationsAPI.markRead(n.notification_id);
+      } catch (error) {
+        console.error("Failed to mark notification read:", error);
+      }
+      setUnreadCount((c) => Math.max(0, c - 1));
+      setNotifications((list) =>
+        list.map((x) => (x.notification_id === n.notification_id ? { ...x, read: true } : x))
+      );
+    }
+    if (n.link) navigate(n.link);
+  };
+
+  const markAllNotificationsRead = async () => {
+    try {
+      await notificationsAPI.markRead();
+      setUnreadCount(0);
+      setNotifications((list) => list.map((x) => ({ ...x, read: true })));
+    } catch (error) {
+      console.error("Failed to mark all notifications read:", error);
+    }
+  };
 
   const handleLogout = async () => {
     try {
@@ -646,15 +709,63 @@ const DashboardLayoutInner = ({ children, user }) => {
             </Button>
 
             {/* Notifications */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="relative text-gray-500 hover:text-gray-800 hover:bg-[#EFEDE8] rounded-full"
-              data-testid="notifications-btn"
-            >
-              <Bell size={18} />
-              <span className="absolute top-2 right-2.5 w-1.5 h-1.5 bg-[#C6A15B] rounded-full"></span>
-            </Button>
+            <DropdownMenu onOpenChange={(open) => { if (open) loadNotifications(); }}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="relative text-gray-500 hover:text-gray-800 hover:bg-[#EFEDE8] rounded-full"
+                  data-testid="notifications-btn"
+                  aria-label="Notifications"
+                >
+                  <Bell size={18} />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 bg-[#C6A15B] text-[#0C0F13] text-[9px] font-bold rounded-full flex items-center justify-center">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-80 p-0 bg-white border-[#EAE7E0] shadow-xl rounded-xl">
+                <div className="flex items-center justify-between px-3 py-2.5 border-b border-[#F0EEE9]">
+                  <p className="text-[13px] font-semibold text-gray-900">Notifications</p>
+                  {unreadCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={markAllNotificationsRead}
+                      className="text-[11px] font-medium text-[#A9834E] hover:text-[#8a6a3e]"
+                    >
+                      Mark all read
+                    </button>
+                  )}
+                </div>
+                <div className="max-h-[360px] overflow-y-auto py-1">
+                  {notifications.length === 0 ? (
+                    <div className="px-4 py-10 text-center">
+                      <Bell className="w-6 h-6 mx-auto text-gray-300" />
+                      <p className="mt-2 text-[13px] text-gray-400">You're all caught up.</p>
+                    </div>
+                  ) : (
+                    notifications.map((n) => (
+                      <button
+                        key={n.notification_id}
+                        type="button"
+                        onClick={() => openNotification(n)}
+                        className={`w-full text-left px-3 py-2.5 flex items-start gap-2.5 hover:bg-[#F7F6F3] transition-colors ${n.read ? "" : "bg-[#C6A15B]/[0.06]"}`}
+                        data-testid={`notification-item-${n.notification_id}`}
+                      >
+                        <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${n.read ? "bg-transparent" : "bg-[#C6A15B]"}`} />
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-[13px] font-medium text-gray-900 truncate">{n.title}</span>
+                          {n.body && <span className="block text-[12px] text-gray-500 truncate">{n.body}</span>}
+                          <span className="block text-[11px] text-gray-400 mt-0.5">{timeAgo(n.created_at)}</span>
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             {/* User Dropdown */}
             <DropdownMenu>

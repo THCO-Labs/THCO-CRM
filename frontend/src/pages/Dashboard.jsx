@@ -48,17 +48,6 @@ const UNITS = [
     lead: "Victoria",
   },
   {
-    name: "THCO Flow",
-    slug: "flow",
-    icon: FolderKanban,
-    path: "/flow",
-    active: true,
-    description: "The 12-stage client pipeline — from first contact to completed build",
-    toolCount: 2,
-    accent: "#1B4332",
-    lead: "Victoria",
-  },
-  {
     name: "IT & THCO Tools",
     slug: "it-tools",
     icon: Wrench,

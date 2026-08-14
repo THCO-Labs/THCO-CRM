@@ -48,6 +48,20 @@ html {
     color-scheme: light;
 }
 
+/* react-day-picker visually-hidden helper (its stylesheet is not imported,
+   so the screen-reader-only "August 2026" caption must be hidden here). */
+.rdp-vhidden {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+}
+
 body {
     margin: 0;
     font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;

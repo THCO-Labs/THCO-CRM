@@ -4,7 +4,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
-import { feedbackAPI } from "../lib/api";
+import { feedbackAPI, unitsAPI } from "../lib/api";
 import { toast } from "sonner";
 
 const STATUS_META = {
@@ -26,6 +26,7 @@ const Feedback = () => {
   const [message, setMessage] = useState("");
   const [category, setCategory] = useState("bug");
   const [unit, setUnit] = useState("");
+  const [units, setUnits] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [mine, setMine] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -42,6 +43,12 @@ const Feedback = () => {
   };
 
   useEffect(() => { loadMine(); }, []);
+
+  useEffect(() => {
+    unitsAPI.list()
+      .then((data) => setUnits(data || []))
+      .catch(() => toast.error("Failed to load business units"));
+  }, []);
 
   const submit = async () => {
     console.log("SUBMIT_CLICKED subject=", subject, "msg=", message);
@@ -104,12 +111,16 @@ const Feedback = () => {
           </div>
           <div className="space-y-2">
             <Label className="text-[11px] font-semibold uppercase tracking-[0.15em] text-gray-500">Related Unit (optional)</Label>
-            <Input
+            <select
               value={unit}
               onChange={(e) => setUnit(e.target.value)}
-              placeholder="e.g. talent, sales, it-tools"
-              className="h-11 bg-white border-[#EAE7E0] text-gray-900 rounded-lg text-[14px]"
-            />
+              className="h-11 w-full bg-white border border-[#EAE7E0] text-gray-900 rounded-lg px-3 text-[14px] focus:border-[#C6A15B] outline-none"
+            >
+              <option value="">No related unit</option>
+              {units.map((u) => (
+                <option key={u.slug} value={u.slug}>{u.name}</option>
+              ))}
+            </select>
           </div>
         </div>
 

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import FlowShell from "./FlowShell";
 import { flowAPI } from "../../lib/api";
-import { Briefcase, ClipboardCheck, FileText, Hammer, Calendar, AlertCircle, Target, Ticket, Loader2, Mail } from "lucide-react";
+import { Briefcase, ClipboardCheck, FileText, Hammer, Calendar, AlertCircle, Target, Ticket, Loader2, Mail, X } from "lucide-react";
 import { STAGES, BUILD_STATUS_LABELS } from "./stages";
 
 const StatCard = ({ icon: Icon, label, value, color, link, testId }) => {
@@ -25,6 +25,13 @@ const StatCard = ({ icon: Icon, label, value, color, link, testId }) => {
 export default function FlowDashboard() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  // The orientation banner is a one-time nudge; once dismissed it stays gone
+  // for this browser until we deliberately reintroduce it.
+  const [showGuide, setShowGuide] = useState(() => localStorage.getItem("flow-dashboard-guide-dismissed") !== "1");
+  const dismissGuide = () => {
+    localStorage.setItem("flow-dashboard-guide-dismissed", "1");
+    setShowGuide(false);
+  };
 
   useEffect(() => {
     flowAPI.getDashboard().then(setData).finally(() => setLoading(false));
@@ -44,17 +51,28 @@ export default function FlowDashboard() {
   return (
     <FlowShell title="Dashboard">
       {/* Quick orientation banner */}
-      <div className="bg-gradient-to-r from-[#1B4332]/5 to-amber-50 border border-amber-200 rounded-xl p-4 mb-4 flex items-start gap-3" data-testid="dashboard-guide">
-        <Calendar className="w-5 h-5 text-amber-600 mt-0.5" />
-        <div className="flex-1 text-sm">
-          <p className="font-semibold text-gray-900">Adding contacts + birthdays?</p>
-          <p className="text-gray-600 mt-1">
-            Open any project's <strong>Client profile</strong> section to add the client's people — name, birthday, work anniversary, spouse, etc.
-            Saved birthdays automatically appear on the <Link to="/flow/calendar" className="text-[#1B4332] underline">Calendar</Link>.
-            Or browse the full directory at <Link to="/flow/contacts" className="text-[#1B4332] underline">/flow/contacts</Link>.
-          </p>
+      {showGuide && (
+        <div className="bg-gradient-to-r from-[#1B4332]/5 to-amber-50 border border-amber-200 rounded-xl p-4 mb-4 flex items-start gap-3" data-testid="dashboard-guide">
+          <Calendar className="w-5 h-5 text-amber-600 mt-0.5" />
+          <div className="flex-1 text-sm">
+            <p className="font-semibold text-gray-900">Adding contacts + birthdays?</p>
+            <p className="text-gray-600 mt-1">
+              Open any project's <strong>Client profile</strong> section to add the client's people — name, birthday, work anniversary, spouse, etc.
+              Saved birthdays automatically appear on the <Link to="/flow/calendar" className="text-[#1B4332] underline">Calendar</Link>.
+              Or browse the full directory at <Link to="/flow/contacts" className="text-[#1B4332] underline">/flow/contacts</Link>.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={dismissGuide}
+            aria-label="Dismiss message"
+            data-testid="dashboard-guide-close"
+            className="shrink-0 p-1 -mt-0.5 -mr-1 rounded-md text-amber-600 hover:text-amber-800 hover:bg-amber-100 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
-      </div>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard testId="stat-active" icon={Briefcase} label="My active projects" value={data.my_active_projects} color="bg-[#1B4332]" link="/flow/projects" />

@@ -34,6 +34,7 @@ from services.cv_parser import (
     extract_portfolio,
     extract_skills,
     extract_text,
+    name_from_filename,
 )
 
 logger = logging.getLogger(__name__)
@@ -190,7 +191,7 @@ def parse_bytes(file_bytes: bytes, filename: str) -> Dict[str, Any]:
     email = extract_email(text)
 
     return {
-        "name": extract_name(text, email),
+        "name": extract_name(text, email) or name_from_filename(filename),
         "email": email,
         "phone": extract_phone(text),
         "linkedin": extract_linkedin(text),

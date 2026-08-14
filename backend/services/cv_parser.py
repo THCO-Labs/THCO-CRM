@@ -268,15 +268,60 @@ _NAME_STOPWORDS = {
     "enthusia", "software", "hardware", "network", "security", "support",
     "service", "services", "product", "project", "business", "technology",
     "digital", "content", "strategist", "writer", "editor", "nurse", "doctor",
+    # Section words that follow a "Contact" label in profile exports and must
+    # not be mistaken for a name.
+    "skill", "skills", "highlight", "highlights", "objective", "summary",
+    "about", "me", "details", "information", "user", "device", "devices",
+    "ccpa", "cia", "cisa", "cism", "gphr", "cphr", "shrm-scp", "shrm-cp",
+    # Role/department acronyms that trail a name and are never part of it.
+    "seo", "qa", "hr", "it", "ui", "ux", "dev", "ops", "sre", "dba", "bd",
+    "vp", "cto", "ceo", "cfo", "coo", "cmo", "cio", "pm", "po", "scrum",
+    # Post-nominal credentials that trail a name on the same line ("John Smith
+    # MBA", "Olukayode Aluko B.Tech MPM") and must not become part of it.
+    "mba", "acca", "cpa", "cfa", "aca", "phd", "mpm", "bsc", "msc", "btech",
+    "mtech", "hnd", "ond", "nce", "pgd", "llb", "llm", "pmp", "cpim", "cicm",
+    "csm", "cspo", "sphr", "phr", "shrm",
     # Places and address words that sit where a name is expected.
     "street", "road", "avenue", "lane", "close", "estate", "city", "town",
     "state", "country", "nigeria", "lagos", "abuja", "india", "malaysia",
     "bangladesh", "dhaka", "pakistan", "lahore", "kenya", "ghana", "house",
     "flat", "apartment", "block", "plot",
+    # More places and adjectives that trail a name on the header line ("John
+    # Smith New Cairo Egypt") but are not themselves names.
+    "new", "cairo", "egypt", "united", "arab", "emirates", "kingdom", "saudi",
+    "dubai", "doha", "qatar", "oman", "kuwait", "brazil", "china", "singapore",
+    "delhi", "mumbai", "chennai", "bangalore", "bengaluru", "hyderabad", "pune",
+    "kolkata", "jakarta", "kuala", "lumpur",
 }
 
 # Common titles to strip from the front of a detected name.
 _NAME_TITLES = {"mr", "mrs", "miss", "ms", "dr", "prof", "engr", "arc", "barr"}
+
+# Dashes that Word/PDF export substitutes for an ordinary hyphen. They show up
+# in names like "Abdel-Salam", and the old ASCII-only name check rejected the
+# whole line over that one character.
+_DASH_TRANS = str.maketrans({
+    "\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2013": "-", "\u2014": "-",
+    "\u2212": "-",
+})
+
+
+def _normalise_dashes(text: str) -> str:
+    return text.translate(_DASH_TRANS) if text else text
+
+
+def _split_camel(token: str) -> List[str]:
+    """Split a run-together token on TitleCase boundaries.
+
+    "MohammedEnamul" -> ["Mohammed", "Enamul"]; "MDFarhan" -> ["MD", "Farhan"];
+    "johnsmith" stays whole. Surnames with a Mc/Mac prefix are left intact.
+    """
+    if token.startswith(("Mc", "Mac")):
+        return [token]
+    token = re.sub(r"([a-z])([A-Z])", r"\1 \2", token)          # lower -> Upper
+    token = re.sub(r"([A-Z]{2,})([A-Z][a-z])", r"\1 \2", token)  # ACRONYM -> Title
+    parts = token.split()
+    return parts if len(parts) >= 2 else [token]
 
 
 def _unspace_letters(line: str) -> str:
@@ -333,9 +378,14 @@ def _looks_like_name(line: str) -> bool:
     # Any section-heading word disqualifies the whole line.
     if any(w in _NAME_STOPWORDS for w in lowered if w):
         return False
-    # Names are letters, hyphens and apostrophes only.
-    if not all(re.fullmatch(r"[A-Za-z][A-Za-z'\-\.]*", w) for w in words):
-        return False
+    # Names are letters, hyphens and apostrophes only. Letters are judged with
+    # Unicode so accented names ("Gonçalves", "Oluwáségun") are not rejected.
+    for w in words:
+        core = w.strip(".")
+        if not core:
+            continue
+        if not (core[0].isalpha() and all(c.isalpha() or c in "'-" for c in core)):
+            return False
     # Reject single-letter fragments beyond an initial.
     if sum(1 for w in words if len(w.strip(".")) == 1) > 2:
         return False
@@ -352,10 +402,223 @@ def _name_from_email(email: Optional[str]) -> Optional[str]:
         return None
     local = email.split("@", 1)[0]
     local = re.sub(r"\d+", "", local)
-    parts = [p for p in re.split(r"[._\-]+", local) if len(p) > 1]
+    parts = [p for p in re.split(r"[._\-+]+", local) if len(p) > 1]
 
-    if len(parts) >= 2:
-        return " ".join(p.capitalize() for p in parts[:3])
+    # Run-together local parts ("JohnSmith@") split on the case boundary.
+    expanded: List[str] = []
+    for p in parts:
+        expanded.extend(_split_camel(p))
+
+    if len(expanded) >= 2:
+        return " ".join(w.capitalize() for w in expanded[:3])
+    return None
+
+
+# Extensions stripped from a filename before the name is read off it.
+_FILENAME_EXTENSIONS = {".pdf", ".doc", ".docx", ".rtf", ".odt", ".txt", ".ppt", ".pptx"}
+
+# Words that pad a CV filename but are never part of the person's name. The
+# values are the ASCII-stripped form, because the filter compares against
+# `re.sub(r"[^a-z]", "", word.lower())`.
+_FILENAME_NOISE = {
+    "curriculum", "vitae", "cv", "resume", "resum", "rsum", "bio", "profile",
+    "updated", "original", "new", "final", "latest", "copy", "scan", "converted",
+    "version", "biodata", "summary", "biodata",
+    # A doubled extension ("..._Resume__pdf.pdf") leaves the inner suffix as a
+    # word in the stem; it is never a name.
+    "pdf", "doc", "docx", "rtf", "odt", "txt", "ppt", "pptx",
+    # Function words that only ever appear as filename padding ("Resume of ...").
+    "of", "the", "a", "an", "and", "with", "for", "to", "at", "on", "in",
+    # Title / status / currency words and unambiguous month names seen trailing
+    # a name in the corpus.
+    "monthly", "million", "phoenix", "dev", "ops", "eng", "graphic", "designer",
+    "desingner", "developer", "engineer", "manager", "consulting", "consultant",
+    "rv", "upd", "casa", "january", "february", "july", "september", "october",
+    "november", "december", "jan", "feb", "jul", "sept", "nov", "dec",
+}
+
+# Credentials and titles that trail a name in a filename and must be dropped.
+_CREDENTIAL_TOKENS = {
+    "mba", "acca", "cpa", "cfa", "aca", "phd", "md", "mcp", "cpc", "cp",
+    "shrm-cp", "shrm", "phr", "sphr", "pmp", "bsc", "msc", "ba", "ma", "be",
+    "beng", "meng", "btech", "mtech", "hnd", "ond", "nce", "pgd", "llb", "llm",
+    "candidate", "talent", "shortlist", "bl",
+    # Trailing suffixes observed in the corpus: month/language/status markers,
+    # title words, and glued credential acronyms.
+    "pro", "en", "oct", "scp", "fm", "se", "ii", "in", "view", "consulting",
+    "oracle", "last", "acipm", "acabsc", "mbashrm", "hrcca", "financials",
+    "hrm", "ca", "csm", "cspo",
+}
+
+
+def _collapse_repeats(word: str) -> str:
+    """'resumeeee' -> 'resume', so a stretched noise word is still recognised.
+
+    Only runs of three or more are collapsed, so a legitimate double letter in
+    a real word ("curriculum", "Anne") is left alone. Used only to compare
+    against noise/credential words; the original token is what is kept.
+    """
+    return re.sub(r"(.)\1{2,}", r"\1", word)
+
+
+def name_from_filename(filename: str) -> Optional[str]:
+    """Derive a person's name from a CV filename.
+
+    The corpus names files "First_Last_<id>.pdf", "First Last CV (1).pdf" and
+    similar. Used only as a fallback when the document itself yields no name,
+    and only the leading words are kept, so a trailing "CV" or "Updated" cannot
+    become part of the name.
+    """
+    if not filename:
+        return None
+
+    stem = filename
+    # Strip a (possibly doubled) extension: "AZUKA OBIM CV.docx.pdf".
+    while True:
+        root, ext = os.path.splitext(stem)
+        if ext.lower() in _FILENAME_EXTENSIONS:
+            stem = root
+        else:
+            break
+
+    stem = _normalise_dashes(stem)
+    stem = re.sub(r"\([^)]*\)", " ", stem)                    # "(1)", "( )"
+    stem = stem.replace("'s", " ").replace("\u2019s", " ").replace("'", " ")
+    stem = re.sub(r"[_+\-]+", " ", stem)                      # separators
+    stem = re.sub(r"\d{4,}", " ", stem)                       # drive/mailbox id suffix
+    if not stem.strip():
+        return None
+
+    words: List[str] = []
+    for token in stem.split():
+        for piece in _split_camel(token):
+            piece = piece.strip(" ,.-|")
+            if piece:
+                words.append(piece)
+
+    kept: List[str] = []
+    for w in words:
+        lw = _collapse_repeats(re.sub(r"[^a-z]", "", w.lower()))
+        if not lw:
+            continue
+        if lw in _FILENAME_NOISE or lw in _CREDENTIAL_TOKENS:
+            continue
+        kept.append(w)
+
+    if kept and kept[0].lower().strip(".") in _NAME_TITLES:
+        kept = kept[1:]
+
+    # A short all-caps suffix ("SE", "II", "PRO", "SCP") trails a name but is a
+    # credential or status marker, not part of it. Trim it from the end; a
+    # single-letter initial is left alone.
+    while len(kept) >= 2 and len(kept[-1]) in (2, 3) and kept[-1].isupper():
+        kept = kept[:-1]
+
+    if not kept:
+        return None
+
+    candidate = " ".join(kept[:4])
+    return candidate if _looks_like_name(candidate) else None
+
+
+_REVERSED_NAME = re.compile(
+    r"^\s*([A-ZÀ-Ž][A-Za-zÀ-ž'\-]{1,19}),\s*"
+    r"([A-ZÀ-Ž][A-Za-zÀ-ž'\-.]*(?:\s+[A-ZÀ-Ž][A-Za-zÀ-ž'\-.]*){0,3})"
+)
+
+
+def _normalise_reversed_name(line: str) -> Optional[str]:
+    """Reorder a "Surname, Given Name(s)" header into "Given Name(s) Surname".
+
+    A large share of the corpus lists the name surname-first with a comma
+    ("ANABA, SYLVESTER ANANI", "OGO, OKWUCHUKWU .O"). The leading part before
+    the comma is the surname; the trailing part is the given name. Reordering
+    is safe to do here because the result is only kept when it still reads as a
+    two-to-four word name.
+    """
+    m = _REVERSED_NAME.match(line)
+    if not m:
+        return None
+    surname = m.group(1)
+    given = m.group(2).strip(" ,.-|")
+    if not given:
+        return None
+    candidate = f"{given} {surname}"
+    return candidate if _looks_like_name(candidate) else None
+
+
+# Profile exports (LinkedIn, Google Contacts) begin the identity block with
+# "Contact <Name>" or "Contact name: <Name>". The word "Contact" labels what
+# follows as the person, so it is a far stronger signal than a bare line.
+_CONTACT_NAME = re.compile(
+    r"^\s*contact(?:\s+(?:name|person|details))?\s*[:\-]?\s+(.{2,80})$",
+    re.IGNORECASE,
+)
+
+
+def _contact_name(line: str) -> Optional[str]:
+    """Read a name off a "Contact <Name>" header, if the line carries one."""
+    m = _CONTACT_NAME.match(line)
+    if not m:
+        return None
+    value = _unspace_letters(m.group(1)).strip(" ,.-|")
+    value = re.sub(r"\s*[|,;].*$", "", value)     # drop trailing title/credentials
+    value = re.sub(r"\s{2,}.*$", "", value)        # drop a trailing column
+    words = value.split()
+    if words and words[0].lower().strip(".") in _NAME_TITLES:
+        words = words[1:]
+        value = " ".join(words)
+    # A trailing all-caps credential ("Joy Felix CCPA") trails a title-cased
+    # name; trim it. All-caps names ("DUR E KAINAT ALVI") are left intact.
+    words = value.split()
+    while (len(words) >= 3
+           and words[-1].isupper()
+           and 2 <= len(words[-1].strip(".")) <= 5
+           and not all(w.isupper() for w in words)):
+        words = words[:-1]
+        value = " ".join(words)
+    return value if _looks_like_name(value) else None
+
+
+def _is_boundary_token(token: str) -> bool:
+    """Whether a token clearly ends a name: contact info, a URL, or a heading word."""
+    t = token.strip(" ,.-|")
+    if not t:
+        return True
+    if any(ch.isdigit() for ch in t):
+        return True
+    if "@" in t or "http" in t.lower() or "/" in t:
+        return True
+    return re.sub(r"[^a-z]", "", t.lower()) in _NAME_STOPWORDS
+
+
+def _name_from_line(line: str) -> Optional[str]:
+    """Read a name off one header line, tolerating trailing contact/address.
+
+    A name is frequently glued to a job title, address or email ("John Smith,
+    Lagos, Nigeria", "Adedoyin Oluwabusola email@x.com"). The whole line fails
+    the name check, so take the leading words up to the first token that is
+    unambiguously not a name (contact info, a URL, or a heading word). Only a
+    prefix whose following token is such a boundary is accepted, so an
+    ambiguous trailing word like a bare place name is not silently absorbed.
+    """
+    line = re.sub(r"\s+", " ", line).strip(" ,.-|")
+    if not line:
+        return None
+    tokens = line.split()
+    for n in range(min(5, len(tokens)), 1, -1):
+        prefix = " ".join(tokens[:n]).strip(" ,.-|")
+        if not _looks_like_name(prefix):
+            continue
+        # A name is "a word or two followed by one contact/address field", not
+        # the start of a long comma-separated list ("Entertainment, Telecoms,
+        # Health, Education, ..."). More than two trailing tokens means list,
+        # not name-plus-field, so decline rather than swallow a heading.
+        if len(tokens) - n > 2:
+            continue
+        nxt = tokens[n] if n < len(tokens) else None
+        if nxt is None or _is_boundary_token(nxt):
+            return prefix
     return None
 
 
@@ -366,9 +629,25 @@ def extract_name(text: str, email: Optional[str] = None) -> Optional[str]:
     corroborated by the email address, and falls back to deriving one from the
     email when the layout defeats parsing.
     """
+    text = _normalise_dashes(text or "")
     raw_lines = [l.strip() for l in text.split("\n") if l.strip()]
     if not raw_lines:
         return _name_from_email(email)
+
+    # A "Surname, Given Name(s)" header is an explicit structural pattern; it
+    # is checked first, ahead of the positional heuristics that would otherwise
+    # reject the line for its comma and trailing initials.
+    for line in raw_lines[:12]:
+        reversed_name = _normalise_reversed_name(line)
+        if reversed_name:
+            return reversed_name
+
+    # A "Contact <Name>" header is the signature of a profile export, and the
+    # word "Contact" labels what follows as the person's name.
+    for line in raw_lines[:30]:
+        contact_name = _contact_name(line)
+        if contact_name:
+            return contact_name
 
     # An explicit label is the most reliable signal a CV can give, and it is
     # common in the corpus. Checked before the positional heuristics below,
@@ -394,8 +673,8 @@ def extract_name(text: str, email: Optional[str] = None) -> Optional[str]:
 
     best, best_score = None, 0
     for index, line in enumerate(lines):
-        candidate = re.sub(r"\s+", " ", line).strip(" ,.-|")
-        if not _looks_like_name(candidate):
+        candidate = _name_from_line(line)
+        if not candidate:
             continue
 
         words = candidate.split()
@@ -813,7 +1092,7 @@ def parse_cv(file_bytes: bytes, filename: str) -> Dict[str, Any]:
         return {
             "raw_text": "",
             "skills": [],
-            "name": None,
+            "name": name_from_filename(filename),
             "email": None,
             "phone": None,
             "linkedin": None,
@@ -821,11 +1100,12 @@ def parse_cv(file_bytes: bytes, filename: str) -> Dict[str, Any]:
             "filename": filename,
         }
 
+    email = extract_email(text)
     return {
         "raw_text": text[:50000],
         "skills": extract_skills(text),
-        "name": extract_name(text),
-        "email": extract_email(text),
+        "name": extract_name(text, email) or name_from_filename(filename),
+        "email": email,
         "phone": extract_phone(text),
         "linkedin": extract_linkedin(text),
         "experience_years": extract_experience_years(text),

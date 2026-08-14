@@ -145,6 +145,24 @@ def sync_resume_versions(ldb, pdb, gmail_ids, prod_ver_ids, batch_size,
     return counted, inserted
 
 
+def prod_file_ids_for(pdb, gmail_ids, chunk_size=RF_CANDIDATE_CHUNK):
+    """prod resume_files version_ids for the gmail candidates, index-backed.
+
+    ``resume_files`` holds the binary CV content (~288 KB/doc). A full-collection
+    scan (even projected to one field) reads ~1.8 GB and exceeds Cosmos free
+    tier's per-command time limit (code 50). The collection is indexed on
+    ``(candidate_id, version)``, so querying it in bounded candidate_id chunks
+    touches only the documents for those candidates.
+    """
+    ids = sorted(gmail_ids)
+    out = set()
+    for i in range(0, len(ids), chunk_size):
+        cids = ids[i:i + chunk_size]
+        out.update(d.get("version_id") for d in pdb.resume_files.find(
+            {"candidate_id": {"$in": cids}}, {"_id": 0, "version_id": 1}))
+    return out
+
+
 def sync_resume_files(ldb, pdb, gmail_ids, prod_file_ids, batch_size, throttle):
     """Insert gmail resume_files missing from prod, via the candidate_id index.
 
@@ -212,7 +230,7 @@ def main(apply, verify):
         print("\nDry run -- nothing written. Re-run with --apply to append.")
         return 0
 
-    prod_file_ids = id_set(pdb.resume_files, "version_id")
+    prod_file_ids = prod_file_ids_for(pdb, gmail_ids)
 
     before = {c: pdb[c].count_documents({}) for c in
               ("candidates", "resume_files", "resume_versions")}

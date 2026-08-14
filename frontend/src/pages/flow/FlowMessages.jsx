@@ -2,7 +2,13 @@ import { useEffect, useState } from "react";
 import FlowShell from "./FlowShell";
 import { flowAPI } from "../../lib/api";
 import { Button } from "../../components/ui/button";
-import { Loader2, Plus, X, MessageSquare, Mail, Send } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../../components/ui/dropdown-menu";
+import { Loader2, Plus, X, MessageSquare, Mail, Send, Trash2, MoreVertical } from "lucide-react";
 import { toast } from "sonner";
 
 const STATUS_COLORS = {
@@ -11,6 +17,7 @@ const STATUS_COLORS = {
   approved: "bg-blue-100 text-blue-700",
   rejected: "bg-red-100 text-red-700",
   sent: "bg-green-100 text-green-700",
+  failed: "bg-red-100 text-red-700",
 };
 const CHANNEL_ICON = { whatsapp: MessageSquare, email: Mail, sms: MessageSquare };
 
@@ -31,10 +38,28 @@ export default function FlowMessages() {
 
   const act = async (id, action) => {
     try {
-      await flowAPI.messageAction(id, action);
-      toast.success(`Message ${action}`);
+      const res = await flowAPI.messageAction(id, action);
+      if (action === "send" && res.status === "failed") {
+        toast.error(res.send_error || "Message failed to send");
+      } else {
+        const label = action === "approve" ? "approved" : action === "reject" ? "rejected" : "sent";
+        toast.success(`Message ${label}`);
+      }
       load();
-    } catch { toast.error("Failed"); }
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed");
+    }
+  };
+
+  const del = async (m) => {
+    if (!window.confirm("Delete this message? This cannot be undone.")) return;
+    try {
+      await flowAPI.deleteMessage(m.message_id);
+      toast.success("Message deleted");
+      load();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Could not delete the message");
+    }
   };
 
   return (
@@ -47,7 +72,7 @@ export default function FlowMessages() {
       }
     >
       <div className="mb-4 flex gap-2 flex-wrap">
-        {["", "drafted", "pending_approval", "approved", "sent", "rejected"].map(s => (
+        {["", "drafted", "pending_approval", "approved", "sent", "rejected", "failed"].map(s => (
           <button key={s || "all"} onClick={() => setFilter(s)}
             className={`text-xs px-3 py-1 rounded-full ${filter === s ? "bg-[#1B4332] text-white" : "bg-gray-100 text-gray-600"}`}
             data-testid={`msg-filter-${s || "all"}`}>
@@ -60,7 +85,6 @@ export default function FlowMessages() {
         messages.length === 0 ? (
           <div className="text-center py-16 bg-white rounded-xl border border-gray-100 text-gray-500">
             No messages yet. Drafts go through approval before sending.
-            <p className="text-xs mt-2 text-amber-600 font-semibold">⚠ Actual WhatsApp/Email send is deferred (Phase B integration)</p>
           </div>
         ) : (
           <div className="space-y-3" data-testid="messages-list">
@@ -76,7 +100,23 @@ export default function FlowMessages() {
                       <span className="text-[10px] font-mono px-2 py-0.5 bg-gray-100 rounded">Tier {m.tier}</span>
                       <span className="text-[10px] font-mono px-2 py-0.5 bg-gray-100 rounded capitalize">{m.message_type}</span>
                     </div>
-                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${STATUS_COLORS[m.status]}`}>{m.status.toUpperCase()}</span>
+                    <div className="flex items-center gap-1">
+                      <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${STATUS_COLORS[m.status]}`}>{m.status.toUpperCase()}</span>
+                      {m._can_manage && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-gray-400 hover:text-gray-700" aria-label="Message actions" data-testid={`msg-menu-${m.message_id}`}>
+                              <MoreVertical className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem className="text-red-600" onClick={() => del(m)} data-testid={`msg-delete-${m.message_id}`}>
+                              <Trash2 className="w-4 h-4 mr-2" /> Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                    </div>
                   </div>
                   <p className="text-sm text-gray-700 mb-3 whitespace-pre-wrap">{m.final_content || m.draft_content}</p>
                   <div className="flex items-center gap-2 text-xs text-gray-400">
@@ -93,7 +133,7 @@ export default function FlowMessages() {
                     )}
                     {m.status === "approved" && (
                       <Button size="sm" onClick={() => act(m.message_id, "send")} className="bg-green-600 hover:bg-green-700 text-white" data-testid={`send-${m.message_id}`}>
-                        <Send className="w-3 h-3 mr-1" />Send (Phase B stubbed)
+                        <Send className="w-3 h-3 mr-1" />Send
                       </Button>
                     )}
                   </div>
@@ -109,13 +149,13 @@ export default function FlowMessages() {
 }
 
 const DraftForm = ({ contacts, onClose, onSaved }) => {
-  const [f, setF] = useState({ contact_id: "", message_type: "checkin", draft_content: "", tier: 2, channel: "whatsapp" });
+  const [f, setF] = useState({ contact_id: "", message_type: "checkin", draft_content: "", tier: 2, channel: "whatsapp", content_sid: "" });
   const [saving, setSaving] = useState(false);
   const save = async (e) => {
     e.preventDefault();
     if (!f.contact_id || !f.draft_content.trim()) { toast.error("Contact + content required"); return; }
     setSaving(true);
-    try { await flowAPI.createMessage(f); toast.success("Drafted"); onSaved(); }
+    try { await flowAPI.createMessage({ ...f, content_sid: f.channel === "whatsapp" ? f.content_sid.trim() : "" }); toast.success("Drafted"); onSaved(); }
     catch { toast.error("Failed"); }
     finally { setSaving(false); }
   };
@@ -157,6 +197,21 @@ const DraftForm = ({ contacts, onClose, onSaved }) => {
           <label className="block text-sm font-medium text-gray-700 mb-1.5">Draft *</label>
           <textarea rows={5} value={f.draft_content} onChange={(e) => setF({...f, draft_content: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm resize-none" data-testid="msg-content" />
         </div>
+        {f.channel === "whatsapp" && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">WhatsApp template SID (optional)</label>
+            <input
+              value={f.content_sid}
+              onChange={(e) => setF({...f, content_sid: e.target.value})}
+              placeholder="HX… — Twilio Content Template SID"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono"
+              data-testid="msg-content-sid"
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Trial Twilio accounts can't send free-form WhatsApp — provide a pre-approved template SID to send. Leave blank for free-form text (upgraded accounts only).
+            </p>
+          </div>
+        )}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
           <Button type="submit" disabled={saving} className="bg-[#1B4332] text-white" data-testid="msg-save">Save Draft</Button>

@@ -34,15 +34,30 @@ def _is_placeholder(value: str) -> bool:
     return not v or any(v.upper().startswith(p) for p in _PLACEHOLDERS)
 
 
-def _e164(raw: str) -> str:
+def _e164(raw: str, default_country_code: str = "") -> str:
     """Normalize a phone number to E.164 (``+`` plus digits).
 
-    Not a validator -- it only strips separators and forces a leading ``+``.
-    An invalid or incomplete number is still handed to Twilio, which rejects it
-    and lets the caller record a ``failed`` status rather than raising here.
+    Local-format Nigerian numbers (``0903...``, ``0803...``) are common in this
+    CRM and are not E.164: the leading ``0`` is a national trunk prefix, not an
+    international dialling prefix. Without correction they become the bogus
+    ``+0903...`` that Twilio rejects. When no country code is present we drop the
+    trunk ``0`` and prepend ``default_country_code`` (Nigeria ``234`` unless the
+    caller specifies otherwise).
+
+    Still not a validator -- an invalid or incomplete number is handed to Twilio,
+    which rejects it and lets the caller record a ``failed`` status.
     """
     digits = "".join(ch for ch in (raw or "") if ch.isdigit())
-    return f"+{digits}" if digits else ""
+    if not digits:
+        return ""
+    # Already international: explicit "+" or a country-code-length prefix that is
+    # not a bare trunk "0" (e.g. "234...", "1...", "44...").
+    if (raw or "").strip().startswith("+") or (digits[0] != "0" and len(digits) > 10):
+        return f"+{digits}"
+    # Local format with a trunk zero: "0903..." -> country + "903...".
+    if digits.startswith("0") and len(digits) > 10 and default_country_code:
+        return f"+{default_country_code}{digits[1:]}"
+    return f"+{digits}"
 
 
 async def _send_twilio(
@@ -63,10 +78,10 @@ async def _send_twilio(
         raw_from = (os.environ.get("TWILIO_WHATSAPP_FROM") or "").strip()
         # Tolerate either "whatsapp:+1415..." or a bare E.164 "+1415...".
         from_number = raw_from if raw_from.lower().startswith("whatsapp:") else f"whatsapp:{_e164(raw_from)}"
-        destination = f"whatsapp:{_e164(to)}"
+        destination = f"whatsapp:{_e164(to, os.environ.get('TWILIO_DEFAULT_COUNTRY_CODE', '234'))}"
     else:  # sms
         from_number = (os.environ.get("TWILIO_SMS_FROM") or "").strip()
-        destination = _e164(to)
+        destination = _e164(to, os.environ.get("TWILIO_DEFAULT_COUNTRY_CODE", "234"))
 
     log_entry = {
         "id": str(uuid.uuid4()),

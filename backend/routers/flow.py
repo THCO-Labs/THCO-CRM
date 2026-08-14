@@ -1588,8 +1588,7 @@ class MessageDraft(BaseModel):
     message_type: str = "checkin"     # birthday | anniversary | checkin | insight | celebration
     draft_content: str
     tier: int = 2                      # 1 | 2 | 3
-    channel: str = "whatsapp"          # whatsapp | email | sms
-    content_sid: Optional[str] = None  # WhatsApp template Content SID (channel=whatsapp only)
+    channel: str = "email"             # email only (WhatsApp/SMS removed)
 
 
 @router.get("/messages")
@@ -1651,54 +1650,35 @@ async def message_action(message_id: str, data: MessageDecision, request: Reques
         updates["status"] = "rejected"
     elif data.action == "send":
         channel = (msg.get("channel") or "email").strip().lower()
+        if channel != "email":
+            raise HTTPException(status_code=400, detail="Only email delivery is available")
         body_text = (msg.get("final_content") or msg.get("draft_content") or "").strip()
 
-        # The destination field depends on the channel, so fetch every one we
-        # might need up front rather than a channel-specific projection.
         contact = await db.contacts.find_one(
             {"contact_id": msg.get("contact_id")},
-            {"_id": 0, "full_name": 1, "email": 1, "phone": 1, "whatsapp": 1},
+            {"_id": 0, "full_name": 1, "email": 1},
         )
         if not contact:
             raise HTTPException(status_code=404, detail="Contact not found")
 
-        if channel == "email":
-            import html as _html
-            from services import send_email
-            from services.email_templates import _base
+        import html as _html
+        from services import send_email
+        from services.email_templates import _base
 
-            to_email = (contact.get("email") or "").strip()
-            if not to_email:
-                raise HTTPException(status_code=400, detail="This contact has no email on file")
-            contact_name = contact.get("full_name") or "there"
-            kind = (msg.get("message_type") or "checkin").replace("_", " ").capitalize()
-            subject = f"{contact_name}, a {kind.lower()} from THCO"
-            body_html = _base(subject, f"<p>{_html.escape(body_text).replace(chr(10), '<br/>')}</p>")
-            result = await send_email(
-                to=[to_email],
-                subject=subject,
-                html=body_html,
-                template_name="flow_message",
-                context={"contact_id": msg.get("contact_id"), "message_type": msg.get("message_type")},
-            )
-        elif channel == "whatsapp":
-            from services.messaging import send_whatsapp
-            to_number = (contact.get("whatsapp") or "").strip()
-            if not to_number:
-                raise HTTPException(status_code=400, detail="This contact has no WhatsApp number on file")
-            result = await send_whatsapp(
-                to_number,
-                body_text,
-                content_sid=(msg.get("content_sid") or "").strip(),
-            )
-        elif channel == "sms":
-            from services.messaging import send_sms
-            to_number = (contact.get("phone") or "").strip()
-            if not to_number:
-                raise HTTPException(status_code=400, detail="This contact has no phone number on file")
-            result = await send_sms(to_number, body_text)
-        else:
-            raise HTTPException(status_code=400, detail=f"Unsupported channel: {channel}")
+        to_email = (contact.get("email") or "").strip()
+        if not to_email:
+            raise HTTPException(status_code=400, detail="This contact has no email on file")
+        contact_name = contact.get("full_name") or "there"
+        kind = (msg.get("message_type") or "checkin").replace("_", " ").capitalize()
+        subject = f"{contact_name}, a {kind.lower()} from THCO"
+        body_html = _base(subject, f"<p>{_html.escape(body_text).replace(chr(10), '<br/>')}</p>")
+        result = await send_email(
+            to=[to_email],
+            subject=subject,
+            html=body_html,
+            template_name="flow_message",
+            context={"contact_id": msg.get("contact_id"), "message_type": msg.get("message_type")},
+        )
 
         if result.get("status") == "sent":
             updates["status"] = "sent"

@@ -19,7 +19,7 @@ const STATUS_COLORS = {
   sent: "bg-green-100 text-green-700",
   failed: "bg-red-100 text-red-700",
 };
-const CHANNEL_ICON = { whatsapp: MessageSquare, email: Mail, sms: MessageSquare };
+const CHANNEL_ICON = { email: Mail };
 
 export default function FlowMessages() {
   const [messages, setMessages] = useState([]);
@@ -149,13 +149,13 @@ export default function FlowMessages() {
 }
 
 const DraftForm = ({ contacts, onClose, onSaved }) => {
-  const [f, setF] = useState({ contact_id: "", message_type: "checkin", draft_content: "", tier: 2, channel: "whatsapp", content_sid: "" });
+  const [f, setF] = useState({ contact_id: "", message_type: "checkin", draft_content: "", tier: 2 });
   const [saving, setSaving] = useState(false);
   const save = async (e) => {
     e.preventDefault();
     if (!f.contact_id || !f.draft_content.trim()) { toast.error("Contact + content required"); return; }
     setSaving(true);
-    try { await flowAPI.createMessage({ ...f, content_sid: f.channel === "whatsapp" ? f.content_sid.trim() : "" }); toast.success("Drafted"); onSaved(); }
+    try { await flowAPI.createMessage({ ...f, channel: "email" }); toast.success("Drafted"); onSaved(); }
     catch { toast.error("Failed"); }
     finally { setSaving(false); }
   };
@@ -173,7 +173,7 @@ const DraftForm = ({ contacts, onClose, onSaved }) => {
             {contacts.map(c => <option key={c.contact_id} value={c.contact_id}>{c.full_name} ({c.title || "—"})</option>)}
           </select>
         </div>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Type</label>
             <select value={f.message_type} onChange={(e) => setF({...f, message_type: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
@@ -186,32 +186,11 @@ const DraftForm = ({ contacts, onClose, onSaved }) => {
               <option value={1}>1 (needs approval)</option><option value={2}>2 (auto-approved)</option><option value={3}>3</option>
             </select>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Channel</label>
-            <select value={f.channel} onChange={(e) => setF({...f, channel: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
-              <option value="whatsapp">WhatsApp</option><option value="email">Email</option><option value="sms">SMS</option>
-            </select>
-          </div>
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">Draft *</label>
           <textarea rows={5} value={f.draft_content} onChange={(e) => setF({...f, draft_content: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm resize-none" data-testid="msg-content" />
         </div>
-        {f.channel === "whatsapp" && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">WhatsApp template SID (optional)</label>
-            <input
-              value={f.content_sid}
-              onChange={(e) => setF({...f, content_sid: e.target.value})}
-              placeholder="HX… — Twilio Content Template SID"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono"
-              data-testid="msg-content-sid"
-            />
-            <p className="text-xs text-gray-400 mt-1">
-              Trial Twilio accounts can't send free-form WhatsApp — provide a pre-approved template SID to send. Leave blank for free-form text (upgraded accounts only).
-            </p>
-          </div>
-        )}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
           <Button type="submit" disabled={saving} className="bg-[#1B4332] text-white" data-testid="msg-save">Save Draft</Button>

@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from services import permissions
-from services.notifications import notify_added_to_project
+from services.notifications import notify_added_to_project, notify_removed_from_project
 from datetime import datetime, timezone, timedelta
 import uuid
 
@@ -148,6 +148,19 @@ def _redact_contact(contact: dict, user: dict) -> dict:
         redacted[f] = ""
     redacted["_pii_visible"] = False
     return redacted
+
+
+# ---------------------------------------------------------------------------
+# Contact ownership — a PM sees only the contacts they created; administrators
+# see the whole directory. This is enforced server-side: the frontend may hide
+# buttons, but these predicates are the boundary.
+# ---------------------------------------------------------------------------
+def _can_view_all_contacts(user: dict) -> bool:
+    return permissions.is_admin(user)
+
+
+def _can_manage_contact(contact: dict, user: dict) -> bool:
+    return permissions.is_admin(user) or contact.get("created_by") == user.get("user_id")
 
 
 async def _send_stage_email(stage: int, project: dict, actor: dict):
@@ -583,6 +596,11 @@ async def set_collaborators(project_id: str, data: CollaboratorsSet, request: Re
     added = [c for c in collaborators if c["user_id"] not in before]
     if added:
         await notify_added_to_project(db, project, added, user)
+
+    removed = [c for c in (project.get("collaborators") or [])
+               if c["user_id"] in (before - set(after_ids))]
+    if removed:
+        await notify_removed_from_project(db, project, removed, user)
 
     await _audit("project", project_id, "collaborators_set", user,
                  {"added": len(added), "total": len(after_ids),
@@ -1231,6 +1249,8 @@ class ContactCreate(BaseModel):
 async def list_contacts(request: Request, client_id: Optional[str] = None, q: Optional[str] = None):
     user = await _get_user(request)
     query: Dict[str, Any] = {}
+    if not _can_view_all_contacts(user):
+        query["created_by"] = user.get("user_id")
     if client_id:
         query["client_id"] = client_id
     if q:
@@ -1240,7 +1260,10 @@ async def list_contacts(request: Request, client_id: Optional[str] = None, q: Op
         ]
     cursor = db.contacts.find(query, {"_id": 0}).sort("full_name", 1)
     contacts = await cursor.to_list(500)
-    return [_redact_contact(c, user) for c in contacts]
+    return [
+        {**_redact_contact(c, user), "_can_manage": _can_manage_contact(c, user)}
+        for c in contacts
+    ]
 
 
 @router.post("/contacts")
@@ -1251,10 +1274,13 @@ async def create_contact(data: ContactCreate, request: Request):
         **data.model_dump(),
         "last_contact_date": None,
         "last_contact_notes": None,
+        "created_by": user.get("user_id"),
+        "created_by_name": user.get("name"),
         "created_at": _now(),
     }
     await db.contacts.insert_one(contact)
     contact.pop("_id", None)
+    contact["_can_manage"] = True
     await _audit("contact", contact["contact_id"], "created", user, {"name": data.full_name})
 
     # If birthday is set, create event
@@ -1279,15 +1305,44 @@ async def get_contact(contact_id: str, request: Request):
     contact = await db.contacts.find_one({"contact_id": contact_id}, {"_id": 0})
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
-    return _redact_contact(contact, user)
+    if not _can_view_all_contacts(user) and not _can_manage_contact(contact, user):
+        raise HTTPException(status_code=404, detail="Contact not found")
+    redacted = _redact_contact(contact, user)
+    redacted["_can_manage"] = _can_manage_contact(contact, user)
+    return redacted
 
 
 @router.put("/contacts/{contact_id}")
 async def update_contact(contact_id: str, data: ContactCreate, request: Request):
     user = await _get_user(request)
-    await db.contacts.update_one({"contact_id": contact_id}, {"$set": data.model_dump()})
+    contact = await db.contacts.find_one({"contact_id": contact_id}, {"_id": 0})
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    permissions.require(_can_manage_contact(contact, user), "You can only edit contacts you created")
+
+    updates = data.model_dump()
+    # Ownership is recorded at creation and must not be overwritten by an edit.
+    updates.pop("created_by", None)
+    updates.pop("created_by_name", None)
+    await db.contacts.update_one({"contact_id": contact_id}, {"$set": updates})
     await _audit("contact", contact_id, "updated", user, {})
     return {"message": "Contact updated"}
+
+
+@router.delete("/contacts/{contact_id}")
+async def delete_contact(contact_id: str, request: Request):
+    user = await _get_user(request)
+    contact = await db.contacts.find_one({"contact_id": contact_id}, {"_id": 0})
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    permissions.require(_can_manage_contact(contact, user), "You can only delete contacts you created")
+
+    await db.contacts.delete_one({"contact_id": contact_id})
+    # The birthday/anniversary events belong to this contact and would otherwise
+    # linger as orphans on the calendar.
+    await db.events.delete_many({"contact_id": contact_id})
+    await _audit("contact", contact_id, "deleted", user, {"name": contact.get("full_name")})
+    return {"message": "Contact deleted"}
 
 
 # ===========================================================================
@@ -1485,6 +1540,45 @@ async def update_ticket_status(ticket_id: str, data: TicketStatus, request: Requ
     return {"message": "Ticket updated"}
 
 
+class TicketUpdate(BaseModel):
+    # All optional so a partial edit (e.g. retitle only) does not clobber the
+    # fields that were not touched. `exclude_unset` is used below to tell the
+    # difference between "not sent" and "sent as empty".
+    project_id: Optional[str] = None
+    milestone_id: Optional[str] = None
+    title: Optional[str] = None
+    acceptance_criteria: Optional[str] = None
+    estimated_effort: Optional[str] = None  # S | M | L
+    assigned_engineer_id: Optional[str] = None
+
+
+@router.put("/tickets/{ticket_id}")
+async def update_ticket(ticket_id: str, data: TicketUpdate, request: Request):
+    """Edit an engineering ticket's fields (not its status — that stays on
+    /status so the two changes are audited separately)."""
+    user = await _get_user(request)
+
+    ticket = await db.tickets.find_one({"ticket_id": ticket_id}, {"_id": 0})
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    updates: Dict[str, Any] = {
+        k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None
+    }
+    if "assigned_engineer_id" in updates:
+        eng = await db.users.find_one(
+            {"user_id": updates["assigned_engineer_id"]}, {"_id": 0, "name": 1}
+        )
+        updates["assigned_engineer_name"] = eng["name"] if eng else None
+    updates["updated_at"] = _now()
+
+    await db.tickets.update_one({"ticket_id": ticket_id}, {"$set": updates})
+    await _audit("ticket", ticket_id, "updated", user, {"fields": sorted(updates.keys())})
+
+    refreshed = await db.tickets.find_one({"ticket_id": ticket_id}, {"_id": 0})
+    return refreshed
+
+
 # ===========================================================================
 # MESSAGES (relationship touches — skeleton; Phase B: WhatsApp/Email send)
 # ===========================================================================
@@ -1499,10 +1593,15 @@ class MessageDraft(BaseModel):
 
 @router.get("/messages")
 async def list_messages(request: Request, status: Optional[str] = None):
-    await _get_user(request)
+    user = await _get_user(request)
     query = {"status": status} if status else {}
     cursor = db.messages.find(query, {"_id": 0}).sort("created_at", -1)
-    return await cursor.to_list(500)
+    messages = await cursor.to_list(500)
+    # The drafter (or an administrator) may delete a message; everyone may view.
+    is_admin = permissions.is_admin(user)
+    for m in messages:
+        m["_can_manage"] = is_admin or m.get("drafted_by_id") == user.get("user_id")
+    return messages
 
 
 @router.post("/messages")
@@ -1550,9 +1649,47 @@ async def message_action(message_id: str, data: MessageDecision, request: Reques
     elif data.action == "reject":
         updates["status"] = "rejected"
     elif data.action == "send":
-        # TODO_PHASE_B: integrate WhatsApp (Twilio) / Email (Resend) actual send
-        updates["status"] = "sent"
-        updates["sent_at"] = _now()
+        # Only email is wired; WhatsApp/SMS are still deferred, so refuse to
+        # pretend a message went out when nothing was actually delivered.
+        if msg.get("channel") != "email":
+            raise HTTPException(
+                status_code=400,
+                detail="Only email delivery is enabled; WhatsApp/SMS are not wired yet",
+            )
+
+        contact = await db.contacts.find_one(
+            {"contact_id": msg.get("contact_id")}, {"_id": 0, "full_name": 1, "email": 1}
+        )
+        if not contact:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        to_email = (contact.get("email") or "").strip()
+        if not to_email:
+            raise HTTPException(status_code=400, detail="This contact has no email on file")
+
+        import html as _html
+        from services import send_email
+        from services.email_templates import _base
+
+        contact_name = contact.get("full_name") or "there"
+        kind = (msg.get("message_type") or "checkin").replace("_", " ").capitalize()
+        subject = f"{contact_name}, a {kind.lower()} from THCO"
+        body_text = (msg.get("final_content") or msg.get("draft_content") or "").strip()
+        body_html = _base(subject, f"<p>{_html.escape(body_text).replace(chr(10), '<br/>')}</p>")
+
+        result = await send_email(
+            to=[to_email],
+            subject=subject,
+            html=body_html,
+            template_name="flow_message",
+            context={"contact_id": msg.get("contact_id"), "message_type": msg.get("message_type")},
+        )
+
+        if result.get("status") == "sent":
+            updates["status"] = "sent"
+            updates["sent_at"] = _now()
+        else:
+            updates["status"] = "failed"
+            updates["send_error"] = result.get("error") or result.get("status") or "delivery failed"
         updates["sent_by_id"] = user.get("user_id")
         updates["sent_by_name"] = user.get("name")
     else:
@@ -1560,7 +1697,28 @@ async def message_action(message_id: str, data: MessageDecision, request: Reques
 
     await db.messages.update_one({"message_id": message_id}, {"$set": updates})
     await _audit("message", message_id, data.action, user, {})
-    return {"message": f"Message {data.action}d", **updates}
+    verb = {"approve": "approved", "reject": "rejected", "send": "sent"}.get(data.action, data.action)
+    if data.action == "send" and updates.get("status") != "sent":
+        verb = "failed to send"
+    return {"message": f"Message {verb}", **updates}
+
+
+@router.delete("/messages/{message_id}")
+async def delete_message(message_id: str, request: Request):
+    user = await _get_user(request)
+    msg = await db.messages.find_one({"message_id": message_id}, {"_id": 0})
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found")
+    # A message may be removed by its drafter or an administrator. This mirrors
+    # contact ownership: the record is team-visible, but only its author (or an
+    # admin) can destroy it.
+    permissions.require(
+        permissions.is_admin(user) or msg.get("drafted_by_id") == user.get("user_id"),
+        "You can only delete messages you drafted",
+    )
+    await db.messages.delete_one({"message_id": message_id})
+    await _audit("message", message_id, "deleted", user, {"contact_id": msg.get("contact_id")})
+    return {"message": "Message deleted"}
 
 
 # ===========================================================================

@@ -95,6 +95,31 @@ def _project_email_html(person_name: str, project: Dict[str, Any], actor_name: s
     """
 
 
+def _project_removal_email_html(person_name: str, project: Dict[str, Any], actor_name: str) -> str:
+    name = project.get("name") or "a project"
+    client = project.get("client_name_snapshot") or ""
+    client_line = (
+        f'<p style="margin:4px 0;color:#9AA0AB">Client<br>'
+        f'<strong style="color:#fff">{client}</strong></p>'
+        if client else ""
+    )
+    return f"""
+    <div style="font-family:Inter,Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;background:#0C0F13;border-radius:12px;color:#E8E6F0">
+      <div style="font-size:22px;font-weight:700;color:#C6A15B;margin-bottom:4px">THCO Control Room</div>
+      <p style="color:#9AA0AB;margin:0 0 18px">Hello, <strong style="color:#fff">{person_name}</strong></p>
+      <p style="color:#E8E6F0">
+        <strong style="color:#fff">{actor_name}</strong> has removed you from a project.
+        Your access to it has been revoked and it will no longer appear on your dashboard.
+      </p>
+      <div style="background:#161B22;border:1px solid #2a2f38;border-radius:10px;padding:16px;margin:16px 0">
+        <p style="margin:4px 0;color:#9AA0AB">Project<br><strong style="color:#fff">{name}</strong></p>
+        {client_line}
+      </div>
+      <p style="color:#6B7280;font-size:12px;margin-top:18px">No action is needed from you.</p>
+    </div>
+    """
+
+
 async def notify_added_to_project(
     db,
     project: Dict[str, Any],
@@ -150,6 +175,66 @@ async def notify_added_to_project(
             # The placement itself already succeeded; losing the email must
             # not undo it, and the in-app notification still tells them.
             logger.warning("Could not email %s about project %s: %s", email, project.get("id"), e)
+
+    return {"in_app": in_app, "emailed": emailed}
+
+
+async def notify_removed_from_project(
+    db,
+    project: Dict[str, Any],
+    removed: List[Dict[str, Any]],
+    actor: Dict[str, Any],
+) -> Dict[str, int]:
+    """Tell each person taken off a project, in-app and by email.
+
+    The mirror of notify_added_to_project: removal is a change the person did
+    not initiate, so they are told directly. The link points at the dashboard
+    rather than the project because they have just lost access to it. Never
+    notifies the person doing the removing.
+    """
+    actor_id = (actor or {}).get("user_id")
+    actor_name = (actor or {}).get("name") or "A project manager"
+    project_name = project.get("name") or "a project"
+
+    in_app = 0
+    emailed = 0
+
+    for person in removed:
+        uid = person.get("user_id")
+        if not uid or uid == actor_id:
+            continue
+
+        await create(
+            db,
+            user_id=uid,
+            kind=REMOVED_FROM_PROJECT,
+            title=f"You were removed from {project_name}",
+            body=f"{actor_name} removed you from this project.",
+            link="/",
+            actor_id=actor_id or "",
+            actor_name=actor_name,
+            entity_type="project",
+            entity_id=project.get("id") or "",
+        )
+        in_app += 1
+
+        email = person.get("email")
+        if not email:
+            continue
+        try:
+            from services import send_email
+            await send_email(
+                to=[email],
+                subject=f"You've been removed from {project_name}",
+                html=_project_removal_email_html(person.get("name") or "there", project, actor_name),
+                template_name="removed_from_project",
+                context={"project_id": project.get("id"), "project_name": project_name},
+            )
+            emailed += 1
+        except Exception as e:
+            # The removal itself already succeeded; losing the email must not
+            # undo it, and the in-app notification still tells them.
+            logger.warning("Could not email %s about project removal %s: %s", email, project.get("id"), e)
 
     return {"in_app": in_app, "emailed": emailed}
 

@@ -789,6 +789,7 @@ export const flowAPI = {
   createContact: async (data) => (await apiClient.post('/flow/contacts', data)).data,
   getContact: async (id) => (await apiClient.get(`/flow/contacts/${id}`)).data,
   updateContact: async (id, data) => (await apiClient.put(`/flow/contacts/${id}`, data)).data,
+  deleteContact: async (id) => (await apiClient.delete(`/flow/contacts/${id}`)).data,
 
   // Events
   listEvents: async (days = 90) => (await apiClient.get('/flow/events', { params: { days } })).data,
@@ -804,12 +805,14 @@ export const flowAPI = {
   createTicket: async (data) => (await apiClient.post('/flow/tickets', data)).data,
   updateTicketStatus: async (id, status) =>
     (await apiClient.post(`/flow/tickets/${id}/status`, { status })).data,
+  updateTicket: async (id, data) => (await apiClient.put(`/flow/tickets/${id}`, data)).data,
 
   // Messages
   listMessages: async (params = {}) => (await apiClient.get('/flow/messages', { params })).data,
   createMessage: async (data) => (await apiClient.post('/flow/messages', data)).data,
   messageAction: async (id, action, final_content = null) =>
     (await apiClient.post(`/flow/messages/${id}/action`, { action, final_content })).data,
+  deleteMessage: async (id) => (await apiClient.delete(`/flow/messages/${id}`)).data,
 
   // Questions
   listQuestions: async (industry) => (await apiClient.get('/flow/questions', { params: industry ? { industry } : {} })).data,

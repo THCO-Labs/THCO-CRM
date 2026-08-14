@@ -145,6 +145,8 @@ class TestFlowContacts:
             "full_name": "TEST_QA Birthday Person",
             "birthday": "15-06",
             "email": "test_qa_birthday@example.com",
+            "phone": "+15551234567",
+            "whatsapp": "+15551234567",
         }, timeout=15)
         assert r.status_code == 200, r.text
         c = r.json()
@@ -301,19 +303,26 @@ class TestFlowMessages:
         # "failed" instead of silently claiming success.
         assert r3.json().get("status") in ("sent", "failed")
 
-    def test_whatsapp_send_returns_400(self, client):
-        r = client.post(f"{BASE_URL}/api/flow/messages", json={
-            "contact_id": pytest.contact_id,
-            "message_type": "checkin",
-            "draft_content": "TEST_QA not wired yet",
-            "tier": 2,
-            "channel": "whatsapp",
-        }, timeout=15)
-        assert r.status_code == 200
-        mid = r.json()["message_id"]
-        r2 = client.post(f"{BASE_URL}/api/flow/messages/{mid}/action",
-                         json={"action": "send"}, timeout=15)
-        assert r2.status_code == 400
+    def test_whatsapp_and_sms_send_when_unconfigured(self, client):
+        # WhatsApp and SMS are wired through Twilio. Without credentials the
+        # send is skipped and reported as failed -- never falsely "sent".
+        for channel in ("whatsapp", "sms"):
+            r = client.post(f"{BASE_URL}/api/flow/messages", json={
+                "contact_id": pytest.contact_id,
+                "message_type": "checkin",
+                "draft_content": f"TEST_QA touch via {channel}",
+                "tier": 2,
+                "channel": channel,
+            }, timeout=15)
+            assert r.status_code == 200, r.text
+            mid = r.json()["message_id"]
+            r2 = client.post(f"{BASE_URL}/api/flow/messages/{mid}/action",
+                             json={"action": "send"}, timeout=15)
+            assert r2.status_code == 200, r2.text
+            body = r2.json()
+            assert body.get("status") in ("sent", "failed", "skipped")
+            if body.get("status") != "sent":
+                assert body.get("send_error"), body
 
     def test_tier2_message_auto_approved(self, client):
         r = client.post(f"{BASE_URL}/api/flow/messages", json={

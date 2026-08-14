@@ -8,6 +8,7 @@ keys. Like email, delivery status is reported back so the caller can decide
 whether to mark a message "sent".
 """
 import asyncio
+import json
 import logging
 import os
 import uuid
@@ -44,7 +45,13 @@ def _e164(raw: str) -> str:
     return f"+{digits}" if digits else ""
 
 
-async def _send_twilio(channel: str, to: str, body: str) -> dict:
+async def _send_twilio(
+    channel: str,
+    to: str,
+    body: str = "",
+    content_sid: str = "",
+    content_variables: dict | None = None,
+) -> dict:
     import twilio.rest
 
     account_sid = os.environ.get("TWILIO_ACCOUNT_SID", "")
@@ -94,15 +101,21 @@ async def _send_twilio(channel: str, to: str, body: str) -> dict:
     try:
         client = twilio.rest.Client(account_sid, auth_token)
 
+        # WhatsApp template messages are sent with a Content SID instead of a
+        # free-form body; Twilio rejects a message that carries both. For SMS
+        # (and free-form WhatsApp) the plain body path is unchanged.
+        create_kwargs: dict = {"from_": from_number, "to": destination}
+        if channel == "whatsapp" and content_sid:
+            create_kwargs["content_sid"] = content_sid
+            if content_variables:
+                create_kwargs["content_variables"] = json.dumps(content_variables)
+        else:
+            create_kwargs["body"] = body
+
         # Twilio's SDK is synchronous; run it off the event loop and cap it so
         # an unreachable provider reads as a failed send, never a hung request.
         await asyncio.wait_for(
-            asyncio.to_thread(
-                client.messages.create,
-                from_=from_number,
-                to=destination,
-                body=body,
-            ),
+            asyncio.to_thread(client.messages.create, **create_kwargs),
             timeout=15,
         )
         log_entry["status"] = "sent"
@@ -127,6 +140,16 @@ async def send_sms(to: str, body: str) -> dict:
     return await _send_twilio("sms", to, body)
 
 
-async def send_whatsapp(to: str, body: str) -> dict:
-    """Send a WhatsApp message. Returns ``{status, error, ...}`` (sent | failed | skipped)."""
-    return await _send_twilio("whatsapp", to, body)
+async def send_whatsapp(
+    to: str,
+    body: str = "",
+    content_sid: str = "",
+    content_variables: dict | None = None,
+) -> dict:
+    """Send a WhatsApp message.
+
+    Free-form messages pass ``body``; template messages pass ``content_sid``
+    (and optionally ``content_variables``) and omit ``body``. Returns
+    ``{status, error, ...}`` (sent | failed | skipped).
+    """
+    return await _send_twilio("whatsapp", to, body, content_sid, content_variables)

@@ -1589,6 +1589,7 @@ class MessageDraft(BaseModel):
     draft_content: str
     tier: int = 2                      # 1 | 2 | 3
     channel: str = "whatsapp"          # whatsapp | email | sms
+    content_sid: Optional[str] = None  # WhatsApp template Content SID (channel=whatsapp only)
 
 
 @router.get("/messages")
@@ -1685,7 +1686,11 @@ async def message_action(message_id: str, data: MessageDecision, request: Reques
             to_number = (contact.get("whatsapp") or "").strip()
             if not to_number:
                 raise HTTPException(status_code=400, detail="This contact has no WhatsApp number on file")
-            result = await send_whatsapp(to_number, body_text)
+            result = await send_whatsapp(
+                to_number,
+                body_text,
+                content_sid=(msg.get("content_sid") or "").strip(),
+            )
         elif channel == "sms":
             from services.messaging import send_sms
             to_number = (contact.get("phone") or "").strip()

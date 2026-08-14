@@ -138,7 +138,10 @@ def _can_view_contact_pii(user: dict) -> bool:
 
 
 def _redact_contact(contact: dict, user: dict) -> dict:
-    if _can_view_contact_pii(user):
+    # The person who created a contact always sees the details they entered —
+    # otherwise editing it blanks the fields back out. Privileged roles see
+    # every contact's PII; everyone else sees the redacted placeholder.
+    if _can_view_contact_pii(user) or contact.get("created_by") == user.get("user_id"):
         contact["_pii_visible"] = True
         return contact
     redacted = dict(contact)

@@ -717,6 +717,7 @@ const ClientProfileSection = ({ projectId, clientName }) => {
               <div className="mt-2 space-y-0.5 text-xs text-gray-500">
                 {c.email && <p>📧 {c.email}</p>}
                 {c.phone && <p>📞 {c.phone}</p>}
+                {c.whatsapp && <p>💬 {c.whatsapp}</p>}
                 {c.birthday && <p className="text-pink-700 font-medium">🎂 Birthday {c.birthday}</p>}
                 {c.work_anniversary && <p>🎉 Work anniversary {c.work_anniversary}</p>}
               </div>

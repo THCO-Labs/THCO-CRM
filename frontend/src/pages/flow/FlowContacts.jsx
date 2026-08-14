@@ -10,7 +10,7 @@ import {
 } from "../../components/ui/dropdown-menu";
 import { Calendar } from "../../components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
-import { Loader2, Plus, Search, X, Mail, Phone, Linkedin, Cake, Star, Pencil, Trash2, MoreVertical, CalendarDays } from "lucide-react";
+import { Loader2, Plus, Search, X, Mail, Phone, MessageCircle, Linkedin, Cake, Star, Pencil, Trash2, MoreVertical, CalendarDays } from "lucide-react";
 import { toast } from "sonner";
 
 const STRENGTH_COLORS = {
@@ -102,6 +102,7 @@ export default function FlowContacts() {
               <div className="space-y-1 mt-2 text-xs text-gray-500">
                 {c.email && <p className="flex items-center gap-1.5"><Mail className="w-3 h-3" />{c.email}</p>}
                 {c.phone && <p className="flex items-center gap-1.5"><Phone className="w-3 h-3" />{c.phone}</p>}
+                {c.whatsapp && <p className="flex items-center gap-1.5"><MessageCircle className="w-3 h-3" />{c.whatsapp}</p>}
                 {c.linkedin && <p className="flex items-center gap-1.5"><Linkedin className="w-3 h-3" />{c.linkedin}</p>}
                 {c.birthday && <p className="flex items-center gap-1.5"><Cake className="w-3 h-3" />Birthday {c.birthday}</p>}
               </div>

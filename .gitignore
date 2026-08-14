@@ -202,3 +202,8 @@ cookies.txt
 # Google service account key - never commit
 service_account*.json
 backend/service_account*.json
+
+# CV import/migration run artifacts (audit records, not source)
+backend/added_gmail_cvs_*.json
+backend/removed_non_cvs.json
+backend/candidates_needing_manual_review.csv

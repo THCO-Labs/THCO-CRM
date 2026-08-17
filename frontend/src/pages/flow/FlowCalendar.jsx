@@ -42,15 +42,27 @@ export default function FlowCalendar() {
                 <h3 className="text-xs uppercase tracking-widest text-gray-400 font-semibold mb-2">{bucket}</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {grouped[bucket].map((e) => {
-                    const Icon = ICON[e.event_type] || Cake;
+                    const Icon = ICON[e.event_type] || Cake;   // unknown types still get an icon
                     return (
                       <div key={e.event_id} className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3" data-testid={`event-${e.event_id}`}>
                         <div className={`w-10 h-10 rounded-lg ${COLOR[e.event_type] || "bg-gray-100 text-gray-700"} flex items-center justify-center`}>
                           <Icon className="w-5 h-5" />
                         </div>
                         <div className="flex-1">
-                          <p className="font-medium text-gray-900">{e.contact_name}</p>
-                          <p className="text-xs text-gray-500 capitalize">{e.event_type.replace("_", " ")}</p>
+                          <p className="font-medium text-gray-900">
+                            {e.contact_name || "Unnamed"}
+                            {e.is_staff && (
+                              <span className="ml-2 text-[10px] uppercase tracking-wide px-1.5 py-px rounded-full bg-[#1B4332]/10 text-[#1B4332]">
+                                Team
+                              </span>
+                            )}
+                          </p>
+                          {/* Defensive on purpose: one row missing a field
+                              should render plainly, not take the calendar
+                              down for everybody. */}
+                          <p className="text-xs text-gray-500 capitalize">
+                            {(e.event_type || "event").replace(/_/g, " ")}
+                          </p>
                         </div>
                         <div className="text-right">
                           <p className="text-sm font-semibold text-[#1B4332]">{e.days_until === 0 ? "Today" : `${e.days_until}d`}</p>

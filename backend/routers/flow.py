@@ -1471,15 +1471,19 @@ async def list_events(request: Request, days: int = 90):
         delta = (next_date - today).days
         if delta > days:
             continue
+        # Shaped like the contact events it sits beside. The calendar reads
+        # `event_type` and `contact_name` off every row, so a staff birthday
+        # that named its fields differently took the whole page down rather
+        # than simply rendering oddly.
         upcoming.append({
             "event_id": f"staff_birthday_{u['user_id']}",
-            "kind": "staff_birthday",
-            "title": f"{u.get('name')}'s birthday",
-            "person_name": u.get("name"),
+            "event_type": "birthday",
+            "contact_name": u.get("name"),
             "picture": u.get("picture"),
             "event_date": f"{born.day:02d}-{born.month:02d}",
             "next_occurrence": next_date.isoformat(),
             "days_until": delta,
+            # Marks it as a colleague rather than a client contact.
             "is_staff": True,
         })
 

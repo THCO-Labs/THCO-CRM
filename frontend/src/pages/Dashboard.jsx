@@ -23,7 +23,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { dashboardAPI, activityAPI, authAPI, unitsAPI } from "../lib/api";
 import { useAnalytics } from "../context/AnalyticsContext";
 import NewProjectDialog from "../components/flow/NewProjectDialog";
-import { hasFullAccess, hasUnitAccess, canCreateProjects, canEnterUnits } from "../context/UserContext";
+import { hasFullAccess, hasUnitAccess as sharedHasUnitAccess, canCreateProjects, canEnterUnits } from "../context/UserContext";
 
 const UNITS = [
   {
@@ -174,14 +174,14 @@ const Dashboard = () => {
     fetchData();
   }, []);
 
-  // Mirrors the sidebar rule. Staff who have not been put on a project have
-  // not been given any of this work yet, so the whole section stays shut --
-  // including Flow, which used to be treated as open to everyone.
+  // Deliberately the shared rule rather than a copy of it. This was its own
+  // version and had drifted: it returned true for Flow unconditionally, so the
+  // pipeline card showed on the dashboard to people the sidebar and the server
+  // both kept out of it.
   const hasUnitAccess = (slug) => {
     if (hasFullAccess(user)) return true;
     if (!canEnterUnits(user)) return false;
-    if (slug === "flow") return true;
-    return user?.accessible_units?.includes(slug);
+    return sharedHasUnitAccess(user, slug);
   };
 
   const handleUnitClick = (unit, e) => {

@@ -18,12 +18,15 @@ export const hasFullAccess = (user) =>
 export const isUnitHead = (user) => Boolean(user?.headed_units?.length);
 
 // Mirrors permissions.has_unit_access on the server, which is the real gate.
-// THCO Flow opens once a person actually has work in it -- staff not yet put
-// on a project would otherwise get a pipeline that shows them nothing.
+//
+// THCO Flow belongs to project managers and administrators. Being put on a
+// project does not open it: a collaborator's work is the task board their
+// manager sets up, and the pipeline around it -- stages, value, who else is in
+// the running -- is not theirs to see.
 export const hasUnitAccess = (user, slug) => {
   if (!slug) return true;
   if (hasFullAccess(user)) return true;
-  if (slug === "flow") return Boolean(user?.has_projects) || isUnitHead(user);
+  if (slug === "flow") return isUnitHead(user);
   return user?.accessible_units?.includes(slug) || false;
 };
 

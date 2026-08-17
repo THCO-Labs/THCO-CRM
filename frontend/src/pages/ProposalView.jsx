@@ -162,7 +162,7 @@ const ProposalView = () => {
         <div className="bg-[#1a1f36] rounded-2xl border border-white/10 p-8 max-w-lg w-full">
           <div className="flex justify-center mb-8">
             <img
-              src="https://customer-assets.emergentagent.com/job_internal-thco/artifacts/bvr2l293_THCO%20Logo_Navy%20soft%20purple.png"
+              src="/logos/thco/logo-navy.png"
               alt="THCO"
               className="h-10 brightness-0 invert"
             />
@@ -237,7 +237,7 @@ const ProposalView = () => {
     <div className="min-h-screen bg-[#0f1219] flex flex-col" data-testid="proposal-inline-viewer">
       <div className="flex items-center gap-3 px-4 sm:px-6 py-3 bg-[#1a1f36] border-b border-white/10">
         <img
-          src="https://customer-assets.emergentagent.com/job_internal-thco/artifacts/bvr2l293_THCO%20Logo_Navy%20soft%20purple.png"
+          src="/logos/thco/logo-navy.png"
           alt="THCO"
           className="h-6 sm:h-7 brightness-0 invert flex-shrink-0"
         />

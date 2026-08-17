@@ -64,18 +64,22 @@ def has_unit_access(user: Dict[str, Any], slug: str) -> bool:
 
     Admins see every unit. Everyone else needs it in accessible_units.
 
-    `flow` is the project pipeline. It used to be open to every logged-in
-    person on the reasoning that rows inside it are scoped per-user anyway --
-    but somebody with no project sees an empty pipeline, which is a menu entry
-    that only ever shows them nothing. So it now opens once they actually have
-    work in it: a project collaborator, a unit head, or an administrator.
+    `flow` is the project pipeline -- where work is opened, staffed, priced and
+    moved through its stages. Those are a project manager's decisions, so the
+    pipeline is theirs and the administrators'.
+
+    Being on a project does not open it. A collaborator's work is the task
+    board their manager sets up: they see their tasks, move them, and take them
+    to done. The pipeline around that -- which stage the client is at, what the
+    project is worth, who else is being considered -- is not theirs to see, and
+    an earlier rule that opened Flow to anyone with a project showed it to them.
     """
     if not slug:
         return True
     if is_admin(user):
         return True
     if slug == "flow":
-        return bool((user or {}).get("has_projects")) or is_unit_head(user)
+        return is_unit_head(user)
     return slug in ((user or {}).get("accessible_units") or [])
 
 

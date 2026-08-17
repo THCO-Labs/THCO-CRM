@@ -28,8 +28,25 @@ def set_db(database):
 
 
 async def _get_user(request: Request) -> dict:
+    """Everything in this router goes through here, so the rule is stated once.
+
+    THCO Flow is the project pipeline, and it belongs to project managers and
+    administrators. Hiding the menu entry was not enough on its own: every
+    route below was reachable by any signed-in person who knew the address,
+    and rows were merely scoped rather than refused.
+
+    A collaborator's work is the task board, which lives in its own router and
+    is unaffected by this -- it admits anyone assigned to the project.
+    """
     from server import get_current_user
-    return await get_current_user(request)
+
+    user = await get_current_user(request)
+    permissions.require(
+        permissions.has_unit_access(user, "flow"),
+        "THCO Flow is for project managers and administrators. Your work is on "
+        "the task board under Tasks.",
+    )
+    return user
 
 
 # ===========================================================================

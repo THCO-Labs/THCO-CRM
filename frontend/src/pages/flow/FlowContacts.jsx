@@ -8,8 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
-import { Calendar } from "../../components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
+import DateField from "../../components/ui/date-field";
 import { Loader2, Plus, Search, X, Mail, Phone, MessageCircle, Linkedin, Cake, Star, Pencil, Trash2, MoreVertical, CalendarDays } from "lucide-react";
 import { toast } from "sonner";
 
@@ -189,7 +188,9 @@ export default function FlowContacts() {
                   </a>
                 )}
                 {c.birthday && (
-                  <p className="flex items-center gap-1.5"><Cake className="w-3 h-3 shrink-0" />{c.birthday}</p>
+                  <p className="flex items-center gap-1.5">
+                    <Cake className="w-3 h-3 shrink-0" />{formatDayMonth(c.birthday)}
+                  </p>
                 )}
               </div>
             </div>
@@ -291,8 +292,9 @@ const Inp = ({ label, v, on, placeholder, testid }) => (
 );
 
 // Birthdays/anniversaries are stored as "DD-MM" (day + month, no year), so the
-// picker records only the selected day and month while the calendar shows full
-// dates for a familiar experience.
+// Contact dates are kept as day and month only -- the year of somebody's
+// birthday is not the firm's business. `formatDayMonth` turns the stored
+// "22-08" into "22 Aug" for display; the field itself is the shared DateField.
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 const parseDayMonth = (value) => {
@@ -307,51 +309,18 @@ const parseDayMonth = (value) => {
   return d;
 };
 
-const toDayMonth = (date) =>
-  `${String(date.getDate()).padStart(2, "0")}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-
 const formatDayMonth = (value) => {
   const d = parseDayMonth(value);
   return d ? `${d.getDate()} ${MONTH_NAMES[d.getMonth()]}` : value || "";
 };
 
-const DayMonthField = ({ label, value, onChange, testid }) => {
-  const [open, setOpen] = useState(false);
-  return (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            data-testid={testid}
-            className="w-full flex items-center justify-between gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white text-left hover:border-gray-300 focus:ring-2 focus:ring-[#1B4332]/20 focus:border-[#1B4332] outline-none"
-          >
-            <span className={value ? "text-gray-900" : "text-gray-400"}>
-              {value ? formatDayMonth(value) : "Select date"}
-            </span>
-            <CalendarDays className="w-4 h-4 text-gray-400" />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent align="start" className="w-auto p-0">
-          <Calendar
-            mode="single"
-            selected={parseDayMonth(value)}
-            onSelect={(d) => { onChange(d ? toDayMonth(d) : ""); setOpen(false); }}
-            captionLayout="dropdown-buttons"
-            fromYear={1900}
-            toYear={new Date().getFullYear()}
-            initialFocus
-          />
-          {value && (
-            <div className="px-3 pb-2 border-t border-gray-100">
-              <button type="button" onClick={() => { onChange(""); setOpen(false); }} className="text-xs text-gray-500 hover:text-red-600">
-                Clear date
-              </button>
-            </div>
-          )}
-        </PopoverContent>
-      </Popover>
-    </div>
-  );
-};
+const DayMonthField = ({ label, value, onChange, testid }) => (
+  <div>
+    <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
+    {/* The shared date field, so picking a birthday here is the same action
+        as picking one on a profile -- and on a phone it opens the operating
+        system's own date wheel. Still stored day-month; the year is not
+        anyone's business on a contact record. */}
+    <DateField value={value} onChange={onChange} dayMonth icon={CalendarDays} data-testid={testid} />
+  </div>
+);

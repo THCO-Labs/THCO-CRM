@@ -1441,6 +1441,48 @@ async def list_events(request: Request, days: int = 90):
                 upcoming.append(e)
         except Exception:
             continue
+
+    # Staff birthdays, from what each person set on their own profile.
+    #
+    # These are not rows in `events`: nobody types a colleague's birthday into
+    # the contacts book, and waiting for an administrator to do it is why the
+    # calendar had none. A person fills in their own, and it appears here.
+    #
+    # Only the day and month are published. The year is stored so a date field
+    # can hold it, but showing it would tell the whole firm everybody's age,
+    # which is not what anyone agreed to by filling in a birthday.
+    async for u in db.users.find(
+        {"status": "active", "birthday": {"$nin": [None, ""]}},
+        {"_id": 0, "user_id": 1, "name": 1, "birthday": 1, "picture": 1},
+    ):
+        try:
+            born = datetime.strptime(u["birthday"], "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            continue
+        try:
+            next_date = today.replace(month=born.month, day=born.day)
+        except ValueError:
+            continue                      # 29 February in a non-leap year
+        if next_date < today:
+            try:
+                next_date = next_date.replace(year=today.year + 1)
+            except ValueError:
+                continue
+        delta = (next_date - today).days
+        if delta > days:
+            continue
+        upcoming.append({
+            "event_id": f"staff_birthday_{u['user_id']}",
+            "kind": "staff_birthday",
+            "title": f"{u.get('name')}'s birthday",
+            "person_name": u.get("name"),
+            "picture": u.get("picture"),
+            "event_date": f"{born.day:02d}-{born.month:02d}",
+            "next_occurrence": next_date.isoformat(),
+            "days_until": delta,
+            "is_staff": True,
+        })
+
     upcoming.sort(key=lambda x: x.get("days_until", 999))
     return upcoming
 

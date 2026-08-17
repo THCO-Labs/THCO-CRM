@@ -981,6 +981,7 @@ async def get_me(request: Request):
         "accessible_units": user.get("accessible_units", []),
         "status": user["status"],
         "picture": user.get("picture"),
+        "birthday": user.get("birthday"),
         "is_engineer": user.get("is_engineer", False),
         "is_fulfillment": user.get("is_fulfillment", False),
         "is_hr": user.get("is_hr", False),
@@ -1094,14 +1095,27 @@ async def reset_password(data: PasswordResetConfirm):
 class MyProfileUpdate(BaseModel):
     """What a person may change about themselves.
 
-    Name and picture, and nothing else. Role, unit access, headed units,
-    status, the delivery flags and the device lock all decide what somebody is
-    allowed to do, so they stay where they were -- with the administrators.
-    Listing only the harmless fields here means a request naming any of the
-    others is not refused so much as unable to express itself.
+    Name, picture and birthday, and nothing else. Role, unit access, headed
+    units, status, the delivery flags and the device lock all decide what
+    somebody is allowed to do, so they stay where they were -- with the
+    administrators. Listing only the harmless fields here means a request
+    naming any of the others is not refused so much as unable to express
+    itself.
     """
     name: Optional[str] = None
     picture: Optional[str] = None
+    birthday: Optional[str] = None
+
+
+# A profile picture is stored on the user record as a data URL rather than
+# behind an endpoint. Avatars are rendered by plain <img src> in a dozen
+# places, and this client carries its session as a Bearer header, which an
+# image tag does not send -- so a URL would arrive unauthenticated and every
+# avatar in the application would break.
+#
+# That only works if the image is small, so the page downscales before upload.
+# The cap here is the backstop, not the mechanism.
+MAX_PICTURE_CHARS = 400_000  # ~300 KB of image once base64 is accounted for
 
 
 class MyPasswordChange(BaseModel):
@@ -1120,6 +1134,34 @@ async def update_my_profile(updates: MyProfileUpdate, request: Request):
         if not name:
             raise HTTPException(status_code=400, detail="Name cannot be empty")
         changes["name"] = name
+
+    if "picture" in changes:
+        pic = (changes["picture"] or "").strip()
+        if pic == "":
+            changes["picture"] = None          # clearing it is allowed
+        else:
+            if not pic.startswith("data:image/"):
+                raise HTTPException(status_code=400, detail="That is not an image")
+            if len(pic) > MAX_PICTURE_CHARS:
+                raise HTTPException(
+                    status_code=413,
+                    detail="That picture is too large even after resizing. Try a smaller one.",
+                )
+            changes["picture"] = pic
+
+    if "birthday" in changes:
+        day = (changes["birthday"] or "").strip()
+        if day == "":
+            changes["birthday"] = None
+        else:
+            # Stored as given (YYYY-MM-DD from a date field). Only the day and
+            # month are ever shown, so nobody's age is published by setting it.
+            try:
+                datetime.strptime(day, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Use a valid date")
+            changes["birthday"] = day
+
     if not changes:
         raise HTTPException(status_code=400, detail="Nothing to change")
 

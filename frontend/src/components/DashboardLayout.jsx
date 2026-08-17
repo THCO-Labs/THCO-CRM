@@ -31,6 +31,7 @@ import {
   Sun,
   Moon,
   KanbanSquare,
+  Cake,
   Menu,
   X,
 } from "lucide-react";
@@ -166,6 +167,13 @@ const DashboardLayoutInner = ({ children, user }) => {
   // Collapsing to icons is a desktop affordance. On a phone the drawer is
   // either shown in full or not at all, so labels are always readable.
   const collapsed = isDesktop && !sidebarOpen;
+
+  // A birthday is something only the person themselves can supply, so the
+  // application has to ask rather than wait. The mark sits on their own avatar
+  // and stays until they fill it in -- a prompt they can ignore today and will
+  // still see tomorrow, without a dialog interrupting whatever they opened the
+  // app to do.
+  const needsBirthday = Boolean(user) && !user.birthday;
 
   // Fetch pending approvals count
   useEffect(() => {
@@ -570,12 +578,20 @@ const DashboardLayoutInner = ({ children, user }) => {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className={`w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-white/[0.06] transition-colors ${collapsed ? "justify-center" : ""}`}>
-                <Avatar className="w-8 h-8 border border-white/10">
-                  <AvatarImage src={user?.picture} />
-                  <AvatarFallback className="bg-[#C6A15B]/20 text-[#D6BC8A] text-xs font-semibold">
-                    {user?.name?.charAt(0)?.toUpperCase() || "U"}
-                  </AvatarFallback>
-                </Avatar>
+                <span className="relative shrink-0">
+                  <Avatar className="w-8 h-8 border border-white/10">
+                    <AvatarImage src={user?.picture} />
+                    <AvatarFallback className="bg-[#C6A15B]/20 text-[#D6BC8A] text-xs font-semibold">
+                      {user?.name?.charAt(0)?.toUpperCase() || "U"}
+                    </AvatarFallback>
+                  </Avatar>
+                  {needsBirthday && (
+                    <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5" data-testid="birthday-nudge-sidebar">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#C6A15B] opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#C6A15B] ring-2 ring-[#0C0F13]" />
+                    </span>
+                  )}
+                </span>
                 {!collapsed && (
                   <div className="flex-1 min-w-0 text-left">
                     <p className="text-[13px] font-medium text-white truncate">{user?.name}</p>
@@ -775,12 +791,20 @@ const DashboardLayoutInner = ({ children, user }) => {
                   className="flex items-center gap-2 text-gray-700 hover:text-gray-900 hover:bg-[#EFEDE8] rounded-full px-1.5"
                   data-testid="user-dropdown-trigger"
                 >
-                  <Avatar className="w-8 h-8 border border-[#EAE7E0]">
-                    <AvatarImage src={user?.picture} />
-                    <AvatarFallback className="bg-[#14181D] text-[#D6BC8A] text-xs font-semibold">
-                      {user?.name?.charAt(0)?.toUpperCase() || "U"}
-                    </AvatarFallback>
-                  </Avatar>
+                  <span className="relative">
+                    <Avatar className="w-8 h-8 border border-[#EAE7E0]">
+                      <AvatarImage src={user?.picture} />
+                      <AvatarFallback className="bg-[#14181D] text-[#D6BC8A] text-xs font-semibold">
+                        {user?.name?.charAt(0)?.toUpperCase() || "U"}
+                      </AvatarFallback>
+                    </Avatar>
+                    {needsBirthday && (
+                      <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5" data-testid="birthday-nudge-header">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#C6A15B] opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#C6A15B] ring-2 ring-white" />
+                      </span>
+                    )}
+                  </span>
                   <ChevronDown size={14} className="text-gray-400" />
                 </Button>
               </DropdownMenuTrigger>
@@ -788,6 +812,17 @@ const DashboardLayoutInner = ({ children, user }) => {
                 <div className="px-3 py-2.5">
                   <p className="text-[13px] font-medium text-gray-900 truncate">{user?.name}</p>
                   <p className="text-[11px] text-gray-500 truncate">{user?.email}</p>
+                  {needsBirthday && (
+                    <button
+                      type="button"
+                      onClick={() => navigate("/profile")}
+                      className="mt-2 flex items-center gap-1.5 text-[11px] text-[#8F7340] hover:text-[#6f5a32] transition-colors"
+                      data-testid="birthday-nudge-cta"
+                    >
+                      <Cake className="w-3 h-3" />
+                      Add your birthday
+                    </button>
+                  )}
                 </div>
                 <DropdownMenuSeparator className="bg-[#F0EEE9]" />
                 <DropdownMenuItem

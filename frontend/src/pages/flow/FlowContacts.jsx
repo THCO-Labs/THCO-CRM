@@ -20,6 +20,20 @@ const STRENGTH_COLORS = {
   champion: "bg-amber-100 text-amber-700",
 };
 
+/** Initials for the avatar, from the name where there is one. */
+function contactInitials(c) {
+  const words = (c.full_name || "").trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (c.email || "?").slice(0, 2).toUpperCase();
+}
+
+/** "in/jane-doe" out of a full LinkedIn URL. */
+function linkedinHandle(url) {
+  const m = String(url || "").match(/linkedin\.com\/(in\/[^/?#]+)/i);
+  return m ? m[1] : String(url || "").replace(/^https?:\/\//, "");
+}
+
 export default function FlowContacts() {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -33,7 +47,11 @@ export default function FlowContacts() {
     setContacts(data);
     setLoading(false);
   };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+  useEffect(() => {
+    const id = setTimeout(load, q ? 300 : 0);
+    return () => clearTimeout(id);
+    /* eslint-disable-next-line */
+  }, [q]);
 
   const remove = async (c) => {
     if (!window.confirm(`Delete ${c.full_name}? This also removes their saved events.`)) return;
@@ -55,12 +73,35 @@ export default function FlowContacts() {
         </Button>
       }
     >
-      <form onSubmit={(e) => { e.preventDefault(); load(); }} className="flex gap-2 mb-4 max-w-md">
-        <div className="relative flex-1">
+      {/* Searches as you type. Requiring a button press to see a filtered
+          directory makes the page feel unresponsive to what you just did --
+          and the debounce keeps that from becoming a request per keystroke. */}
+      <form onSubmit={(e) => { e.preventDefault(); load(); }} className="flex items-center gap-3 mb-4">
+        <div className="relative flex-1 max-w-md">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name or email..." className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#1B4332]/20 focus:border-[#1B4332] outline-none" data-testid="contacts-search" />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search name or email..."
+            className="w-full pl-10 pr-9 py-2 bg-white text-gray-900 border border-[#EAE7E0] rounded-lg text-sm focus:ring-2 focus:ring-[#1B4332]/20 focus:border-[#1B4332] outline-none"
+            data-testid="contacts-search"
+          />
+          {q && (
+            <button
+              type="button"
+              onClick={() => setQ("")}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-gray-400 hover:text-gray-700"
+              aria-label="Clear search"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
-        <Button type="submit" variant="outline">Search</Button>
+        {!loading && (
+          <span className="text-xs text-gray-400 whitespace-nowrap">
+            {contacts.length} {contacts.length === 1 ? "contact" : "contacts"}
+          </span>
+        )}
       </form>
 
       {loading ? <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-[#1B4332]" /></div> :
@@ -72,26 +113,44 @@ export default function FlowContacts() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3" data-testid="contacts-grid">
           {contacts.map((c) => (
-            <div key={c.contact_id} className="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-md transition" data-testid={`contact-${c.contact_id}`}>
-              <div className="flex items-start justify-between mb-2">
-                <div>
-                  <p className="font-semibold text-gray-900">{c.full_name}</p>
-                  <p className="text-xs text-gray-500">{c.title || "—"}</p>
+            <div
+              key={c.contact_id}
+              className="group bg-white rounded-xl border border-[#EAE7E0] p-4 shadow-sm transition-all duration-200 ease-out hover:shadow-lg hover:border-[#C6A15B]/50 hover:-translate-y-0.5"
+              data-testid={`contact-${c.contact_id}`}
+            >
+              <div className="flex items-start gap-3">
+                {/* A face for the name. A directory of plain text rows reads as
+                    a spreadsheet; these are people. */}
+                <span className="w-10 h-10 shrink-0 rounded-full bg-[#1B4332]/10 text-[#1B4332] text-[13px] font-semibold flex items-center justify-center">
+                  {contactInitials(c)}
+                </span>
+
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-gray-900 truncate">{c.full_name}</p>
+                  {/* Omitted when unknown rather than filled with a dash --
+                      a placeholder is not information. */}
+                  {c.title && <p className="text-xs text-gray-500 truncate">{c.title}</p>}
                 </div>
-                <div className="flex items-center gap-1">
-                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${STRENGTH_COLORS[c.strength] || STRENGTH_COLORS.warm}`}>{c.strength?.toUpperCase()}</span>
+
+                <div className="flex items-center gap-1 shrink-0">
+                  <span
+                    className={`text-[10px] font-medium px-2 py-0.5 rounded-full capitalize ${STRENGTH_COLORS[c.strength] || STRENGTH_COLORS.warm}`}
+                    title={`Relationship: ${c.strength || "warm"}`}
+                  >
+                    {c.strength || "warm"}
+                  </span>
                   {c._can_manage && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 -mr-1.5 text-gray-400 hover:text-gray-700" aria-label="Contact actions" data-testid={`menu-${c.contact_id}`}>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 -mr-1.5 text-gray-400 hover:text-gray-700 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity" aria-label="Contact actions" data-testid={`menu-${c.contact_id}`}>
                           <MoreVertical className="w-4 h-4" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
+                      <DropdownMenuContent align="end" className="bg-white border-[#EAE7E0]">
                         <DropdownMenuItem onClick={() => { setEditing(c); setShowForm(true); }} data-testid={`edit-${c.contact_id}`}>
                           <Pencil className="w-4 h-4 mr-2" /> Edit
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="text-red-600" onClick={() => remove(c)} data-testid={`delete-${c.contact_id}`}>
+                        <DropdownMenuItem className="text-red-600 focus:text-red-600" onClick={() => remove(c)} data-testid={`delete-${c.contact_id}`}>
                           <Trash2 className="w-4 h-4 mr-2" /> Delete
                         </DropdownMenuItem>
                       </DropdownMenuContent>
@@ -99,12 +158,39 @@ export default function FlowContacts() {
                   )}
                 </div>
               </div>
-              <div className="space-y-1 mt-2 text-xs text-gray-500">
-                {c.email && <p className="flex items-center gap-1.5"><Mail className="w-3 h-3" />{c.email}</p>}
-                {c.phone && <p className="flex items-center gap-1.5"><Phone className="w-3 h-3" />{c.phone}</p>}
-                {c.whatsapp && <p className="flex items-center gap-1.5"><MessageCircle className="w-3 h-3" />{c.whatsapp}</p>}
-                {c.linkedin && <p className="flex items-center gap-1.5"><Linkedin className="w-3 h-3" />{c.linkedin}</p>}
-                {c.birthday && <p className="flex items-center gap-1.5"><Cake className="w-3 h-3" />Birthday {c.birthday}</p>}
+
+              {/* Reachable, not merely listed: an address you can write to and
+                  a number you can call, rather than text to copy by hand. */}
+              <div className="space-y-1 mt-3 text-xs text-gray-500">
+                {c.email && (
+                  <a href={`mailto:${c.email}`} className="flex items-center gap-1.5 hover:text-[#1B4332] transition-colors" title={c.email}>
+                    <Mail className="w-3 h-3 shrink-0" /><span className="truncate">{c.email}</span>
+                  </a>
+                )}
+                {c.phone && (
+                  <a href={`tel:${c.phone.replace(/\s+/g, "")}`} className="flex items-center gap-1.5 hover:text-[#1B4332] transition-colors">
+                    <Phone className="w-3 h-3 shrink-0" /><span className="truncate">{c.phone}</span>
+                  </a>
+                )}
+                {c.whatsapp && (
+                  <p className="flex items-center gap-1.5"><MessageCircle className="w-3 h-3 shrink-0" /><span className="truncate">{c.whatsapp}</span></p>
+                )}
+                {c.linkedin && (
+                  <a
+                    href={c.linkedin.startsWith("http") ? c.linkedin : `https://${c.linkedin}`}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="flex items-center gap-1.5 hover:text-[#1B4332] transition-colors"
+                    title={c.linkedin}
+                  >
+                    {/* The handle, not the whole URL -- the rest of the address
+                        is the same on every row and tells you nothing. */}
+                    <Linkedin className="w-3 h-3 shrink-0" /><span className="truncate">{linkedinHandle(c.linkedin)}</span>
+                  </a>
+                )}
+                {c.birthday && (
+                  <p className="flex items-center gap-1.5"><Cake className="w-3 h-3 shrink-0" />{c.birthday}</p>
+                )}
               </div>
             </div>
           ))}

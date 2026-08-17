@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Loader2, FolderKanban, LayoutDashboard, User, Users, CheckCircle2, Clock, ArrowUpRight } from "lucide-react";
 import { tasksAPI } from "../../lib/api";
@@ -10,24 +10,58 @@ import { tasksAPI } from "../../lib/api";
  * with board/task counts. Selecting a project opens its Trello workspace.
  * Reuses the application's existing projects data source (no duplicates).
  */
+/** "12m ago", "3h ago", "5d ago" — or nothing when there is no timestamp. */
+function lastMoved(p) {
+  const iso = p.updated_at || p.completed_at || p.created_at;
+  if (!iso) return null;
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return null;
+  const mins = Math.floor((Date.now() - then) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 export default function ProjectsWorkspace({ onSelect }) {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [mounted, setMounted] = useState(false);
 
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const data = await tasksAPI.listProjectSummary();
-        if (active) setProjects(data || []);
-      } catch {
-        /* non-fatal */
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-    return () => { active = false; };
+  const load = useCallback(async () => {
+    try {
+      setProjects((await tasksAPI.listProjectSummary()) || []);
+    } catch {
+      /* non-fatal */
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  // One frame after the first paint, so the width transition has a start.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  // This is the page people leave open. Loading once meant the counts sat at
+  // whatever they were when the tab was opened -- a board could gain a dozen
+  // tasks and this grid would still say none. Refreshed while it is on screen,
+  // paused when it is not.
+  useEffect(() => {
+    let timer = null;
+    const start = () => { stop(); timer = setInterval(() => { if (!document.hidden) load(); }, 30000); };
+    const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
+    const onVisibility = () => { if (document.hidden) { stop(); } else { load(); start(); } };
+    start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => { stop(); document.removeEventListener("visibilitychange", onVisibility); };
+  }, [load]);
 
   if (loading) {
     return (
@@ -62,7 +96,7 @@ export default function ProjectsWorkspace({ onSelect }) {
             key={p.id}
             onClick={() => onSelect(p)}
             data-testid={`project-card-${p.id}`}
-            className="text-left bg-white rounded-xl border border-[#EAE7E0] p-5 shadow-sm hover:shadow-md hover:border-[#C6A15B]/50 transition-all group focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C6A15B]/40"
+            className="text-left bg-white rounded-xl border border-[#EAE7E0] p-5 shadow-sm transition-all duration-200 ease-out hover:shadow-lg hover:border-[#C6A15B]/50 hover:-translate-y-1 group focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C6A15B]/40"
           >
             {/* Status pill */}
             <div className="flex items-center justify-between mb-3">
@@ -171,12 +205,21 @@ export default function ProjectsWorkspace({ onSelect }) {
                   <span className="text-[11px] font-semibold text-gray-700">{p.progress}%</span>
                 </div>
                 <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                  {/* Grows to its value on load rather than being drawn at it,
+                      so the figure registers as a measurement of something
+                      moving. */}
                   <div
-                    className="h-full rounded-full bg-[#C6A15B]"
-                    style={{ width: `${p.progress}%` }}
+                    className="h-full rounded-full bg-[#C6A15B] transition-[width] duration-700 ease-out"
+                    style={{ width: mounted ? `${p.progress}%` : "0%" }}
                   />
                 </div>
               </div>
+            )}
+
+            {/* When this project last changed. Without it the grid reads as a
+                filing cabinet; with it, as work in progress. */}
+            {lastMoved(p) && (
+              <p className="mt-3 text-[10px] text-gray-400">Updated {lastMoved(p)}</p>
             )}
           </button>
         ))}

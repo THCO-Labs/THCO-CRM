@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import FlowShell from "./FlowShell";
+import { useUser, canCreateProjects } from "../../context/UserContext";
 import { flowAPI } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { Loader2, Plus, Search, Building2, User, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function FlowProjects() {
+  const user = useUser();
+  const canCreate = canCreateProjects(user);
   const [params, setParams] = useSearchParams();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -53,13 +56,18 @@ export default function FlowProjects() {
     <FlowShell
       title={stage ? `Stage ${stage} projects` : "All Projects"}
       action={
+        // Offered only to the people the API would allow. A collaborator can
+        // see this page -- they have work in the pipeline -- but opening a
+        // project is not theirs to do, and a button that answers 403 reads as
+        // a broken feature rather than a rule.
+        canCreate ? (
         <Link to="/flow/projects/new">
           <Button className="bg-[#1B4332] hover:bg-[#1B4332]/90 text-white" data-testid="projects-new-btn">
             <Plus className="w-4 h-4 mr-1.5" />
             New Project
           </Button>
         </Link>
-      }
+      ) : null}
     >
       <form onSubmit={submitSearch} className="flex gap-2 mb-4">
         <div className="relative flex-1 max-w-md">
@@ -84,7 +92,11 @@ export default function FlowProjects() {
       ) : projects.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-xl border border-gray-100">
           <p className="text-gray-500 mb-3">No projects yet.</p>
-          <Link to="/flow/projects/new"><Button className="bg-[#1B4332] text-white">Create first project</Button></Link>
+          {canCreate ? (
+            <Link to="/flow/projects/new"><Button className="bg-[#1B4332] text-white">Create first project</Button></Link>
+          ) : (
+            <p className="text-xs text-gray-400">Your unit's project manager opens projects and adds you to them.</p>
+          )}
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden" data-testid="projects-list">

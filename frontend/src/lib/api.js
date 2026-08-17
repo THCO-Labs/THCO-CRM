@@ -69,6 +69,22 @@ export const authAPI = {
     return response.data;
   },
   
+  // Your own account. Separate from usersAPI.update, which is the admin
+  // directory route and refuses everybody else -- which is why the profile
+  // page's password form only ever worked for administrators.
+  updateMe: async (data) => {
+    const response = await apiClient.put('/auth/me', data);
+    return response.data;
+  },
+
+  changePassword: async (currentPassword, newPassword) => {
+    const response = await apiClient.post('/auth/change-password', {
+      current_password: currentPassword,
+      new_password: newPassword,
+    });
+    return response.data;
+  },
+
   forgotPassword: async (email) => {
     const response = await apiClient.post('/auth/forgot-password', { email });
     return response.data;
@@ -806,6 +822,7 @@ export const flowAPI = {
   updateTicketStatus: async (id, status) =>
     (await apiClient.post(`/flow/tickets/${id}/status`, { status })).data,
   updateTicket: async (id, data) => (await apiClient.put(`/flow/tickets/${id}`, data)).data,
+  deleteTicket: async (id) => (await apiClient.delete(`/flow/tickets/${id}`)).data,
 
   // Messages
   listMessages: async (params = {}) => (await apiClient.get('/flow/messages', { params })).data,
@@ -833,6 +850,57 @@ export const flowAPI = {
 
 // Task Board API (Trello-like boards + cards)
 export const tasksAPI = {
+  // Thumbnails: a shared pool of images, each usable by at most one task.
+  // The server enforces that with a unique index, so a claim can legitimately
+  // fail with 409 when somebody else took the image first.
+  listThumbnails: async (ownerId) =>
+    (await apiClient.get('/tasks/thumbnails', { params: ownerId ? { owner_id: ownerId } : {} })).data,
+  uploadThumbnail: async (file) => {
+    const form = new FormData();
+    form.append('file', file);
+    return (await apiClient.post('/tasks/thumbnails', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })).data;
+  },
+  // Cards and projects both hold pictures, and the id says which.
+  claimThumbnail: async (ownerId, thumbnailId) =>
+    (await apiClient.post(
+      ownerId.startsWith('card_') ? `/tasks/cards/${ownerId}/thumbnail` : `/tasks/projects/${ownerId}/thumbnail`,
+      { thumbnail_id: thumbnailId })).data,
+  releaseThumbnail: async (ownerId) =>
+    (await apiClient.delete(
+      ownerId.startsWith('card_') ? `/tasks/cards/${ownerId}/thumbnail` : `/tasks/projects/${ownerId}/thumbnail`)).data,
+  openThumbnail: async (thumbnailId) => {
+    const response = await apiClient.get(`/tasks/thumbnails/${thumbnailId}/image`, { responseType: 'blob' });
+    return URL.createObjectURL(response.data);
+  },
+
+  // Attachments on task cards. Upload is one call per file so a person can
+  // pick as many as they like and one oversized file cannot fail the rest.
+  listCardAttachments: async (cardId) =>
+    (await apiClient.get(`/tasks/cards/${cardId}/attachments`)).data,
+  uploadCardAttachment: async (cardId, file) => {
+    const form = new FormData();
+    form.append("file", file);
+    return (
+      await apiClient.post(`/tasks/cards/${cardId}/attachments`, form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+    ).data;
+  },
+  deleteCardAttachment: async (attachmentId) =>
+    (await apiClient.delete(`/tasks/attachments/${attachmentId}`)).data,
+  // Fetched as a blob, not linked to directly. This client carries its session
+  // as a Bearer header from localStorage, and neither an <img src> nor a plain
+  // link sends that -- the request would arrive unauthenticated and 401. Same
+  // reason openResumeFile exists.
+  openCardAttachment: async (attachmentId) => {
+    const response = await apiClient.get(`/tasks/attachments/${attachmentId}`, {
+      responseType: "blob",
+    });
+    return URL.createObjectURL(response.data);
+  },
+
   // Projects — reuse Flow projects, annotated with board/task counts
   listProjectSummary: async () => (await apiClient.get('/tasks/projects/summary')).data,
 

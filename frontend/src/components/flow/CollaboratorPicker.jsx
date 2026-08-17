@@ -2,6 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, Check, X, Loader2, ChevronDown, Users } from "lucide-react";
 import { unitsAPI } from "../../lib/api";
 
+/** Two letters for the avatar, from the name where there is one. */
+function initials(name, email) {
+  const words = (name || "").trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (email || "?").slice(0, 2).toUpperCase();
+}
+
 /**
  * Pick the staff who work on a project.
  *
@@ -89,6 +97,17 @@ export default function CollaboratorPicker({ unitSlug, value = [], onChange, dis
   const toggle = (uid) =>
     onChange(value.includes(uid) ? value.filter((x) => x !== uid) : [...value, uid]);
 
+  // Escape closes it. A dropdown that can only be dismissed by aiming at the
+  // page behind it is a dropdown that traps whoever opened it by accident.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") { e.stopPropagation(); setOpen(false); }
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [open]);
+
   if (!unitSlug) {
     return <p className="text-xs text-gray-400">Choose a unit first to see who you can add.</p>;
   }
@@ -99,18 +118,26 @@ export default function CollaboratorPicker({ unitSlug, value = [], onChange, dis
         type="button"
         onClick={() => setOpen((o) => !o)}
         disabled={disabled}
-        className="w-full flex items-center justify-between gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white hover:border-[#1B4332] disabled:opacity-50"
+        className="w-full flex items-center justify-between gap-2 px-3 py-2 border border-[#EAE7E0] rounded-lg text-sm bg-white text-gray-900 hover:border-[#1B4332] focus:outline-none focus:ring-2 focus:ring-[#1B4332]/15 disabled:opacity-50"
         data-testid="collaborator-toggle"
       >
-        <span className="flex items-center gap-1.5 min-w-0 flex-1 text-left">
+        <span className="flex items-center gap-2 min-w-0 flex-1 text-left">
           <Users className="w-4 h-4 text-gray-400 shrink-0" />
           {selected.length > 0 ? (
-            <span className="flex flex-wrap gap-1">
-              {selected.map((p) => (
-                <span key={p.user_id} className="px-1.5 py-0.5 rounded-full bg-[#1B4332]/10 text-[#1B4332] text-[12px]">
+            // Only the first few by name. A project with a dozen people on it
+            // otherwise grows the closed control to several lines and pushes
+            // the rest of the form down the page.
+            <span className="flex flex-wrap items-center gap-1 min-w-0">
+              {selected.slice(0, 3).map((p) => (
+                <span key={p.user_id} className="px-2 py-0.5 rounded-full bg-[#1B4332]/10 text-[#1B4332] text-[12px] whitespace-nowrap">
                   {p.name}
                 </span>
               ))}
+              {selected.length > 3 && (
+                <span className="text-[12px] text-gray-500 whitespace-nowrap">
+                  +{selected.length - 3} more
+                </span>
+              )}
             </span>
           ) : (
             <span className="text-gray-400">Select staff…</span>
@@ -120,9 +147,9 @@ export default function CollaboratorPicker({ unitSlug, value = [], onChange, dis
       </button>
 
       {open && (
-        <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg">
+        <div className="absolute z-20 mt-1 w-full bg-white border border-[#EAE7E0] rounded-xl shadow-xl overflow-hidden">
           {selected.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 p-2 border-b border-gray-50">
+            <div className="flex flex-wrap gap-1.5 p-2 border-b border-[#EAE7E0]">
               {selected.map((p) => (
                 <span
                   key={p.user_id}
@@ -154,12 +181,16 @@ export default function CollaboratorPicker({ unitSlug, value = [], onChange, dis
               onChange={(e) => setQuery(e.target.value)}
               disabled={disabled}
               placeholder="Search by name or email…"
-              className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-[#1B4332] disabled:opacity-50"
+              className="w-full pl-9 pr-3 py-2 bg-white border border-[#EAE7E0] rounded-lg text-sm text-gray-900 outline-none focus:border-[#1B4332] focus:ring-2 focus:ring-[#1B4332]/15 disabled:opacity-50"
               data-testid="collaborator-search"
             />
           </div>
 
-          <div className="max-h-52 overflow-y-auto border-t border-gray-100 divide-y divide-gray-50">
+          {/* The scrollbar is styled rather than left to the platform: the
+              default one rendered as a bare black slab against the white list.
+              Sized to show about five people, so the list reads as a list
+              rather than a slot to scroll through. */}
+          <div className="max-h-[19rem] overflow-y-auto border-t border-[#EAE7E0] [scrollbar-width:thin] [scrollbar-color:#D8D4CC_transparent]">
             {loading && (
               <p className="flex items-center gap-2 px-3 py-3 text-xs text-gray-400">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading this unit's staff…
@@ -178,7 +209,10 @@ export default function CollaboratorPicker({ unitSlug, value = [], onChange, dis
             {!loading &&
               grouped.map(([unitName, people]) => (
                 <div key={unitName}>
-                  <p className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-[0.14em] text-gray-400 bg-[#FAFAF9] sticky top-0">
+                  {/* #F7F6F3 rather than #FAFAF9: only the former has a
+                      dark-mode override, so the old header stayed pale against
+                      a dark list. */}
+                  <p className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500 bg-[#F7F6F3] border-b border-[#EAE7E0] sticky top-0 z-10">
                     {unitName}
                   </p>
                   {people.map((p) => {
@@ -189,19 +223,38 @@ export default function CollaboratorPicker({ unitSlug, value = [], onChange, dis
                         type="button"
                         disabled={disabled}
                         onClick={() => toggle(p.user_id)}
-                        className={`w-full flex items-center justify-between gap-3 px-3 py-2 text-left transition-colors disabled:opacity-50 ${
-                          on ? "bg-[#1B4332]/5" : "hover:bg-gray-50"
+                        className={`w-full flex items-center gap-3 px-3 py-2 text-left transition-colors disabled:opacity-50 ${
+                          on ? "bg-[#1B4332]/[0.06]" : "hover:bg-[#F7F6F3]"
                         }`}
                         data-testid={`pick-${p.user_id}`}
                       >
-                        <span className="min-w-0">
-                          <span className="block text-[13px] text-gray-900 truncate">
-                            {p.name}
-                            {p.is_head && <span className="ml-1.5 text-[10px] text-[#8F7340]">project manager</span>}
+                        {/* A box that fills when chosen. The tick alone, at the
+                            far right of a wide row, left no indication at the
+                            point the eye actually rests. */}
+                        <span
+                          className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center transition-colors ${
+                            on ? "bg-[#1B4332] border-[#1B4332]" : "border-[#D8D4CC]"
+                          }`}
+                          aria-hidden="true"
+                        >
+                          {on && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+                        </span>
+
+                        <span className="w-7 h-7 shrink-0 rounded-full bg-[#1B4332]/10 text-[#1B4332] text-[11px] font-semibold flex items-center justify-center">
+                          {initials(p.name, p.email)}
+                        </span>
+
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-[13px] text-gray-900 truncate">{p.name || p.email}</span>
+                            {p.is_head && (
+                              <span className="shrink-0 px-1.5 py-px rounded-full bg-[#C6A15B]/15 text-[#8F7340] text-[9px] font-semibold uppercase tracking-wide whitespace-nowrap">
+                                PM
+                              </span>
+                            )}
                           </span>
                           <span className="block text-[11px] text-gray-400 truncate">{p.email}</span>
                         </span>
-                        {on && <Check className="w-4 h-4 text-[#1B4332] shrink-0" />}
                       </button>
                     );
                   })}

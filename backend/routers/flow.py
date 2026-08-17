@@ -166,6 +166,24 @@ def _can_manage_contact(contact: dict, user: dict) -> bool:
     return permissions.is_admin(user) or contact.get("created_by") == user.get("user_id")
 
 
+async def _can_manage_ticket(ticket: dict, user: dict) -> bool:
+    """Whether this person may edit or remove a ticket.
+
+    The same three people who could already act on the work it belongs to:
+    whoever raised it, whoever manages its project, and administrators. No
+    new privilege is introduced here -- `can_manage_project` is the rule the
+    project itself, its board and its stage transitions already use.
+    """
+    if permissions.is_admin(user):
+        return True
+    if ticket.get("created_by_id") == user.get("user_id"):
+        return True
+    project = await db.projects.find_one(
+        {"id": ticket.get("project_id")}, {"_id": 0}
+    )
+    return bool(project) and permissions.can_manage_project(user, project)
+
+
 async def _send_stage_email(stage: int, project: dict, actor: dict):
     """Send Resend email to users matching the role for the NEXT stage's role_next."""
     from services import send_email
@@ -245,6 +263,9 @@ class ProjectCreate(BaseModel):
     unit_slug: Optional[str] = None
     # Staff to place on the project from the outset. Each is notified.
     collaborator_ids: List[str] = []
+    # A picture from the shared library. Claimed after the project exists,
+    # because the claim needs something to belong to.
+    thumbnail_id: Optional[str] = None
 
 
 @router.post("/projects")
@@ -342,6 +363,22 @@ async def create_project(data: ProjectCreate, request: Request):
     }
     await db.projects.insert_one(project)
     project.pop("_id", None)
+
+    # The picture is claimed after the project exists, because a claim needs
+    # something to belong to. Losing the race for it does not undo the project
+    # -- a cover is not worth discarding somebody's work over; they are told
+    # and can pick another.
+    if data.thumbnail_id:
+        from routers import taskboard
+
+        claimed = await taskboard.claim_thumbnail_for(project_id, data.thumbnail_id)
+        if claimed:
+            await db.projects.update_one(
+                {"id": project_id}, {"$set": {"thumbnail_id": data.thumbnail_id}}
+            )
+            project["thumbnail_id"] = data.thumbnail_id
+        else:
+            project["thumbnail_unavailable"] = True
 
     await _audit("project", project_id, "created", user, {"stage": 1, "client": data.client_name})
     await _send_stage_email(1, project, user)
@@ -1493,7 +1530,7 @@ async def list_tickets(
     status: Optional[str] = None,
     project_id: Optional[str] = None,
 ):
-    await _get_user(request)
+    user = await _get_user(request)
     query: Dict[str, Any] = {}
     if engineer_id:
         query["assigned_engineer_id"] = engineer_id
@@ -1502,7 +1539,26 @@ async def list_tickets(
     if project_id:
         query["project_id"] = project_id
     cursor = db.tickets.find(query, {"_id": 0}).sort("created_at", -1)
-    return await cursor.to_list(500)
+    tickets = await cursor.to_list(500)
+
+    # Say who may act on each one, so the page can offer edit and delete to
+    # the people who actually have them rather than to everybody.
+    projects = {
+        p["id"]: p
+        async for p in db.projects.find(
+            {"id": {"$in": sorted({t.get("project_id") for t in tickets if t.get("project_id")})}},
+            {"_id": 0},
+        )
+    }
+    admin = permissions.is_admin(user)
+    uid = user.get("user_id")
+    for t in tickets:
+        t["_can_manage"] = bool(
+            admin
+            or t.get("created_by_id") == uid
+            or permissions.can_manage_project(user, projects.get(t.get("project_id")) or {})
+        )
+    return tickets
 
 
 @router.post("/tickets")
@@ -1565,6 +1621,14 @@ async def update_ticket(ticket_id: str, data: TicketUpdate, request: Request):
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
+    # Editing was open to anybody signed in, which is wider than the page ever
+    # offered. The rule applied here is the one delete uses, so a ticket cannot
+    # be changed by somebody who would not be allowed to remove it.
+    permissions.require(
+        await _can_manage_ticket(ticket, user),
+        "Only the person who raised this ticket, its project's manager, or an administrator can change it",
+    )
+
     updates: Dict[str, Any] = {
         k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None
     }
@@ -1580,6 +1644,31 @@ async def update_ticket(ticket_id: str, data: TicketUpdate, request: Request):
 
     refreshed = await db.tickets.find_one({"ticket_id": ticket_id}, {"_id": 0})
     return refreshed
+
+
+@router.delete("/tickets/{ticket_id}")
+async def delete_ticket(ticket_id: str, request: Request):
+    """Remove a ticket.
+
+    Open to the same people who may edit it -- whoever raised it, the manager
+    of its project, and administrators. A ticket that can be changed but never
+    withdrawn leaves the board carrying work nobody intends to do.
+    """
+    user = await _get_user(request)
+
+    ticket = await db.tickets.find_one({"ticket_id": ticket_id}, {"_id": 0})
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    permissions.require(
+        await _can_manage_ticket(ticket, user),
+        "Only the person who raised this ticket, its project's manager, or an administrator can delete it",
+    )
+
+    await db.tickets.delete_one({"ticket_id": ticket_id})
+    # Recorded before it goes, so the log still says what was removed.
+    await _audit("ticket", ticket_id, "deleted", user, {"title": ticket.get("title")})
+    return {"message": "Ticket deleted"}
 
 
 # ===========================================================================
@@ -1732,10 +1821,17 @@ class QuestionItem(BaseModel):
 
 @router.get("/questions")
 async def list_questions(request: Request, industry: Optional[str] = None):
-    await _get_user(request)
+    user = await _get_user(request)
     query = {"industry": industry} if industry else {}
     cursor = db.question_library.find(query, {"_id": 0}).sort([("category", 1), ("order", 1)])
-    return await cursor.to_list(500)
+    questions = await cursor.to_list(500)
+
+    # So the page offers a delete only where the server would honour one.
+    admin = permissions.is_admin(user)
+    uid = user.get("user_id")
+    for q in questions:
+        q["_can_manage"] = bool(admin or q.get("created_by") == uid)
+    return questions
 
 
 @router.post("/questions")
@@ -1754,8 +1850,27 @@ async def add_question(data: QuestionItem, request: Request):
 
 @router.delete("/questions/{question_id}")
 async def delete_question(question_id: str, request: Request):
-    await _get_user(request)
+    """Remove a question from the shared library.
+
+    Whoever added it, or an administrator -- the same rule contacts and tickets
+    use. This is a library everyone draws on, and it previously accepted a
+    delete from anybody signed in, so one person could quietly empty a resource
+    the whole firm relies on.
+    """
+    user = await _get_user(request)
+
+    question = await db.question_library.find_one({"question_id": question_id}, {"_id": 0})
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    permissions.require(
+        permissions.is_admin(user) or question.get("created_by") == user.get("user_id"),
+        "Only the person who added this question, or an administrator, can delete it",
+    )
+
     await db.question_library.delete_one({"question_id": question_id})
+    await _audit("question", question_id, "deleted", user,
+                 {"text": (question.get("text") or "")[:120]})
     return {"message": "Deleted"}
 
 

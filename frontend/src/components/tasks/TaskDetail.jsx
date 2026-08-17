@@ -1,4 +1,6 @@
-import { X, AlignLeft, Calendar, Flag, Tag, Users } from "lucide-react";
+import { X, AlignLeft, Calendar, Flag, Tag, Users, Paperclip, Image as ImageIcon } from "lucide-react";
+import CardAttachments from "./CardAttachments";
+import ThumbnailPicker from "./ThumbnailPicker";
 
 /**
  * The back of a task card, in the Trello sense: everything recorded about
@@ -55,7 +57,7 @@ function Section({ icon: Icon, title, children }) {
   );
 }
 
-export default function TaskDetail({ card, boardTitle, onClose }) {
+export default function TaskDetail({ card, boardTitle, onClose, canEdit = false, onThumbnailChange }) {
   if (!card) return null;
 
   const priority = PRIORITIES[card.priority] || PRIORITIES.medium;
@@ -168,6 +170,19 @@ export default function TaskDetail({ card, boardTitle, onClose }) {
                 Nothing written yet — open the task to add detail.
               </p>
             )}
+          </Section>
+
+          <Section icon={ImageIcon} title="Picture">
+            <ThumbnailPicker
+              cardId={card.card_id}
+              currentThumbnailId={card.thumbnail_id}
+              canEdit={canEdit}
+              onChange={onThumbnailChange}
+            />
+          </Section>
+
+          <Section icon={Paperclip} title="Attachments">
+            <CardAttachments cardId={card.card_id} canEdit={canEdit} />
           </Section>
         </div>
       </div>

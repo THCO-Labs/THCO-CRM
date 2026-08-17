@@ -656,7 +656,9 @@ const StatusPill = ({ icon: Icon, label, done }) => (
   </div>
 );
 
-const inputCls = "w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#1B4332]/20 focus:border-[#1B4332] outline-none";
+// bg-white/text-gray-900 are named so the dark-mode overrides reach these
+// fields -- see NewProjectForm for the same fix and the reason.
+const inputCls = "w-full px-3 py-2 bg-white text-gray-900 border border-[#EAE7E0] rounded-lg text-sm focus:ring-2 focus:ring-[#1B4332]/20 focus:border-[#1B4332] outline-none";
 
 const Field = ({ label, children }) => (
   <div className="mb-4">

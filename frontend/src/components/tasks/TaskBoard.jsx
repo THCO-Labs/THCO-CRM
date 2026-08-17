@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -41,6 +41,10 @@ export default function TaskBoard({ permissions = READ_ONLY_PERMISSIONS, api }) 
   const [boards, setBoards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeCard, setActiveCard] = useState(null); // card being dragged (for overlay)
+  // Read by the refresh timer, which must not swap the board out from under
+  // a card in mid-flight. A ref rather than the state value so the interval
+  // does not need re-creating on every drag.
+  const activeCardRef = useRef(null);
 
   const canDrag = permissions.manageBoards || permissions.moveTasks;
 
@@ -69,6 +73,40 @@ export default function TaskBoard({ permissions = READ_ONLY_PERMISSIONS, api }) 
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  // Mirror the drag state into the ref the refresh timer reads.
+  useEffect(() => {
+    activeCardRef.current = activeCard;
+  }, [activeCard]);
+
+  // Keep the board current while somebody is looking at it. A shared board
+  // that only changes when you reload the page shows you your own edits and
+  // nobody else's, which is what makes it feel like a static list rather than
+  // a place several people are working.
+  //
+  // Paused while the tab is in the background -- refreshing a board nobody is
+  // watching spends requests to no end -- and it refreshes once on return, so
+  // coming back to the tab shows the current state rather than a stale one.
+  useEffect(() => {
+    let timer = null;
+    const start = () => {
+      stop();
+      timer = setInterval(() => {
+        // Not mid-drag: replacing the array under a card being moved would
+        // drop it.
+        if (!document.hidden && !activeCardRef.current) load();
+      }, 25000);
+    };
+    const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
+    const onVisibility = () => {
+      if (document.hidden) { stop(); return; }
+      load();
+      start();
+    };
+    start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => { stop(); document.removeEventListener("visibilitychange", onVisibility); };
   }, [load]);
 
   // ---- find which board contains a given card id (or the board id itself) ----
@@ -330,6 +368,7 @@ export default function TaskBoard({ permissions = READ_ONLY_PERMISSIONS, api }) 
               onEditCard={editCard}
               onDeleteCard={deleteCard}
               onAddCard={addCard}
+              onThumbnailChange={load}
             />
           ))}
         </SortableContext>

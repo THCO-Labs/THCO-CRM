@@ -1082,6 +1082,96 @@ async def reset_password(data: PasswordResetConfirm):
     
     return {"message": "Password reset successfully"}
 
+
+# ==================== YOUR OWN ACCOUNT ====================
+# Editing an account was reachable only through the admin directory, so
+# everybody else had to ask somebody to correct their own name or change their
+# own password. These two routes are the self-service equivalent, and they are
+# deliberately narrower than the admin ones: they act on the caller and nobody
+# else, and they can only touch fields that carry no authority.
+
+
+class MyProfileUpdate(BaseModel):
+    """What a person may change about themselves.
+
+    Name and picture, and nothing else. Role, unit access, headed units,
+    status, the delivery flags and the device lock all decide what somebody is
+    allowed to do, so they stay where they were -- with the administrators.
+    Listing only the harmless fields here means a request naming any of the
+    others is not refused so much as unable to express itself.
+    """
+    name: Optional[str] = None
+    picture: Optional[str] = None
+
+
+class MyPasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+
+@api_router.put("/auth/me")
+async def update_my_profile(updates: MyProfileUpdate, request: Request):
+    """Change your own name or picture."""
+    user = await get_current_user(request)
+
+    changes = {k: v for k, v in updates.model_dump(exclude_unset=True).items() if v is not None}
+    if "name" in changes:
+        name = changes["name"].strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Name cannot be empty")
+        changes["name"] = name
+    if not changes:
+        raise HTTPException(status_code=400, detail="Nothing to change")
+
+    changes["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": changes})
+
+    fresh = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0, "password_hash": 0})
+    return fresh
+
+
+@api_router.post("/auth/change-password")
+async def change_my_password(data: MyPasswordChange, request: Request):
+    """Change your own password, having proved you know the current one.
+
+    Requiring the current password is what makes this safe to expose to
+    everybody: an unattended session cannot be used to lock the owner out of
+    their own account.
+    """
+    user = await get_current_user(request)
+
+    record = await db.users.find_one({"user_id": user["user_id"]})
+    if not record or not record.get("password_hash"):
+        # Accounts created through Google have no password to replace.
+        raise HTTPException(
+            status_code=400,
+            detail="This account signs in with Google, so it has no password to change.",
+        )
+
+    if not verify_password(data.current_password, record["password_hash"]):
+        raise HTTPException(status_code=400, detail="Your current password is not correct")
+
+    if len(data.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Use at least 8 characters")
+    if data.new_password == data.current_password:
+        raise HTTPException(status_code=400, detail="The new password is the same as the old one")
+
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {"password_hash": hash_password(data.new_password),
+                  "password_changed_at": datetime.now(timezone.utc).isoformat()}},
+    )
+
+    # Every other session is ended. If the old password was known to somebody
+    # else, changing it should remove their access, not leave them signed in.
+    current_token = (request.headers.get("Authorization") or "").replace("Bearer ", "").strip()
+    await db.user_sessions.delete_many(
+        {"user_id": user["user_id"], "session_token": {"$ne": current_token}}
+    )
+
+    return {"message": "Password changed"}
+
+
 # ==================== USER MANAGEMENT ROUTES ====================
 
 def can_manage_users(user: dict) -> bool:
@@ -3237,6 +3327,21 @@ CANONICAL_UNITS = [
     ("academy", "Academy & Learning"),
     ("client-delivery", "Client Delivery"),
 ]
+
+
+@app.on_event("startup")
+async def ensure_task_attachment_indexes():
+    """Index task attachments before anybody loads a board.
+
+    Every board load asks for the attachments of a page of cards at once;
+    unindexed, that query reads the collection -- and this collection holds the
+    files themselves.
+    """
+    if db is None:
+        return
+    from routers import taskboard
+    await taskboard.ensure_attachment_indexes()
+    await taskboard.ensure_thumbnail_indexes()
 
 
 @app.on_event("startup")

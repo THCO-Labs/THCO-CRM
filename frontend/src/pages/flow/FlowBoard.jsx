@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import FlowShell from "./FlowShell";
+import { useUser, canCreateProjects } from "../../context/UserContext";
 import { flowAPI, authAPI } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { Loader2, Plus, Building2, GitBranch } from "lucide-react";
@@ -9,6 +10,8 @@ import StructuredStageModal from "../../components/flow/StructuredStageModal";
 import { STAGES, STAGE_BORDER } from "./stages";
 
 export default function FlowBoard() {
+  const user = useUser();
+  const canCreate = canCreateProjects(user);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [dragging, setDragging] = useState(null); // { project, fromStage }
@@ -120,12 +123,15 @@ export default function FlowBoard() {
     <FlowShell
       title={`Pipeline (Kanban)${moving ? " — saving…" : ""}`}
       action={
+        // Same rule as everywhere else: only a project manager or an
+        // administrator opens work.
+        canCreate ? (
         <Link to="/flow/projects/new">
           <Button className="bg-[#1B4332] hover:bg-[#1B4332]/90 text-white" data-testid="board-new-btn">
             <Plus className="w-4 h-4 mr-1.5" />
             New Project
           </Button>
-        </Link>
+        </Link>) : null
       }
     >
       <p className="text-xs text-gray-400 mb-3">

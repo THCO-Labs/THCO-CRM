@@ -59,9 +59,38 @@ RF_BATCH, RF_THROTTLE = 25, 1.0
 RF_CANDIDATE_CHUNK = 100
 
 
-def id_set(coll, key, query=None):
-    """Set of `key` values present in a collection (optionally filtered)."""
-    return {d[key] for d in coll.find(query or {}, {"_id": 0, key: 1})}
+def id_set(coll, key, query=None, page=2000, page_timeout_ms=120_000):
+    """Set of `key` values present in a collection (optionally filtered).
+
+    Read a page at a time rather than in one cursor. Cosmos DB ends a command
+    that outruns its time limit (code 50), and on the free tier a single pass
+    over a collection this size no longer finishes: candidates reached 33k
+    documents and resume_versions 76k, which is enough to kill the read before
+    the migration reaches the step it was resumed for.
+
+    Paging walks `_id`, which is indexed on every collection whatever else is
+    not, so each query is bounded and index-backed. The cost is more round
+    trips; the benefit is that it finishes.
+    """
+    found = set()
+    base = dict(query or {})
+    last = None
+    while True:
+        q = dict(base)
+        if last is not None:
+            q["_id"] = {"$gt": last}
+        page_docs = list(
+            coll.find(q, {"_id": 1, key: 1})
+            .sort("_id", 1)
+            .limit(page)
+            .max_time_ms(page_timeout_ms)
+        )
+        if not page_docs:
+            return found
+        for d in page_docs:
+            if key in d:
+                found.add(d[key])
+        last = page_docs[-1]["_id"]
 
 
 def local_gmail_ids(ldb):

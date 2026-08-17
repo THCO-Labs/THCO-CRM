@@ -39,7 +39,7 @@ managed by the coordinator and consumed anonymously by clients:
   PATCH  /api/tasks/shared/{token}/cards/{id}      public: edit a card (edit links only)
   POST   /api/tasks/shared/{token}/reorder         public: move/reorder cards (edit links only)
 """
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response, UploadFile, File
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timezone
@@ -47,7 +47,11 @@ import uuid
 import re
 import secrets
 
+import logging
+
 from services import permissions
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -401,6 +405,12 @@ async def projects_summary(request: Request):
             "engineer_id": p.get("assigned_engineer_id"),
             "created_by_name": p.get("created_by_name"),
             "created_at": p.get("created_at"),
+            # Sent so the workspace can say when a project last moved. Without
+            # it the card would date itself by when it was created, which is
+            # not the same claim and is wrong on anything long-running.
+            "updated_at": p.get("updated_at"),
+            # The project's picture, so the workspace grid can show it.
+            "thumbnail_id": p.get("thumbnail_id"),
             "completed_at": p.get("completed_at"),
             "board_count": board_counts.get(pid, 0),
             "task_count": task_counts.get(pid, 0),
@@ -647,6 +657,26 @@ async def list_boards(request: Request, project_id: str):
         )
         b["cards"] = cards
         boards.append(b)
+
+    # How many files each card carries, and the first image among them, so the
+    # board can show a card has something attached without every board load
+    # dragging the files themselves through the query.
+    card_ids = [c["card_id"] for b in boards for c in b["cards"]]
+    if card_ids:
+        summary: dict = {}
+        async for a in db.task_attachments.find(
+            {"card_id": {"$in": card_ids}},
+            {"_id": 0, "card_id": 1, "attachment_id": 1, "content_type": 1, "uploaded_at": 1},
+        ).sort("uploaded_at", 1):
+            entry = summary.setdefault(a["card_id"], {"count": 0, "preview": None})
+            entry["count"] += 1
+            if entry["preview"] is None and (a.get("content_type") or "").startswith("image/"):
+                entry["preview"] = a["attachment_id"]
+        for b in boards:
+            for c in b["cards"]:
+                s = summary.get(c["card_id"])
+                c["attachment_count"] = s["count"] if s else 0
+                c["preview_attachment_id"] = s["preview"] if s else None
     return boards
 
 
@@ -976,6 +1006,362 @@ async def reorder_shared(share_token: str, data: SharedReorderRequest):
         )
 
     return {"ok": True, "cards": len(data.cards)}
+
+
+# ---------------------------------------------------------------------------
+# Attachments
+# ---------------------------------------------------------------------------
+# A card may carry as many attachments as the work needs; nothing limits the
+# count. Each individual file is capped, because one enormous upload blocks the
+# request for everybody else and the database this runs on answers a large
+# write with a timeout rather than storing it.
+MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024
+
+# Kept in their own collection rather than on the card. Cards are read on every
+# board load -- a card carrying its files inline would drag megabytes of binary
+# through a query that only wanted a title.
+ATTACHMENT_FIELDS = {
+    "_id": 0, "attachment_id": 1, "card_id": 1, "filename": 1, "content_type": 1,
+    "size": 1, "uploaded_at": 1, "uploaded_by_id": 1, "uploaded_by_name": 1,
+}
+
+
+def _is_viewable(content_type: str) -> bool:
+    """Whether a browser can show this in place rather than download it."""
+    ct = (content_type or "").lower()
+    return ct.startswith("image/") or ct == "application/pdf"
+
+
+# ---------------------------------------------------------------------------
+# Thumbnails
+# ---------------------------------------------------------------------------
+# A shared pool of images any task may take a cover from. As many as anyone
+# cares to upload -- nothing limits the size of the pool.
+#
+# A thumbnail belongs to at most one task. That is held by a unique index on
+# `claimed_by` rather than by checking first and writing after: two
+# people opening the picker at the same moment see the same free image, and a
+# check-then-write would let them both take it. The index makes the second
+# write fail, and the loser is told to pick again.
+THUMBNAIL_FIELDS = {
+    "_id": 0, "thumbnail_id": 1, "filename": 1, "content_type": 1, "size": 1,
+    "uploaded_at": 1, "uploaded_by_name": 1, "claimed_by": 1,
+}
+
+
+async def ensure_thumbnail_indexes() -> None:
+    """Index the pool, and make single ownership a rule the database keeps."""
+    try:
+        await db.task_thumbnails.create_index(
+            [("thumbnail_id", 1)], unique=True, background=True, name="thumbnail_id"
+        )
+        # Partial, so the many unclaimed rows (all holding null) do not collide
+        # with each other -- only actual claims are constrained.
+        await db.task_thumbnails.create_index(
+            [("claimed_by", 1)],
+            unique=True,
+            background=True,
+            name="thumbnail_one_owner",
+            partialFilterExpression={"claimed_by": {"$type": "string"}},
+        )
+    except Exception as e:
+        logger.warning("Thumbnail indexes skipped: %s", str(e)[:160])
+
+
+@router.get("/thumbnails")
+async def list_thumbnails(request: Request, card_id: Optional[str] = None, owner_id: Optional[str] = None):
+    """The images available to choose from.
+
+    Free ones, plus whichever this card already holds so its own cover still
+    shows as the current choice rather than vanishing from its own picker.
+    """
+    await _current(request)
+
+    # `owner_id` is the general form -- a project or a card. `card_id` is kept
+    # because the task picker already calls with it.
+    mine = owner_id or card_id
+    query: dict = {"$or": [{"claimed_by": None}, {"claimed_by": {"$exists": False}}]}
+    if mine:
+        query = {"$or": query["$or"] + [{"claimed_by": mine}]}
+
+    rows = await db.task_thumbnails.find(query, THUMBNAIL_FIELDS).sort("uploaded_at", -1).to_list(1000)
+    for r in rows:
+        r["is_current"] = bool(mine) and r.get("claimed_by") == mine
+    return rows
+
+
+@router.post("/thumbnails")
+async def upload_thumbnail(request: Request, file: UploadFile = File(...)):
+    """Add an image to the pool. Unclaimed until a task takes it."""
+    user = await _current(request)
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="That file is empty")
+    if not (file.content_type or "").startswith("image/"):
+        raise HTTPException(status_code=400, detail="A thumbnail has to be an image")
+    if len(content) > MAX_ATTACHMENT_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"{file.filename} is {len(content) / 1024 / 1024:.1f} MB. "
+                   f"The limit per image is {MAX_ATTACHMENT_BYTES // 1024 // 1024} MB.",
+        )
+
+    doc = {
+        "thumbnail_id": f"thumb_{uuid.uuid4().hex[:12]}",
+        "filename": (file.filename or "image").replace('"', "")[:200],
+        "content_type": file.content_type,
+        "size": len(content),
+        "content": content,
+        "uploaded_at": now_iso(),
+        "uploaded_by_id": user.get("user_id"),
+        "uploaded_by_name": user.get("name"),
+        "claimed_by": None,
+    }
+    await db.task_thumbnails.insert_one(doc)
+    return {k: doc[k] for k in doc if k in THUMBNAIL_FIELDS and k != "_id"}
+
+
+@router.get("/thumbnails/{thumbnail_id}/image")
+async def get_thumbnail_image(thumbnail_id: str, request: Request):
+    await _current(request)
+    doc = await db.task_thumbnails.find_one({"thumbnail_id": thumbnail_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Thumbnail not found")
+    return Response(
+        content=doc["content"],
+        media_type=doc.get("content_type") or "image/png",
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
+
+
+@router.post("/cards/{card_id}/thumbnail")
+async def claim_thumbnail(card_id: str, data: dict, request: Request):
+    """Give a card a cover, taking that image out of the pool for everyone."""
+    thumbnail_id = (data or {}).get("thumbnail_id")
+    if not thumbnail_id:
+        raise HTTPException(status_code=400, detail="thumbnail_id is required")
+
+    card = await db.task_cards.find_one({"card_id": card_id}, {"_id": 0, "project_id": 1})
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    await _require_board_user(request, card.get("project_id"))
+
+    claimed = await claim_thumbnail_for(card_id, thumbnail_id)
+    if not claimed:
+        raise HTTPException(
+            status_code=409,
+            detail="That image has already been used on another task. Choose a different one.",
+        )
+
+    await db.task_cards.update_one(
+        {"card_id": card_id},
+        {"$set": {"thumbnail_id": thumbnail_id, "updated_at": now_iso()}},
+    )
+    return claimed
+
+
+@router.delete("/cards/{card_id}/thumbnail")
+async def release_thumbnail(card_id: str, request: Request):
+    """Take the cover off a card and return the image to the pool."""
+    card = await db.task_cards.find_one({"card_id": card_id}, {"_id": 0, "project_id": 1})
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    await _require_board_user(request, card.get("project_id"))
+
+    await db.task_thumbnails.update_many(
+        {"claimed_by": card_id}, {"$set": {"claimed_by": None}}
+    )
+    await db.task_cards.update_one(
+        {"card_id": card_id},
+        {"$set": {"updated_at": now_iso()}, "$unset": {"thumbnail_id": ""}},
+    )
+    return {"ok": True}
+
+
+async def claim_thumbnail_for(owner_id: str, thumbnail_id: str) -> Optional[dict]:
+    """Give `owner_id` a picture, taking it from whatever held it before.
+
+    Shared by tasks and projects, and by project creation, so the rule that a
+    picture belongs to one thing is written once. Returns None when the picture
+    was already taken -- an ordinary outcome when two people choose at the same
+    moment, not an error in the caller.
+    """
+    await db.task_thumbnails.update_many(
+        {"claimed_by": owner_id}, {"$set": {"claimed_by": None}}
+    )
+    return await db.task_thumbnails.find_one_and_update(
+        {"thumbnail_id": thumbnail_id,
+         "$or": [{"claimed_by": None}, {"claimed_by": {"$exists": False}}]},
+        {"$set": {"claimed_by": owner_id, "claimed_at": now_iso()}},
+        projection=THUMBNAIL_FIELDS,
+        return_document=True,
+    )
+
+
+@router.post("/projects/{project_id}/thumbnail")
+async def claim_project_thumbnail(project_id: str, data: dict, request: Request):
+    """Give a project its picture."""
+    thumbnail_id = (data or {}).get("thumbnail_id")
+    if not thumbnail_id:
+        raise HTTPException(status_code=400, detail="thumbnail_id is required")
+
+    user = await _current(request)
+    await _assert_project_access(user, project_id)
+
+    claimed = await claim_thumbnail_for(project_id, thumbnail_id)
+    if not claimed:
+        raise HTTPException(
+            status_code=409,
+            detail="That picture is already in use. Choose a different one.",
+        )
+    await db.projects.update_one(
+        {"id": project_id}, {"$set": {"thumbnail_id": thumbnail_id, "updated_at": now_iso()}}
+    )
+    return claimed
+
+
+@router.delete("/projects/{project_id}/thumbnail")
+async def release_project_thumbnail(project_id: str, request: Request):
+    """Take a project's picture off and return it to the library."""
+    user = await _current(request)
+    await _assert_project_access(user, project_id)
+
+    await db.task_thumbnails.update_many(
+        {"claimed_by": project_id}, {"$set": {"claimed_by": None}}
+    )
+    await db.projects.update_one(
+        {"id": project_id},
+        {"$set": {"updated_at": now_iso()}, "$unset": {"thumbnail_id": ""}},
+    )
+    return {"ok": True}
+
+
+async def ensure_attachment_indexes() -> None:
+    """Index the lookups attachments are read by.
+
+    Every board load asks for the attachments of a page of cards at once, so
+    without an index on card_id that query reads the whole collection --
+    including the binary content of every file in it.
+    """
+    try:
+        await db.task_attachments.create_index(
+            [("card_id", 1), ("uploaded_at", 1)], background=True, name="attachment_by_card"
+        )
+        await db.task_attachments.create_index(
+            [("attachment_id", 1)], background=True, unique=True, name="attachment_id"
+        )
+    except Exception as e:  # an existing index under another name is not a failure
+        logger.warning("Attachment indexes skipped: %s", str(e)[:120])
+
+
+@router.get("/cards/{card_id}/attachments")
+async def list_attachments(card_id: str, request: Request):
+    """What is attached to a card, without the file contents."""
+    card = await db.task_cards.find_one({"card_id": card_id}, {"_id": 0, "project_id": 1})
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    await _require_board_user(request, card.get("project_id"))
+
+    rows = await db.task_attachments.find(
+        {"card_id": card_id}, ATTACHMENT_FIELDS
+    ).sort("uploaded_at", 1).to_list(500)
+    for r in rows:
+        r["is_viewable"] = _is_viewable(r.get("content_type"))
+    return rows
+
+
+@router.post("/cards/{card_id}/attachments")
+async def add_attachment(card_id: str, request: Request, file: UploadFile = File(...)):
+    """Attach a file to a card.
+
+    One file per call, and the page sends one call per file, so a person can
+    select as many as they like and each is written on its own. Sending them
+    together would mean the whole selection failing because one file in it was
+    too large.
+    """
+    card = await db.task_cards.find_one({"card_id": card_id}, {"_id": 0, "project_id": 1})
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    user, _ = await _require_board_user(request, card.get("project_id"))
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="That file is empty")
+    if len(content) > MAX_ATTACHMENT_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"{file.filename} is {len(content) / 1024 / 1024:.1f} MB. "
+                   f"The limit per file is {MAX_ATTACHMENT_BYTES // 1024 // 1024} MB.",
+        )
+
+    doc = {
+        "attachment_id": f"att_{uuid.uuid4().hex[:12]}",
+        "card_id": card_id,
+        "project_id": card.get("project_id"),
+        "filename": (file.filename or "attachment").replace('"', "")[:200],
+        "content_type": file.content_type or "application/octet-stream",
+        "size": len(content),
+        "content": content,
+        "uploaded_at": now_iso(),
+        "uploaded_by_id": user.get("user_id"),
+        "uploaded_by_name": user.get("name"),
+    }
+    await db.task_attachments.insert_one(doc)
+
+    # The card's own timestamp moves, so the board shows it as recently touched.
+    await db.task_cards.update_one({"card_id": card_id}, {"$set": {"updated_at": now_iso()}})
+
+    # `_id` is a key of ATTACHMENT_FIELDS (set to 0 for the projection), and
+    # insert_one puts one on the document, so filtering by that mapping alone
+    # hands back a raw ObjectId and the response fails to serialise.
+    stored = {k: doc[k] for k in doc if k in ATTACHMENT_FIELDS and k != "_id"}
+    stored["is_viewable"] = _is_viewable(doc["content_type"])
+    return stored
+
+
+@router.get("/attachments/{attachment_id}")
+async def get_attachment(attachment_id: str, request: Request, download: bool = False):
+    """Serve one attachment, inline where a browser can show it."""
+    doc = await db.task_attachments.find_one({"attachment_id": attachment_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    await _require_board_user(request, doc.get("project_id"))
+
+    disposition = "attachment" if download or not _is_viewable(doc.get("content_type")) else "inline"
+    return Response(
+        content=doc["content"],
+        media_type=doc.get("content_type") or "application/octet-stream",
+        headers={
+            "Content-Disposition": f'{disposition}; filename="{doc.get("filename")}"',
+            "Cache-Control": "private, max-age=300",
+        },
+    )
+
+
+@router.delete("/attachments/{attachment_id}")
+async def delete_attachment(attachment_id: str, request: Request):
+    """Remove an attachment.
+
+    Whoever put it there, or anybody who shapes the board -- the same people
+    who may delete the card it hangs on, so removing a file is never harder
+    than removing the task that carries it.
+    """
+    doc = await db.task_attachments.find_one(
+        {"attachment_id": attachment_id}, {"_id": 0, "content": 0}
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    user, perms = await _require_board_user(request, doc.get("project_id"))
+
+    if doc.get("uploaded_by_id") != user.get("user_id"):
+        await _require_board_manager(request, doc.get("project_id"))
+
+    await db.task_attachments.delete_one({"attachment_id": attachment_id})
+    await db.task_cards.update_one(
+        {"card_id": doc.get("card_id")}, {"$set": {"updated_at": now_iso()}}
+    )
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------

@@ -22,6 +22,7 @@ import { Button } from "../components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../components/ui/dialog";
 import { dashboardAPI, activityAPI, authAPI, unitsAPI } from "../lib/api";
 import { useAnalytics } from "../context/AnalyticsContext";
+import NewProjectDialog from "../components/flow/NewProjectDialog";
 import { hasFullAccess, hasUnitAccess, canCreateProjects, canEnterUnits } from "../context/UserContext";
 
 const UNITS = [
@@ -144,6 +145,7 @@ const Dashboard = () => {
   const [accessModal, setAccessModal] = useState({ open: false, unitName: "" });
   const [dynamicUnits, setDynamicUnits] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
   const { trackAction } = useAnalytics();
 
   useEffect(() => {
@@ -288,14 +290,19 @@ const Dashboard = () => {
 
           {/* Starting a project was only reachable from inside THCO Flow, so
               anyone who did not already know where to look could not find it.
-              It belongs on the page everyone lands on after signing in. */}
+              It belongs on the page everyone lands on after signing in -- and
+              it opens here rather than navigating into Flow, because losing
+              the dashboard to fill in a short form and then finding the way
+              back is an interruption the work does not require. */}
           {canCreateProject && (
-            <Link to="/flow/projects/new" data-testid="dashboard-new-project">
-              <Button className="h-11 px-6 rounded-full bg-[#0C0F13] text-white hover:bg-[#1a1f26] shadow-sm">
-                <Plus className="w-4 h-4 mr-2" />
-                New Project
-              </Button>
-            </Link>
+            <Button
+              onClick={() => setNewProjectOpen(true)}
+              data-testid="dashboard-new-project"
+              className="h-11 px-6 rounded-full bg-[#0C0F13] text-white hover:bg-[#1a1f26] shadow-sm"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              New Project
+            </Button>
           )}
         </div>
         <div className="lux-divider mt-8" />
@@ -421,6 +428,18 @@ const Dashboard = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Opening a project happens here rather than in Flow. Once saved the
+          dashboard reloads its own figures, so the new work shows up on the
+          page you are already looking at. */}
+      <NewProjectDialog
+        open={newProjectOpen}
+        onClose={() => setNewProjectOpen(false)}
+        onCreated={() => {
+          trackAction("create", "project_from_dashboard");
+          dashboardAPI.getStats().then(setStats).catch(() => {});
+        }}
+      />
     </div>
   );
 };

@@ -3,6 +3,16 @@ import FlowShell from "./FlowShell";
 import { flowAPI } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from "../../components/ui/alert-dialog";
+import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -28,6 +38,7 @@ import {
   X,
   MoreVertical,
   Pencil,
+  Trash2,
   MoveRight,
   GripVertical,
 } from "lucide-react";
@@ -47,6 +58,9 @@ export default function FlowTickets() {
   // null = form closed; "new" = create; otherwise a ticket object to edit.
   const [editing, setEditing] = useState(null);
   const [activeTicket, setActiveTicket] = useState(null);
+  // The ticket awaiting a delete confirmation, or null.
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -60,6 +74,21 @@ export default function FlowTickets() {
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
+
+  const removeTicket = async () => {
+    if (!confirmDelete) return;
+    setDeleting(true);
+    try {
+      await flowAPI.deleteTicket(confirmDelete.ticket_id);
+      toast.success("Ticket deleted");
+      setConfirmDelete(null);
+      load();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Could not delete this ticket");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const move = async (id, status) => {
     try { await flowAPI.updateTicketStatus(id, status); toast.success("Moved"); load(); }
@@ -112,6 +141,7 @@ export default function FlowTickets() {
                   status={s}
                   tickets={grouped[s.key] || []}
                   onEdit={(t) => setEditing(t)}
+                  onDelete={(t) => setConfirmDelete(t)}
                   onMove={move}
                 />
               ))}
@@ -130,6 +160,31 @@ export default function FlowTickets() {
           onSaved={() => { setEditing(null); load(); }}
         />
       )}
+
+      {/* Asked before, not after. Deleting a ticket cannot be undone, and the
+          menu item sits next to the one that merely opens it for editing. */}
+      <AlertDialog open={Boolean(confirmDelete)} onOpenChange={(o) => !o && setConfirmDelete(null)}>
+        <AlertDialogContent className="bg-white border-[#EAE7E0] text-gray-900">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this ticket?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <span className="font-medium text-gray-900">{confirmDelete?.title}</span> will be
+              removed from the board. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Keep it</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); removeTicket(); }}
+              disabled={deleting}
+              className="bg-red-600 hover:bg-red-700 text-white"
+              data-testid="ticket-delete-confirm"
+            >
+              {deleting ? "Deleting..." : "Delete ticket"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </FlowShell>
   );
 }
@@ -137,7 +192,7 @@ export default function FlowTickets() {
 // One of the four fixed kanban columns. Its whole body is a drop target, so a
 // dragged ticket can be released on an empty column just as easily as on top
 // of another card.
-const StatusColumn = ({ status, tickets, onEdit, onMove }) => {
+const StatusColumn = ({ status, tickets, onEdit, onDelete, onMove }) => {
   const { setNodeRef, isOver } = useDroppable({
     id: status.key,
     data: { type: "column", status: status.key },
@@ -156,14 +211,14 @@ const StatusColumn = ({ status, tickets, onEdit, onMove }) => {
       </div>
       <div className="space-y-2 max-h-[600px] overflow-y-auto min-h-[80px]">
         {tickets.map((t) => (
-          <DraggableTicketCard key={t.ticket_id} ticket={t} onEdit={onEdit} onMove={onMove} />
+          <DraggableTicketCard key={t.ticket_id} ticket={t} onEdit={onEdit} onDelete={onDelete} onMove={onMove} />
         ))}
       </div>
     </div>
   );
 };
 
-const DraggableTicketCard = ({ ticket, onEdit, onMove }) => {
+const DraggableTicketCard = ({ ticket, onEdit, onDelete, onMove }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useDraggable({
     id: ticket.ticket_id,
     data: { type: "ticket", ticket_id: ticket.ticket_id, status: ticket.status },
@@ -215,10 +270,24 @@ const DraggableTicketCard = ({ ticket, onEdit, onMove }) => {
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44 bg-white">
-            <DropdownMenuItem onClick={() => onEdit(ticket)} data-testid={`ticket-edit-${ticket.ticket_id}`}>
-              <Pencil className="w-4 h-4 mr-2" />Edit ticket
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
+            {/* Offered only where the server would allow it -- whoever raised
+                the ticket, the manager of its project, or an administrator.
+                `_can_manage` is that same verdict, sent with the ticket. */}
+            {ticket._can_manage && (
+              <>
+                <DropdownMenuItem onClick={() => onEdit(ticket)} data-testid={`ticket-edit-${ticket.ticket_id}`}>
+                  <Pencil className="w-4 h-4 mr-2" />Edit ticket
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => onDelete(ticket)}
+                  className="text-red-600 focus:text-red-600"
+                  data-testid={`ticket-delete-${ticket.ticket_id}`}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />Delete ticket
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
             {STATUSES.filter((x) => x.key !== ticket.status).map((x) => (
               <DropdownMenuItem key={x.key} onClick={() => onMove(ticket.ticket_id, x.key)}>
                 <MoveRight className="w-4 h-4 mr-2" />Move to {x.label}

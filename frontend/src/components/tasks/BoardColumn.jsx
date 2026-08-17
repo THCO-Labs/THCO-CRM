@@ -27,6 +27,7 @@ export default function BoardColumn({
   onEditCard,
   onDeleteCard,
   onAddCard,
+  onThumbnailChange,
 }) {
   const [editingTitle, setEditingTitle] = useState(false);
   const [renamingCardId, setRenamingCardId] = useState(null);
@@ -162,6 +163,8 @@ export default function BoardColumn({
         card={viewCard}
         boardTitle={board.title}
         onClose={() => setViewCard(null)}
+        canEdit={permissions.editTasks}
+        onThumbnailChange={onThumbnailChange}
       />
     </div>
   );

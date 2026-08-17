@@ -15,8 +15,11 @@ import { Button } from "../ui/button";
  * window to the project, losing the board and everything on screen, purely
  * because the form it needed was defined somewhere else.
  */
+// bg-white/text-gray-900 are named so the dark-mode overrides (which key
+// on `input.bg-white`) reach these fields; without them the input keeps a
+// white background while its text follows the theme to near-white.
 const inputCls =
-  "w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#1B4332]/20 focus:border-[#1B4332] outline-none";
+  "w-full px-3 py-2 bg-white text-gray-900 border border-[#EAE7E0] rounded-lg text-sm focus:ring-2 focus:ring-[#1B4332]/20 focus:border-[#1B4332] outline-none";
 
 const Field = ({ label, children }) => (
   <div className="mb-4">

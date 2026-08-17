@@ -3,7 +3,7 @@ import { User, Lock, CheckCircle2, AlertCircle } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { authAPI, usersAPI } from "../lib/api";
+import { authAPI } from "../lib/api";
 import { toast } from "sonner";
 
 const Profile = () => {
@@ -36,7 +36,7 @@ const Profile = () => {
     }
     setSavingName(true);
     try {
-      await usersAPI.update(user.user_id, { name: name.trim() });
+      await authAPI.updateMe({ name: name.trim() });
       toast.success("Profile name updated");
       setErrors({});
       // refresh local user
@@ -52,7 +52,10 @@ const Profile = () => {
   const savePassword = async () => {
     const errs = {};
     if (!currentPassword) errs.current = "Enter your current password";
-    if (newPassword.length < 6) errs.new = "New password must be at least 6 characters";
+    // Matches what the server enforces. They disagreed before: this said six,
+    // the server said eight, so a seven-character password passed here and
+    // was refused on save with a message that contradicted the form.
+    if (newPassword.length < 8) errs.new = "New password must be at least 8 characters";
     if (newPassword !== confirmPassword) errs.confirm = "Passwords do not match";
     if (Object.keys(errs).length) {
       setErrors(errs);
@@ -60,8 +63,11 @@ const Profile = () => {
     }
     setSavingPw(true);
     try {
-      await usersAPI.update(user.user_id, { password: newPassword });
-      toast.success("Password changed successfully");
+      // The current password is sent and checked. It used to be collected and
+      // discarded -- the field asked for it, nothing verified it, so anybody
+      // at an unattended screen could set a new one.
+      await authAPI.changePassword(currentPassword, newPassword);
+      toast.success("Password changed — other devices have been signed out");
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");

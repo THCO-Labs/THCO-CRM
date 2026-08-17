@@ -1,6 +1,6 @@
 # THCO CRM — Project State and Handover
 
-**Last updated:** 5 August 2026
+**Last updated:** 17 August 2026
 
 This document exists so that work can be picked up by someone (or something)
 with no prior context. It records what the system is, what has been done, what
@@ -31,6 +31,10 @@ internal CV database, and external candidate sourcing.
 The backend serves both the API (under `/api`) and the compiled React bundle.
 It is a single container, not two services.
 
+**Which commit is live:** `GET /version` returns the build SHA. Use it. A green
+deploy workflow has twice reported success while production carried on serving
+the previous build.
+
 ---
 
 ## 2. How to run it locally
@@ -42,32 +46,39 @@ cd backend
 
 # Frontend
 cd frontend
-yarn start        # http://localhost:3000
+npx craco start        # http://localhost:3000
 ```
 
-Local MongoDB runs in Docker on `localhost:27017`, database `thco_crm`.
+Local MongoDB runs in a Docker container named `thco-mongo` (`mongo:7`) on
+`localhost:27017`, database `thco_crm`. If the machine has restarted it will be
+stopped: `docker start thco-mongo`.
 
 Configuration lives in `backend/.env` (gitignored). It holds `MONGO_URL`,
 `DB_NAME`, `JWT_SECRET`, `RESEND_API_KEY`, `SENDER_EMAIL`, `FRONTEND_URL`,
-`SCHEDULER_TOKEN`, the sourcing API keys and the Google service account JSON.
+`SCHEDULER_TOKEN`, `GMAIL_CV_MAILBOX`, `GMAIL_IMAP_PASSWORD`, the sourcing API
+keys and the Google service account JSON.
 
 **Local and production use separate databases.** Data created in one does not
-appear in the other.
+appear in the other. Local holds a subset of production's staff grants, which
+is normal and not a sign of anything missing.
 
 ---
 
 ## 3. Accounts
 
-| Who | Email | Role | Notes |
-|---|---|---|---|
-| Joshua (CEO) | `joshua@thcohq.com` | `super_admin` | Full access |
-| Victoria (HR) | `hr@thcohqs.com` | `mini_admin` + `is_hr` | Manages staff, cannot create super admins |
-| Victor | `victor@thcohqs.com` | `team_member` | Ordinary staff, `technology` unit only |
+Production has 30 active users. The ones that matter structurally:
 
-Note the two domains are both real and distinct: `thcohq.com` is Google
-Workspace, `thcohqs.com` is Zoho. Not a typo.
+| Who | Role | Notes |
+|---|---|---|
+| Ayo (CEO) | `super_admin` | Sees every project |
+| Victoria | `mini_admin` + `is_hr` | Manages staff, cannot create super admins |
+| Anabel Emekene | `team_member`, **PM of Technology & Build** | Named on the *unit*, not on her user record — see §4 |
+| 11 others | `team_member` with `headed_units` | Project managers of their own units |
 
-Passwords were set at creation and should be changed by the holders.
+The two domains are both real and distinct: `thcohq.com` is Google Workspace,
+`thcohqs.com` is Zoho. Not a typo.
+
+Everyone can change their own password and details — see §6.
 
 ---
 
@@ -77,21 +88,54 @@ Passwords were set at creation and should be changed by the holders.
 enforced **server-side**. The frontend also hides what a user cannot use, but
 that is presentation only.
 
-This matters because it was previously wrong: the sidebar hid the admin
-section from staff while the API served anything to anyone logged in. A staff
-account could read all 1,305 CVs by typing the URL.
+This matters because it has been wrong more than once. The sidebar once hid the
+admin section while the API served anything to anyone logged in. More recently,
+three "New Project" buttons in Flow were rendered for people the API refused,
+which reads as a broken feature rather than a rule.
 
-Roles: `super_admin`, `mini_admin`, `team_member`. Flags layered on top:
-`is_hr`, `is_executive_approver`, `is_delivery_coordinator`,
-`is_delivery_owner`, `is_engineer`.
+### The three kinds of person
+
+| | What they get |
+|---|---|
+| **Administrator** (`super_admin`, `mini_admin`, `is_hr`) | Everything. Sees every project. |
+| **Project manager** — anyone with a non-empty `headed_units` | THCO Flow, and creates projects under units they head. Sees **only projects they created or co-manage** — not a colleague's project in the same unit. |
+| **Collaborator** — on a project, heads nothing | The **task board only**. No THCO Flow at all. |
+
+### Project manager grants come from two places
+
+Both are real and both must be read. Collapsing them once stripped every
+manager's rights across the firm.
+
+1. `users.headed_units` — a per-person grant, many people per unit.
+2. `units.head_user_id` — one named manager for a unit. **This is how Anabel
+   holds Technology & Build**; her `headed_units` array is empty.
+
+`get_current_user` in `server.py` merges the two onto the user dict. Anything
+querying `users.headed_units` alone will under-report who is a manager — a
+count taken that way missed Anabel entirely.
+
+### THCO Flow is managers and administrators
+
+`has_unit_access(user, "flow")` returns `is_unit_head(user)`. Being on a
+project does not open it: the pipeline carries stages, value and who else is in
+the running, which is not a collaborator's business. Their work is the task
+board their manager sets up.
+
+Enforced at `_get_user` in `routers/flow.py`, which every route in that router
+passes through. Hiding the menu entry alone was cosmetic — the router had no
+permission check at all, so every route was reachable by anyone who knew the
+address.
+
+### Everything else
 
 | Resource | Who |
 |---|---|
-| Candidate database | Admins and the Talent unit (`require_talent_access` in `routers/talent.py`) |
-| Client records | Admins, delivery roles, sales/advisory/client-delivery units |
-| User management | Admins (`can_manage_users`) |
-| Login records | Super admin only |
-| Projects | Filtered by `project_scope_filter` — staff see only projects they are attached to |
+| Candidate database | Admins and the Talent unit (`require_talent_access`) |
+| User directory | Admins (`can_manage_users`) |
+| Your own account | Yourself — name, photo, birthday, password (§6) |
+| Projects | `project_scope_filter` — creator, named manager, co-managers, collaborators |
+| Task boards | `_assert_project_access` — anyone on the project |
+| Tickets, questions | Creator, the project's manager, or an admin |
 
 `project_scope_filter` matches across several fields (`assigned_to`,
 `team_members`, `owner_id`, `created_by`, …) because project membership is
@@ -105,79 +149,114 @@ name, sometimes an email. Do not assume one field.
 ### Working
 
 - **Project pipeline (THCO Flow)** — 10-stage board, projects, prospects,
-  tickets, messages, audit log.
-- **Task board** — Trello-style, 15 API routes under `/api/tasks`, 17 frontend
-  components in `components/tasks/`. Built by a colleague; do not break it.
-- **Internal CV database** — 1,305 candidates. Upload, parse (PDF/DOCX/DOC,
-  OCR fallback), search.
-- **External sourcing** — SerpAPI and Serper, Nigeria-only filtering, 492
-  candidates stored. Both keys live and verified.
-- **Auth** — login, invitations by email, password reset. All working.
-- **Client contacts** — full model including birthday, work anniversary,
-  spouse birthday, children, preferences, relationship strength.
-- **Calendar** — `/flow/calendar`. Birthdays entered on a contact appear
-  automatically.
-- **Relationship reminders** — 7 days, 3 days and on the day, by email to HR,
-  the executive, and the delivery owner of that client's active project.
+  tickets, messages, audit log, calendar. Managers and admins only.
+- **Task board** — Trello-style under `/api/tasks`. Cards carry labels,
+  assignees, priority, due dates, **attachments** and a **cover picture**. The
+  board refreshes every 25s while on screen, pauses when the tab is hidden, and
+  never refreshes mid-drag.
+- **Internal CV database** — ~33,500 candidates in production. Upload, parse
+  (PDF/DOCX/DOC), search, de-duplication, resume versioning.
+- **Gmail CV ingestion** — built and run. See §7; it is no longer blocked.
+- **External sourcing** — SerpAPI and Serper, Nigeria-only filtering.
+- **Auth** — login, invitations, password reset, and self-service accounts.
+- **Client contacts** — birthday, work anniversary, spouse birthday, children,
+  preferences, relationship strength.
+- **Calendar** — `/flow/calendar`. Contact birthdays *and* staff birthdays.
 
 ### Deliberately not done
 
-- **Gmail CV ingestion.** Blocked, see section 7.
-- **Client profile fields on the `clients` collection.** Relationship data
-  lives on `contacts`, not `clients`. `clients` is thin (company + contact) and
-  that is fine — do not duplicate.
-- **RBAC beyond what section 4 describes.** No Project Manager role yet.
-- **Analytics dashboard, semantic search, embeddings, document versioning.**
-  These appear in a requirements document circulated internally. They are a
-  roadmap, not committed work.
+- **Splitting merged decks that carry no divider pages.** The splitter handles
+  the agency template; other layouts import as one person. See §7.
+- **Recovering the people inside bundles rejected before the splitter existed.**
+  Their message ids are recorded and re-runnable.
+- **A calendar collaborators can see.** They can set a birthday but cannot see
+  the calendar, because it lives in Flow. Deliberate, and worth revisiting.
+- **Analytics dashboard, semantic search, embeddings.** Roadmap, not committed.
 
 ---
 
-## 6. Deployment
+## 6. Self-service accounts
 
-Every push to `main` deploys to production automatically.
+Everyone may change their own **name, photo, birthday and password** at
+`/profile`, reached from the avatar menu.
 
-- Build and deploy: `.github/workflows/azure-deploy.yml`
-- Manual fallback: `bash scripts/redeploy.sh`
-- Typical deploy: **90–250 seconds** (BuildKit layers cached in the registry)
+- `PUT /api/auth/me` — name, picture, birthday. The model **cannot express**
+  role, unit access, headed units, status or the delivery flags, so a request
+  naming them is not refused so much as unable to say it. Verified: a team
+  member sending `role: super_admin` gets 200 and keeps their role.
+- `POST /api/auth/change-password` — requires the current password, and **ends
+  every other session** on success.
 
-Secrets on the Container App: `mongo-url`, `jwt-secret`, `serper-key`,
-`serpapi-key`, `groq-key`, `resend-key`, `scheduler-token`.
+**The photo is a data URL on the user record, not a file behind an endpoint.**
+Avatars render as plain `<img src>` in a dozen places and this client carries
+its session as a Bearer header, which an image tag does not send — a URL would
+arrive unauthenticated and every avatar in the app would break. The page crops
+to a centre square and downscales to 256px before uploading; the server caps
+the stored size as a backstop.
 
-GitHub repository secrets: `AZURE_CREDENTIALS`, `ACR_NAME`,
-`AZURE_RESOURCE_GROUP`, `AZURE_CONTAINERAPP_NAME`, `APP_BASE_URL`,
-`SCHEDULER_TOKEN`.
-
-Azure resources all sit in resource group `rg-thco-crm`. Registry is
-`thcocrmacr13661`. Running cost is roughly **$5/month** — the database is on
-the free tier and Container Apps scales to zero.
-
-**Do not touch `rg-thco-recruit-flow`.** That is a different project
-(`recruit-flow`, PostgreSQL-based) belonging to the same company. It was
-explicitly ruled off-limits.
+**Birthdays** are set by the person, not an administrator — which is why the
+calendar had none. Only the day and month are ever published. A gold mark sits
+on the person's own avatar until they set one.
 
 ---
 
-## 7. Blocked work
+## 7. Gmail CV ingestion — built, and how it works
 
-**Gmail CV ingestion.** The goal is to pull CVs from `projects@thcohq.com`
-into the internal candidate database automatically.
+No longer blocked. It runs over **IMAP** with an app password
+(`GMAIL_CV_MAILBOX`, `GMAIL_IMAP_PASSWORD`), not the Gmail API, so no
+domain-wide delegation is needed.
 
-Blocked on Google Workspace domain-wide delegation, which only a super admin
-can enable:
+### The queue
 
-- Console: `admin.google.com` → Security → API controls → Manage Domain Wide Delegation
-- Client ID: `112382012606172427911`
-- Scope: `https://www.googleapis.com/auth/gmail.readonly`
+`backend/services/import_queue.py`. One row per message in `import_tasks`. A
+worker **leases** a row with a deadline rather than taking it; if it dies the
+lease expires and the row returns on its own. Claiming is one atomic
+find-and-update, so two workers cannot both win.
 
-Verified not yet enabled — the service account returns `unauthorized_client`.
+This replaced a single cursor and a long loop, which lost a whole batch to any
+restart, stalled whenever the machine slept, and could not say which document
+had failed.
 
-Nothing has been built for this yet. When it is unblocked, the shape agreed
-was: a connector interface (so Outlook/Drive/portal can follow), candidate
-identity resolution before insert, and resume versioning so nothing is
-overwritten. The parser currently extracts name, email, phone, LinkedIn,
-skills and years — but **not** education, employment history or
-certifications, which identity matching would want.
+- `POST /api/talent/import/queue/fill` — one IMAP search, no downloads
+- `POST /api/talent/import/queue/run?limit=&workers=` — drains it
+- `GET  /api/talent/import/queue/status` — depth, failures, percent
+- `POST /api/talent/import/queue/retry-failed`
+
+Parsing runs in a worker thread. It used to run on the event loop, which
+blocked every other request for seconds at a time and is a large part of why
+the site crawled during imports. Identity resolution stays serialised behind a
+lock: two workers would otherwise each find no match for the same person and
+create them twice.
+
+### The deck splitter
+
+`backend/services/cv_splitter.py`. Agencies send several CVs merged into one
+PDF behind a title slide. Imported whole, a deck became one candidate named
+after its cover page and everyone inside was lost — worse than a rejection,
+because it looked like it worked.
+
+Decks from the agency template introduce each candidate on a page carrying a
+number and a name. Where that exists it is exact.
+
+**Trying the split is what decides whether a file is a bundle.** A text rule
+cannot: agencies name ordinary one-person CVs `..._merged.pdf` and stamp deck
+wording on every page. A three-address rule condemned 959 documents to catch
+about a dozen real bundles.
+
+### The production migration (in flight)
+
+`backend/migrate_new_gmail_cvs.py` appends local CVs to production. Strictly an
+add; nothing in production is updated or deleted.
+
+Status at the time of writing: `candidates` and `resume_versions` are done.
+**`resume_files` — the CV documents themselves — is still running**, at roughly
+34 files/minute against Cosmos on the free tier.
+
+The runner used for it lives outside the repo and works a **checkpointed**
+100-candidate chunk at a time, so a crash or a sleeping laptop costs only the
+chunk in flight. A chunk that fails three times is recorded in
+`skipped_chunks` and stepped over rather than stalling the rest; those are
+re-runnable afterwards by resetting `next_index`.
 
 ---
 
@@ -185,98 +264,172 @@ certifications, which identity matching would want.
 
 Things that have already cost time. Do not rediscover them.
 
-- **`az acr build` exits non-zero on Windows even when the build succeeded** —
-  its log streamer fails to encode a character craco prints. Check
-  `az acr task list-runs`, not the exit code.
-- **Cosmos DB rejects a text index that includes `raw_text`** (50KB CV bodies).
-  `ensure_indexes` tries the full index, then a reduced one without it. Each
-  index is created independently; one shared try/except previously meant a
-  single failure skipped every index after it.
-- **Cosmos connection strings are `mongodb+srv://`** and need SRV DNS lookups.
-  Some local networks time out on those; resolve the SRV record manually and
-  use a direct `mongodb://host:10260` string if so.
-- **`FRONTEND_URL` must be set** or invitation emails link to the wrong port.
-  The reset link and the invite link previously disagreed (3000 vs 5178).
-- **Resend sends from `noreply@thcohq.com`.** The domain is already verified.
-  Do not revert to `onboarding@resend.dev` — that is a sandbox sender which can
-  only reach the Resend account owner.
-- **The frontend build context is ~268MB** of images and video in
-  `frontend/public`. It is copied as a separate Docker layer from `src` so a
-  code change does not invalidate it.
-- **Binary assets are real files in git, not Git LFS pointers.** An earlier
-  repo used LFS; that was deliberately dropped because CI clones without
-  `lfs: true` would ship broken images.
-- **Container Apps scales to zero.** Anything time-based must be driven
-  externally — see section 9. The first request after idle takes ~20 seconds.
+### Permissions and data
+
+- **A project manager's grant comes from two places** (§4). Read both. A
+  migration that "consolidated" them stripped every manager in the firm.
+- **Test scripts that appoint a unit head must restore it however they exit.**
+  One crashed part-way, left `technology.head_user_id` pointing at a fixture
+  user, and cleanup then deleted that user — silently removing the real
+  manager's rights. Register the restore with `atexit`, not at the end of a
+  function.
+- **Scripts must clean up after themselves even when they fail.** Orphaned
+  `Project Beta` rows from crashed runs later made a passing test look broken.
+
+### Frontend
+
+- **`:root` in `index.css` defines a *dark* `--background`.** So `bg-background`
+  — what shadcn's `DialogContent` uses — is dark in light mode too. Every
+  dialog must name its own `bg-white border-[#EAE7E0] text-gray-900`. Every
+  other dialog in the app already does.
+- **Inputs must carry `bg-white text-gray-900`.** The dark-mode override keys
+  on `input.bg-white`; without the class the field keeps a white background
+  while its text follows the theme to near-white. Unreadable.
+- **Only some hex colours have dark-mode overrides.** `#F7F6F3` and `#EAE7E0`
+  do; `#FAFAF9` does not.
+- **dnd-kit writes `transform` inline on a dragging card**, so a Tailwind hover
+  transform on that same element is overwritten. Put the visual card in a layer
+  inside the sortable node.
+- **An `<img src>` cannot reach an authenticated endpoint.** This client sends
+  its session as a Bearer header. CVs, task attachments and thumbnails are all
+  fetched as blobs for this reason; profile photos are data URLs.
+- **`craco.config.js` eslint `configure` replaces the defaults.** It once
+  disabled `no-undef` entirely, so a component could be moved out of a file,
+  leave its imports behind, build clean, and throw on open.
+- **Clearing `node_modules/.cache` while the dev server is running** leaves it
+  compiling from a broken state and reporting errors at lines that no longer
+  exist. Restart it.
+
+### Infrastructure
+
+- **Cosmos free tier ends a command that runs too long** (code 50). A read of
+  every id in a collection stopped finishing once `candidates` passed ~33k.
+  `id_set` in the migration script now pages by `_id`.
+- **Cosmos rejects a text index that includes `raw_text`.** Each index is
+  created independently; one shared try/except once meant a single failure
+  skipped every index after it.
+- **Gmail throttles IMAP logins.** The queue opens a connection per message,
+  which is deliberate — Gmail hangs up on long-lived sessions — but at scale it
+  produces occasional `AUTHENTICATIONFAILED`. It is a rate limit, not a
+  credentials problem, and the code reports it misleadingly as "an app password
+  is required".
+- **`az acr build` exits non-zero on Windows even when the build succeeded.**
+  Check `az acr task list-runs`, not the exit code.
+- **Resend sends from `noreply@thcohq.com`.** Do not revert to
+  `onboarding@resend.dev` — a sandbox sender that only reaches the account owner.
+- **Do not touch `rg-thco-recruit-flow`.** Different project, same company,
+  explicitly off-limits.
 
 ---
 
-## 9. Scheduled work
+## 9. Deployment and scheduled work
 
-Relationship reminders are **not** run by the in-process scheduler, because
-the container may be asleep at the scheduled hour.
+Every push to `main` deploys to production automatically via
+`.github/workflows/azure-deploy.yml`. Typical deploy: 90–250 seconds.
 
-`.github/workflows/scheduled-jobs.yml` runs a GitHub Actions cron at 06:00 UTC
-daily and calls:
+Azure resources sit in `rg-thco-crm`; registry `thcocrmacr13661`.
 
-```
-POST /api/internal/run-scheduled-job?job=relationship-reminders
-Header: X-Scheduler-Token: <SCHEDULER_TOKEN>
-```
+### Keeping it awake
 
-That both wakes the container and runs the sweep. The endpoint returns 404
-(not 401) on a bad or missing token and is excluded from the OpenAPI schema.
+Container Apps scales to zero, and the first request after idle pays a cold
+start. That is what "the site takes forever to load" reports have been.
 
-Sends are deduplicated per contact, occasion, lead time and year in the
-`reminders_sent` collection, so a late or repeated run cannot resend.
+Two scale rules are set on the Container App:
 
-The APScheduler jobs that remain in-process (`sla_sweep`, `standup_sweep`,
-`flow_eod`) have the same cold-start weakness and should probably move the
-same way.
+- `working-hours` — a KEDA **cron** rule holding one replica 07:00–19:00
+  Mon–Fri, `Africa/Lagos`
+- `http-requests` — 10 concurrent requests
+
+**Both are required.** Defining any custom scale rule replaces Container Apps'
+built-in HTTP scaling, so without the second the app would never wake outside
+the cron window. `minReplicas` stays 0, so nothing is pinned overnight.
+
+A GitHub Actions ping was the obvious alternative and does not work here: the
+scale cooldown is 300s and GitHub's scheduler routinely lags longer, a
+limitation `scheduled-jobs.yml` already documents.
+
+Deploys pass only `--image`, so scale settings survive a push.
+
+### Scheduled jobs
+
+`.github/workflows/scheduled-jobs.yml` runs at 06:00 UTC daily and calls
+`POST /api/internal/run-scheduled-job` with `X-Scheduler-Token`. That both wakes
+the container and runs the sweep. Sends are deduplicated per contact, occasion,
+lead time and year, so a late or repeated run cannot resend.
 
 ---
 
-## 10. Data
+## 10. Data (production, 17 August 2026)
 
 | Collection | Rows | Note |
 |---|---|---|
-| `candidates` | 1,305 | Internal CV database |
-| `external_candidates` | 492 | Sourced via SerpAPI/Serper |
-| `contacts` | 1 | **Nearly empty — this is the real gap** |
-| `events` | 1 | Generated from contact birthdays |
-| `users` | 4 | |
-| `clients` | 1 | |
+| `candidates` | 33,547 | Internal CV database |
+| `resume_versions` | 75,856 | Every CV ever received, never overwritten |
+| `resume_files` | 21,425 | **Migration in flight** — target ~70,000 |
+| `users` | 30 | |
+| `projects` | 15 | |
+| `contacts` | 4 | Still thin — data entry, not a development task |
+| `events` | 2 | Contact occasions; staff birthdays are computed, not stored |
 
-The calendar looks empty because almost no contacts have been entered. That is
-data entry for HR, not a development task. Do not rebuild the feature.
-
-A verified migration script exists at `backend/migrate_to_azure.py`. It never
-deletes from the source, upserts on natural keys so re-runs do not duplicate,
-and checksums every collection afterwards.
+Candidate records exceed CV files because the file migration is incomplete:
+until it finishes, many candidates in production have a profile but no
+openable document.
 
 ---
 
 ## 11. Known issues worth fixing
 
-- Reminders notify HR and the CEO for **every** contact. Fine at one contact,
-  noisy at fifty. A weekly digest for the executive would be better.
-- `cookies.txt` is committed to the repo and contains an expired session token.
-  It should be removed from tracking.
-- The README publishes the default admin password.
-- `GOOGLE_SERVICE_ACCOUNT_JSON` spans multiple lines in `.env`, which
-  python-dotenv warns about on every load. It currently parses, but it is
-  fragile.
-- No automated test suite is being run. There are test files under
-  `backend/tests` and `tests/` of unknown currency.
+- **~288 candidate records hold raw PDF source instead of CV text**, and ~757
+  carry email addresses invented from that binary (`z@j.k`). These are scanned
+  or image-only CVs where both PDF readers failed. The fix is to treat that as
+  a failed extraction and reject with a reason rather than store a junk record.
+  Not yet done.
+- **Bundles rejected before the splitter existed** are recorded and re-runnable
+  but have not been re-run.
+- **Skipped migration chunks** need a final pass once the main run finishes.
+- **Collaborators cannot raise tickets**, since tickets live in Flow. A
+  consequence of the Flow rule, not a decision taken on its own merits.
+- `cookies.txt` is committed and contains an expired session token.
+- The README publishes a default admin password.
+- No automated test suite runs in CI. The verification scripts described in §12
+  are run by hand.
 
 ---
 
-## 12. Working agreement
+## 12. Verification
+
+There is no CI test suite. What exists is a set of scripts that exercise the
+real API against the local database and print a pass/fail line per rule. They
+live outside the repo (in the working scratchpad) and cover:
+
+| Area | Checks |
+|---|---|
+| Flow closed to collaborators, task board intact | 19 |
+| Self-service accounts, and privilege escalation refused | 19 |
+| Attachments | 18 |
+| Thumbnails, including a 5-way race for one image | 16 |
+| Ticket delete and edit | 16 |
+| Stage transitions | 15 |
+| Team membership and removal | 14 |
+| Unit heads | 14 |
+| Project-manager visibility | 13 |
+
+They are worth keeping and worth moving into the repo. **Verify against the
+page, not only the API**: a staff-birthday payload that was correct in
+isolation crashed the calendar, because its only consumer read different field
+names, and an API-level check called that verified.
+
+---
+
+## 13. Working agreement
 
 The person directing this work prefers:
 
 - Findings verified against the real system, not assumed. Measure, then report.
+- **Local first.** Changes are reviewed on `localhost:3000` with both servers
+  running before anything is pushed. Say what to click.
 - Being told plainly when something is already built, blocked, or a bad idea.
 - Corrections stated directly when an earlier claim turns out wrong.
 - Nothing pushed to production without approval — pushing deploys immediately.
 - Secrets never printed into the conversation; read them from `.env` instead.
+- **This document updated whenever anything here changes.**

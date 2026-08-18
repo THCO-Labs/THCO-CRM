@@ -364,6 +364,13 @@ Things that have already cost time. Do not rediscover them.
 - **`/version`'s `built_at` can lag the `sha`.** It came back stamped a day
   earlier on a deploy whose sha was correct and whose chunks matched. Trust the
   `sha`.
+- **A bulk migration makes the whole product slow, because it is one free-tier
+  cluster.** Measured on 18 August 2026 while `resume_files` was running: a bare
+  `ping` took 3.4s, `projects.find().limit(20)` took 15.9s, and a count on
+  `users` failed outright. The app itself was fine — `/healthz` answered in
+  0.8s and static assets in 1.2s — so "production is slow" during a backfill is
+  the database, not a cold start. Check by timing queries directly before
+  looking anywhere else.
 - **Cosmos free tier ends a command that runs too long** (code 50). A read of
   every id in a collection stopped finishing once `candidates` passed ~33k.
   `id_set` in the migration script now pages by `_id`.
@@ -419,6 +426,20 @@ Deploys pass only `--image`, so scale settings survive a push.
 the container and runs the sweep. Sends are deduplicated per contact, occasion,
 lead time and year, so a late or repeated run cannot resend.
 
+**`mailbox-import` is paused on the schedule** (18 August 2026). Flip
+`MAILBOX_IMPORT_PAUSED` to `'false'` at the top of the workflow once the
+`resume_files` migration has finished. Running it by hand still works —
+"Run workflow" with `job=mailbox-import` ignores the pause.
+
+**Every scheduled job must finish inside 240 seconds.** Container Apps ends any
+HTTP request at that point, and the caller then sees a 504 while the job carries
+on running server-side. `run_connector` therefore takes a `time_budget`
+(`MAILBOX_IMPORT_SECONDS`, default 180) and stops cleanly when it expires; the
+cursor makes the remainder simply the next run's work, so `status: "partial"` is
+a success, not a failure. The workflow no longer retries on 504 — a retry there
+started a *second concurrent import over the identical window*, which is what
+produced two runs a day, every day, from 10 August.
+
 ---
 
 ## 10. Data (production, 17 August 2026)
@@ -449,6 +470,15 @@ openable document.
 - **Bundles rejected before the splitter existed** are recorded and re-runnable
   but have not been re-run.
 - **Skipped migration chunks** need a final pass once the main run finishes.
+- **~81 mailbox messages were skipped and need re-reading**: UIDs 4485-4565,
+  passed over by the runs of 14 and 17 August when every document failed with
+  code 50 and the cursor advanced anyway. The cursor bug is fixed, but these
+  are already behind the resume point. To recover, set the gmail cursor back
+  once the migration is done and the import can actually succeed:
+  `db.import_cursors.updateOne({connector:"gmail"}, {$set:{cursor:"4484"}})`.
+  Re-reading is safe — an identical document is recognised by its hash.
+- **`import_failures` is new and nothing reads it yet.** Documents set aside
+  after three attempts land there with their error; there is no screen for them.
 - **Collaborators cannot raise tickets**, since tickets live in Flow. A
   consequence of the Flow rule, not a decision taken on its own merits.
 - `cookies.txt` is committed and contains an expired session token.

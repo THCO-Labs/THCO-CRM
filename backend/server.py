@@ -3132,15 +3132,18 @@ async def run_scheduled_job(request: Request, job: str):
 
         if not connector.is_configured():
             logger.info("Mailbox import skipped: no mailbox configured")
-            return
+            return {"status": "skipped", "reason": "no mailbox configured"}
 
         access = connector.check_access()
         if not access.get("ok"):
             logger.warning("Mailbox import skipped: %s", access.get("reason"))
-            return
+            return {"status": "skipped", "reason": access.get("reason")}
 
         limit = int(os.environ.get("MAILBOX_IMPORT_LIMIT", "100"))
-        await run_connector(db, connector, limit=limit)
+        result = await run_connector(db, connector, limit=limit)
+        # The per-document log is long and already stored; the caller only
+        # needs to know how far the run got and why it stopped.
+        return {k: v for k, v in result.items() if k != "documents"}
 
     try:
         jobs["mailbox-import"] = _mailbox_import
@@ -3153,14 +3156,18 @@ async def run_scheduled_job(request: Request, job: str):
 
     started = datetime.now(timezone.utc)
     try:
-        await runner()
+        detail = await runner()
     except Exception as e:
         logger.exception(f"Scheduled job '{job}' failed")
         raise HTTPException(status_code=500, detail=f"Job failed: {e}")
 
     elapsed = (datetime.now(timezone.utc) - started).total_seconds()
     logger.info(f"Scheduled job '{job}' completed in {elapsed:.1f}s")
-    return {"job": job, "status": "completed", "seconds": round(elapsed, 1)}
+    # `detail` reports how far a bounded job got. A run that stops on its time
+    # budget is a success -- it committed its progress and left the remainder
+    # for the next run -- so it must not be reported as a failure.
+    return {"job": job, "status": "completed", "seconds": round(elapsed, 1),
+            "detail": detail}
 
 
 # Unprefixed liveness probe. Deploy platforms poll /healthz at the root, not

@@ -26,6 +26,11 @@ on:
         required: false
         default: ''
 
+# Flip to 'false' to let the daily mailbox import run again. See the comment on
+# the step below for why it is paused.
+env:
+  MAILBOX_IMPORT_PAUSED: 'true'
+
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -41,7 +46,18 @@ jobs:
 
     steps:
       - name: Run ${{ matrix.job }}
-        if: ${{ github.event.inputs.job == '' || github.event.inputs.job == matrix.job }}
+        # Paused for scheduled runs on 18 August 2026: the resume_files
+        # migration is loading the free-tier Cosmos instance hard enough that
+        # every document fails with code 50, and the run holds a container
+        # awake for three hours to achieve nothing. Set MAILBOX_IMPORT_PAUSED
+        # to 'false' once the migration has finished.
+        #
+        # Only the schedule is paused -- "Run workflow" with job=mailbox-import
+        # still works, so it can be tried by hand at any point.
+        if: ${{ (github.event.inputs.job == '' || github.event.inputs.job == matrix.job)
+                && !(matrix.job == 'mailbox-import'
+                     && env.MAILBOX_IMPORT_PAUSED == 'true'
+                     && github.event_name == 'schedule') }}
         env:
           BASE: ${{ secrets.APP_BASE_URL }}
           TOKEN: ${{ secrets.SCHEDULER_TOKEN }}
@@ -54,10 +70,14 @@ jobs:
 
           # The first request may have to start a cold container, so allow a
           # generous timeout and one retry before treating it as a failure.
+          #
+          # --max-time is deliberately below Container Apps' own 240s ingress
+          # limit. Waiting longer than the gateway will wait achieves nothing:
+          # it just turns our own timeout into the gateway's 504.
           for attempt in 1 2; do
             echo "Attempt ${attempt} for ${JOB}..."
             code=$(curl -sS -o /tmp/out.json -w '%{http_code}' \
-              --max-time 600 \
+              --max-time 230 \
               -X POST "${BASE}/api/internal/run-scheduled-job?job=${JOB}" \
               -H "X-Scheduler-Token: ${TOKEN}" || echo "000")
 
@@ -69,6 +89,19 @@ jobs:
 
             echo "  HTTP ${code}"
             [ -s /tmp/out.json ] && cat /tmp/out.json
+
+            # A 504 is the gateway giving up, not the job. The run carries on
+            # server-side, so retrying starts a second one over the identical
+            # window -- which is what produced two concurrent imports every
+            # morning from 10 August. Jobs are now bounded to finish inside the
+            # gateway's limit, so a 504 means something is wrong that a retry
+            # will not fix.
+            if [ "$code" = "504" ]; then
+              echo "  Not retrying: the job is still running on the server and"
+              echo "  a second call would duplicate it."
+              exit 1
+            fi
+
             sleep 20
           done
 

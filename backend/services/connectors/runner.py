@@ -12,6 +12,7 @@ would be slow and would spend API quota needlessly.
 
 import asyncio
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -33,6 +34,66 @@ logger = logging.getLogger(__name__)
 # create them twice. One lock, held only across the decision, keeps
 # de-duplication exact while the expensive part still runs in parallel.
 _identity_lock = asyncio.Lock()
+
+# Container Apps ends any HTTP request at 240 seconds. A scheduled run has to
+# finish well inside that, or the caller sees a 504 and retries while the first
+# run is still going -- which is exactly what happened every morning from
+# 10 August: two concurrent imports over an identical UID window. A partial run
+# is harmless because the cursor makes whatever is left simply the next run's
+# work, so stopping early is always preferable to being cut off.
+DEFAULT_TIME_BUDGET_SECONDS = float(os.environ.get("MAILBOX_IMPORT_SECONDS", "180"))
+
+# A document that keeps failing on its own merits must not hold the cursor
+# still forever, so it is set aside after this many attempts and left in
+# `import_failures` for someone to look at.
+MAX_ATTEMPTS = 3
+
+# Consecutive database timeouts mean the cluster is saturated, not that these
+# particular documents are bad. Stop the run and let the next one try.
+MAX_CONSECUTIVE_TRANSIENT = 5
+
+
+def _is_transient(exc: BaseException) -> bool:
+    """Whether a failure is the database being busy rather than a bad document.
+
+    Cosmos on the free tier ends a command that runs too long with code 50
+    while something else is loading the cluster -- a bulk migration, say.
+    Counting that against the document would set aside a perfectly good CV and
+    then skip past it, which is how ~81 messages were lost in August 2026.
+    """
+    if getattr(exc, "code", None) == 50:
+        return True
+    text = str(exc).lower()
+    if "exceededtimelimit" in text or "command timeout" in text:
+        return True
+    try:
+        from pymongo.errors import (
+            AutoReconnect, ExecutionTimeout, NetworkTimeout,
+            ServerSelectionTimeoutError,
+        )
+    except Exception:                                       # pragma: no cover
+        return False
+    return isinstance(exc, (AutoReconnect, ExecutionTimeout, NetworkTimeout,
+                            ServerSelectionTimeoutError))
+
+
+async def _record_failure(db, connector_name: str, point: Optional[str],
+                          filename: str, error: str) -> int:
+    """Note that a document failed on its own merits, and how often.
+
+    Returns the attempt count so the caller can decide whether to keep the
+    cursor behind it or set it aside.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    doc = await db.import_failures.find_one_and_update(
+        {"connector": connector_name, "point": point, "filename": filename},
+        {"$inc": {"attempts": 1},
+         "$set": {"last_error": error[:500], "last_seen": now},
+         "$setOnInsert": {"first_seen": now}},
+        upsert=True,
+        return_document=True,
+    )
+    return int((doc or {}).get("attempts", 1))
 
 
 async def _load_cursor(db, name: str) -> Optional[str]:
@@ -56,12 +117,19 @@ async def run_connector(
     since: Optional[str] = None,
     use_cursor: bool = True,
     dry_run: bool = False,
+    time_budget: Optional[float] = DEFAULT_TIME_BUDGET_SECONDS,
 ) -> Dict[str, Any]:
     """Import everything a connector offers.
 
     Returns counts and a per-document log. A failure on one document is
     recorded and the run continues -- a single malformed attachment should not
     abandon the rest of a mailbox.
+
+    The run stops when `time_budget` seconds have passed, or once the database
+    has timed out several times in a row. Neither is a failure: the cursor only
+    ever moves across documents that are genuinely finished with, so whatever
+    is left is picked up by the next run. Pass `time_budget=None` for a
+    long-running backfill that nothing is waiting on.
     """
     started = datetime.now(timezone.utc)
 
@@ -77,14 +145,26 @@ async def run_connector(
 
     counts = {"created": 0, "updated": 0, "rejected": 0, "failed": 0}
     log = []
+    # The resume point only moves across documents that are actually finished
+    # with. It used to move for every document the connector produced, before
+    # the import was even attempted, so a failure carried the cursor past a CV
+    # that had never been read and nothing ever went back for it.
     newest_seen = since
+    blocked = False              # an unresolved failure: do not advance past it
+    consecutive_transient = 0
+    stopped_early = None
 
     async for document in connector.fetch(since=since, limit=limit):
+        elapsed = (datetime.now(timezone.utc) - started).total_seconds()
+        if time_budget and elapsed >= time_budget:
+            stopped_early = "time_budget"
+            logger.info("%s import stopping at %.0fs; the rest is the next run's work",
+                        connector.name, elapsed)
+            break
+
         # The connector decides what its resume point looks like -- a
         # timestamp for date-searched sources, a message UID for IMAP.
         point = connector.cursor_for(document)
-        if connector.cursor_is_newer(point, newest_seen):
-            newest_seen = point
 
         if dry_run:
             counts["created"] += 1
@@ -107,17 +187,52 @@ async def run_connector(
                 "sender": document.sender_email,
                 "message_id": document.message_id,
             })
+            consecutive_transient = 0
+            if not blocked and connector.cursor_is_newer(point, newest_seen):
+                newest_seen = point
         except Exception as e:
             counts["failed"] += 1
-            log.append({"filename": document.filename, "action": "failed", "error": str(e)[:200]})
-            logger.warning("Import failed for %s: %s", document.filename, e)
+            transient = _is_transient(e)
+            log.append({"filename": document.filename, "action": "failed",
+                        "transient": transient, "error": str(e)[:200]})
+            logger.warning("Import failed for %s (%s): %s", document.filename,
+                           "database busy" if transient else "document", e)
+
+            if transient:
+                # Nothing is wrong with this CV, so it must not be counted
+                # against it, and the cursor must stay behind it.
+                blocked = True
+                consecutive_transient += 1
+                if consecutive_transient >= MAX_CONSECUTIVE_TRANSIENT:
+                    stopped_early = "database_busy"
+                    logger.warning(
+                        "%s import stopping: %d consecutive database timeouts. "
+                        "The cursor stays at %s so nothing is skipped.",
+                        connector.name, consecutive_transient, newest_seen,
+                    )
+                    break
+            else:
+                attempts = await _record_failure(
+                    db, connector.name, point, document.filename, str(e))
+                if attempts >= MAX_ATTEMPTS:
+                    # Tried enough times to call it this document's own fault.
+                    # Set it aside rather than let it hold up the mailbox.
+                    logger.warning("Setting aside %s after %d attempts",
+                                   document.filename, attempts)
+                    if not blocked and connector.cursor_is_newer(point, newest_seen):
+                        newest_seen = point
+                else:
+                    blocked = True
 
     if not dry_run and newest_seen and use_cursor:
         await _save_cursor(db, connector.name, newest_seen)
 
     result = {
         "connector": connector.name,
-        "status": "completed",
+        # "partial" is a normal outcome, not a failure -- it means the run hit
+        # its time budget or a busy database and left the rest for next time.
+        "status": "partial" if stopped_early else "completed",
+        "stopped_because": stopped_early,
         "since": since,
         "cursor": newest_seen,
         "seconds": round((datetime.now(timezone.utc) - started).total_seconds(), 1),

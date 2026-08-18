@@ -364,6 +364,14 @@ Things that have already cost time. Do not rediscover them.
 - **`/version`'s `built_at` can lag the `sha`.** It came back stamped a day
   earlier on a deploy whose sha was correct and whose chunks matched. Trust the
   `sha`.
+- **Only a 401 or 403 may end a session.** `ProtectedRoute` in `App.js` used to
+  send people to the login screen on *any* failed `/auth/me` call. Every
+  authenticated request costs three database reads (`user_sessions`, `users`,
+  then `units` for the manager grants), so when the database is loaded that
+  call returns 500 — on 18 August roughly one in four did — and people were
+  thrown out mid-task holding a perfectly valid session. A 500, a timeout or a
+  dropped connection says nothing about whether someone is signed in. It now
+  retries three times with backoff and then says the server is unreachable.
 - **A bulk migration makes the whole product slow, because it is one free-tier
   cluster.** Measured on 18 August 2026 while `resume_files` was running: a bare
   `ping` took 3.4s, `projects.find().limit(20)` took 15.9s, and a count on

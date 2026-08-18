@@ -204,6 +204,7 @@ const AccessRestricted = () => (
 const ProtectedRoute = ({ children, unit, access }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(null);
   const [user, setUser] = useState(null);
+  const [unreachable, setUnreachable] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -215,19 +216,69 @@ const ProtectedRoute = ({ children, unit, access }) => {
       return;
     }
 
-    const checkAuth = async () => {
+    // Only the server saying "you are not this person" should end a session.
+    //
+    // This used to send anyone to the login screen on *any* failed call. A
+    // timeout, a 500, a dropped connection -- all of them look like being
+    // signed out, and none of them say anything about whether the session is
+    // valid. On 18 August, while a migration had the database saturated,
+    // roughly one in four /auth/me calls returned 500 and people were thrown
+    // out mid-task with a perfectly good session.
+    let cancelled = false;
+
+    const checkAuth = async (attempt = 0) => {
       try {
         const userData = await authAPI.getMe();
+        if (cancelled) return;
         setUser(userData);
         setIsAuthenticated(true);
+        setUnreachable(false);
       } catch (error) {
-        setIsAuthenticated(false);
-        navigate("/login", { replace: true });
+        if (cancelled) return;
+        const status = error?.response?.status;
+
+        if (status === 401 || status === 403) {
+          setIsAuthenticated(false);
+          navigate("/login", { replace: true });
+          return;
+        }
+
+        // Anything else is the server having a bad time. Back off and try
+        // again; the session is still good.
+        if (attempt < 3) {
+          setTimeout(() => checkAuth(attempt + 1), 1500 * (attempt + 1));
+          return;
+        }
+        setUnreachable(true);
       }
     };
 
     checkAuth();
+    return () => { cancelled = true; };
   }, [navigate, location.state]);
+
+  // Reached only after several failed attempts. Says what is actually wrong,
+  // because "please sign in again" would be a lie: they are still signed in.
+  if (unreachable) {
+    return (
+      <div className="min-h-screen bg-[#0C0F13] flex items-center justify-center px-6">
+        <div className="text-center max-w-sm">
+          <p className="text-[11px] uppercase tracking-[0.3em] text-[#8a8f98] mb-3">THCO</p>
+          <p className="text-white text-lg mb-2">The server is not responding</p>
+          <p className="text-[#8a8f98] text-sm mb-6">
+            You are still signed in. This is usually a busy database and it
+            passes on its own.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 rounded-lg text-sm text-white bg-[#C6A15B] hover:opacity-90"
+          >
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (isAuthenticated === null) {
     return (

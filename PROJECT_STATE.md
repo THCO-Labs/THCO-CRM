@@ -352,6 +352,18 @@ Things that have already cost time. Do not rediscover them.
 
 ### Infrastructure
 
+- **Do not verify a frontend deploy by grepping `main.js`.** The app is code
+  split into ~139 chunks, so page code and anything it imports lands in a
+  `*.chunk.js`, not the entry bundle. Searching `main.js` for a string you just
+  added returns nothing on a perfectly good deploy — and looks exactly like a
+  failed one. Verify instead by diffing `/asset-manifest.json` against
+  `frontend/build/asset-manifest.json`: matching content hashes mean identical
+  files. Expect `main.js` itself to differ even on a correct deploy — it embeds
+  the `.map` filenames, and source maps hash differently when built on CI
+  rather than locally.
+- **`/version`'s `built_at` can lag the `sha`.** It came back stamped a day
+  earlier on a deploy whose sha was correct and whose chunks matched. Trust the
+  `sha`.
 - **Cosmos free tier ends a command that runs too long** (code 50). A read of
   every id in a collection stopped finishing once `candidates` passed ~33k.
   `id_set` in the migration script now pages by `_id`.

@@ -142,7 +142,7 @@ const ProposalViewerAnalytics = () => {
             className="bg-white rounded-xl border border-gray-200 p-5"
           >
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
                 <Users className="w-5 h-5 text-blue-600" />
               </div>
               <div>
@@ -159,7 +159,7 @@ const ProposalViewerAnalytics = () => {
             className="bg-white rounded-xl border border-gray-200 p-5"
           >
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
                 <Eye className="w-5 h-5 text-green-600" />
               </div>
               <div>
@@ -176,7 +176,7 @@ const ProposalViewerAnalytics = () => {
             className="bg-white rounded-xl border border-gray-200 p-5"
           >
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center">
                 <TrendingUp className="w-5 h-5 text-emerald-600" />
               </div>
               <div>
@@ -193,7 +193,7 @@ const ProposalViewerAnalytics = () => {
             className="bg-white rounded-xl border border-gray-200 p-5"
           >
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
                 <Calendar className="w-5 h-5 text-orange-600" />
               </div>
               <div>

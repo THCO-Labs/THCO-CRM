@@ -56,7 +56,7 @@ const BuildHistoryItem = ({ conversation, unit }) => {
     >
       <div className="flex items-start justify-between">
         <div className="flex items-start gap-3">
-          <div className={`w-10 h-10 rounded-lg ${config.bgColor} flex items-center justify-center`}>
+          <div className={`w-10 h-10 rounded-full ${config.bgColor} flex items-center justify-center`}>
             <Zap className={`w-5 h-5 ${config.textColor}`} />
           </div>
           

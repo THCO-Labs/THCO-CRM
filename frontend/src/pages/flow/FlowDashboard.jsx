@@ -4,14 +4,16 @@ import FlowShell from "./FlowShell";
 import { flowAPI } from "../../lib/api";
 import { Briefcase, ClipboardCheck, FileText, Hammer, Calendar, AlertCircle, Target, Ticket, Loader2, Mail, X } from "lucide-react";
 import { STAGES, BUILD_STATUS_LABELS } from "./stages";
+import IconBadge, { accentFromClass } from "../../components/ui/icon-badge";
 
 const StatCard = ({ icon: Icon, label, value, color, link, testId }) => {
   const inner = (
     <div className={`bg-white rounded-xl border border-gray-100 p-4 hover:shadow-md transition ${link ? "cursor-pointer" : ""}`} data-testid={testId}>
       <div className="flex items-center gap-3">
-        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${color}`}>
-          <Icon className="w-5 h-5 text-white" />
-        </div>
+        {/* The card keeps the colour it always had; only the treatment changes
+            — a pale wash with the icon drawn in that colour, as on every other
+            badge in the CRM, instead of a solid fill with a white icon. */}
+        <IconBadge icon={Icon} accent={accentFromClass(color)} size={40} />
         <div>
           <p className="text-2xl font-bold text-gray-900">{value}</p>
           <p className="text-xs text-gray-500">{label}</p>

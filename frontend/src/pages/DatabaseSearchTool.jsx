@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import IconBadge from "../components/ui/icon-badge";
 import { Link } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -112,9 +113,7 @@ const DatabaseSearchTool = () => {
 
       {/* Tool Header */}
       <div className="flex items-center gap-4">
-        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
-          <Database className="w-6 h-6 text-white" />
-        </div>
+        <IconBadge icon={Database} gradient="from-blue-500" size={48} />
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Database Search</h1>
           <p className="text-gray-500">Search our internal candidate database using AI-powered resume analysis</p>

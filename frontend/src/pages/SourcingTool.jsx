@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import IconBadge from "../components/ui/icon-badge";
 import { Link } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -125,9 +126,7 @@ const SourcingTool = () => {
 
       {/* Tool Header */}
       <div className="flex items-center gap-4">
-        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-          <Search className="w-6 h-6 text-white" />
-        </div>
+        <IconBadge icon={Search} gradient="from-emerald-500" size={48} />
         <div>
           <h1 className="text-2xl font-bold text-gray-900">AI Candidate Sourcing</h1>
           <p className="text-gray-500">Source candidates from the open web using AI</p>

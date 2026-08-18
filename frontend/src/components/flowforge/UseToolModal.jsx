@@ -19,6 +19,7 @@ import {
 import DynamicFormRenderer from "./DynamicFormRenderer";
 import { flowforgeAPI } from "../../lib/api";
 import { toast } from "sonner";
+import IconBadge from "../ui/icon-badge";
 
 /**
  * UseToolModal - Modal for using a deployed tool
@@ -241,9 +242,7 @@ const UseToolModal = ({
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#1FB58A] to-[#9C8CFF] flex items-center justify-center">
-              <Zap className="w-4 h-4 text-white" />
-            </div>
+            <IconBadge icon={Zap} accent="#1FB58A" size={32} />
             {toolName}
           </DialogTitle>
           <DialogDescription>

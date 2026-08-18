@@ -45,7 +45,7 @@ export default function FlowCalendar() {
                     const Icon = ICON[e.event_type] || Cake;   // unknown types still get an icon
                     return (
                       <div key={e.event_id} className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3" data-testid={`event-${e.event_id}`}>
-                        <div className={`w-10 h-10 rounded-lg ${COLOR[e.event_type] || "bg-gray-100 text-gray-700"} flex items-center justify-center`}>
+                        <div className={`w-10 h-10 rounded-full ${COLOR[e.event_type] || "bg-gray-100 text-gray-700"} flex items-center justify-center`}>
                           <Icon className="w-5 h-5" />
                         </div>
                         <div className="flex-1">

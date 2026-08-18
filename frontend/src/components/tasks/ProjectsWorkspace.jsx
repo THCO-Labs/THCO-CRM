@@ -74,7 +74,7 @@ export default function ProjectsWorkspace({ onSelect }) {
   if (projects.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center text-center py-20" data-testid="projects-empty">
-        <div className="w-16 h-16 mb-5 rounded-2xl bg-white border border-[#EAE7E0] shadow-sm flex items-center justify-center">
+        <div className="w-16 h-16 mb-5 rounded-full bg-white border border-[#EAE7E0] shadow-sm flex items-center justify-center">
           <FolderKanban className="w-7 h-7 text-[#C6A15B]" />
         </div>
         <h3 className="font-display text-xl text-gray-900 mb-2">No projects yet</h3>

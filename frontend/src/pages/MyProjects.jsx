@@ -4,19 +4,29 @@ import { ArrowLeft, Clock, CheckCircle, Hammer, FileSearch, ChevronRight } from 
 import api from "../lib/api";
 import { toast } from "sonner";
 
+/**
+ * Brand seafoam (#1FB58A) and forest (#1B4332) rather than Tailwind's stock
+ * blue and emerald, so this list reads as the same product as the Engineering
+ * Board it sits beside.
+ *
+ * Amber stays on "Under Review": it is the one status that is asking someone to
+ * do something, and the brand palette has no colour that carries a warning.
+ */
 const STATUS_GROUPS = [
-  { key: "pending_review", label: "Pending Review", statuses: ["delegated", "under_review"], icon: FileSearch, color: "text-yellow-600" },
-  { key: "approved", label: "Approved - Ready to Start", statuses: ["approved_for_build"], icon: CheckCircle, color: "text-green-600" },
-  { key: "in_build", label: "In Build", statuses: ["in_build"], icon: Hammer, color: "text-emerald-600" },
-  { key: "completed", label: "Completed", statuses: ["completed"], icon: CheckCircle, color: "text-emerald-700" },
+  { key: "pending_review", label: "Pending Review", statuses: ["delegated", "under_review"], icon: FileSearch, color: "text-amber-600" },
+  { key: "approved", label: "Approved - Ready to Start", statuses: ["approved_for_build"], icon: CheckCircle, color: "text-[#1FB58A]" },
+  { key: "in_build", label: "In Build", statuses: ["in_build"], icon: Hammer, color: "text-[#158567]" },
+  { key: "completed", label: "Completed", statuses: ["completed"], icon: CheckCircle, color: "text-[#1B4332]" },
 ];
 
+// Delegated → completed reads as a deepening of the one brand green, so the
+// further a project has come the darker its chip.
 const STATUS_STYLES = {
-  delegated: { label: "Delegated", bg: "bg-blue-100 text-blue-700" },
-  under_review: { label: "Under Review", bg: "bg-yellow-100 text-yellow-700" },
-  approved_for_build: { label: "Approved", bg: "bg-green-100 text-green-700" },
-  in_build: { label: "In Build", bg: "bg-emerald-100 text-emerald-700" },
-  completed: { label: "Completed", bg: "bg-emerald-100 text-emerald-800" },
+  delegated: { label: "Delegated", bg: "bg-[#1FB58A]/10 text-[#158567] border border-[#1FB58A]/25" },
+  under_review: { label: "Under Review", bg: "bg-amber-50 text-amber-700 border border-amber-200" },
+  approved_for_build: { label: "Approved", bg: "bg-[#1FB58A]/20 text-[#127056] border border-[#1FB58A]/35" },
+  in_build: { label: "In Build", bg: "bg-[#1B4332]/10 text-[#1B4332] border border-[#1B4332]/25" },
+  completed: { label: "Completed", bg: "bg-[#1B4332] text-white border border-[#1B4332]" },
 };
 
 export default function MyProjects() {
@@ -74,7 +84,9 @@ export default function MyProjects() {
                         <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${ss.bg || "bg-gray-100"}`}>{ss.label || p.status}</span>
                         {p.percent_complete > 0 && p.status !== "completed" && (
                           <div className="flex items-center gap-1.5">
-                            <div className="w-12 h-1.5 bg-gray-100 rounded-full"><div className="h-full bg-[#1B4332] rounded-full" style={{ width: `${p.percent_complete}%` }} /></div>
+                            <div className="w-12 h-1.5 bg-[#EAE7E0] rounded-full overflow-hidden">
+                              <div className="h-full bg-[#1FB58A] rounded-full transition-[width] duration-700 ease-out" style={{ width: `${p.percent_complete}%` }} />
+                            </div>
                             <span className="text-xs text-gray-400">{p.percent_complete}%</span>
                           </div>
                         )}

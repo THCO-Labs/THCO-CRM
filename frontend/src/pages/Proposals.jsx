@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import IconBadge, { accentFromClass } from "../components/ui/icon-badge";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   FolderPlus,
@@ -559,9 +560,7 @@ const Proposals = () => {
               <Card className="h-full rounded-2xl border border-gray-200 bg-white shadow-sm transition-all hover:shadow-xl hover:-translate-y-1">
                 <CardHeader>
                   <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-xl bg-emerald-600 text-white flex items-center justify-center">
-                      <Presentation className="w-5 h-5" />
-                    </div>
+                    <IconBadge icon={Presentation} accent={accentFromClass("bg-emerald-600")} size={44} />
                     <div>
                       <CardTitle className="text-gray-900">Presentations</CardTitle>
                       <CardDescription className="text-gray-600">
@@ -592,9 +591,7 @@ const Proposals = () => {
               <Card className="h-full rounded-2xl border border-gray-200 bg-white shadow-sm transition-all hover:shadow-xl hover:-translate-y-1">
                 <CardHeader>
                   <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-xl bg-blue-600 text-white flex items-center justify-center">
-                      <FolderOpen className="w-5 h-5" />
-                    </div>
+                    <IconBadge icon={FolderOpen} accent={accentFromClass("bg-blue-600")} size={44} />
                     <div>
                       <CardTitle className="text-gray-900">Clients</CardTitle>
                       <CardDescription className="text-gray-600">
@@ -702,7 +699,7 @@ const Proposals = () => {
                             >
                               <div className="relative p-6">
                                 <div className="flex items-center justify-between mb-4">
-                                  <div className="w-10 h-10 rounded-lg bg-white/80 flex items-center justify-center">
+                                  <div className="w-10 h-10 rounded-full bg-white/80 flex items-center justify-center">
                                     <LayoutTemplate className="w-5 h-5 text-gray-900" />
                                   </div>
                                   <span className={categoryClass(cardCategory)}>{cardCategory}</span>
@@ -906,9 +903,7 @@ const Proposals = () => {
             ) : (
               <Card className="rounded-2xl border border-gray-100 p-12 text-center shadow-sm">
                 <CardContent>
-                  <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-4">
-                    <File className="w-8 h-8 text-gray-400" />
-                  </div>
+                  <IconBadge icon={File} accent="#8E8A82" size={64} />
                   <h3 className="text-lg font-semibold text-gray-900 mb-2">No proposals yet</h3>
                   <p className="text-gray-500 mb-6">Upload your first proposal to share with this client</p>
                   <Button
@@ -931,7 +926,7 @@ const Proposals = () => {
                   data-testid={`client-card-${client.client_id}`}
                 >
                   <div className="flex items-start justify-between mb-4">
-                    <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center">
+                    <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center">
                       <FolderOpen className="w-6 h-6 text-emerald-600" />
                     </div>
                     <DropdownMenu>
@@ -979,9 +974,7 @@ const Proposals = () => {
           ) : (
             <Card className="rounded-2xl border border-gray-100 p-12 text-center shadow-sm">
               <CardContent>
-                <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-4">
-                  <FolderOpen className="w-8 h-8 text-gray-400" />
-                </div>
+                <IconBadge icon={FolderOpen} accent="#8E8A82" size={64} />
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">No clients yet</h3>
                 <p className="text-gray-500 mb-6">Create your first client folder to organize proposals</p>
                 <Button

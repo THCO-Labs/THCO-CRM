@@ -1,4 +1,5 @@
 import { useState } from "react";
+import IconBadge from "../components/ui/icon-badge";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { 
@@ -475,9 +476,7 @@ const SalesAndBD = () => {
                 data-testid={`intake-path-${path.id}`}
               >
                 <div className="flex items-center gap-3 mb-3">
-                  <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${path.color} flex items-center justify-center`}>
-                    <Icon className="w-5 h-5 text-white" />
-                  </div>
+                  <IconBadge icon={Icon} gradient={path.color} size={40} />
                   <div>
                     <h3 className="font-semibold text-gray-900">{path.name}</h3>
                     <p className="text-xs text-gray-500">{path.leads} leads</p>
@@ -513,9 +512,7 @@ const SalesAndBD = () => {
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
-                      <Icon className="w-5 h-5 text-white" />
-                    </div>
+                    <IconBadge icon={Icon} gradient="from-emerald-500" size={40} />
                     <div>
                       <h3 className="font-semibold text-gray-900 text-sm group-hover:text-emerald-600 transition-colors">
                         {agent.name}

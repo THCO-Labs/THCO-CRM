@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import IconBadge from "../components/ui/icon-badge";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { 
@@ -264,9 +265,7 @@ const ProjectManagement = () => {
           className="bg-white rounded-xl border border-gray-200 p-5"
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-              <FolderKanban className="w-5 h-5 text-gray-600" />
-            </div>
+            <IconBadge icon={FolderKanban} accent="#8E8A82" size={40} />
             <div>
               <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
               <p className="text-sm text-gray-500">Total Projects</p>
@@ -281,7 +280,7 @@ const ProjectManagement = () => {
           className="bg-white rounded-xl border border-gray-200 p-5"
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-yellow-100 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center">
               <Clock className="w-5 h-5 text-yellow-600" />
             </div>
             <div>
@@ -298,7 +297,7 @@ const ProjectManagement = () => {
           className="bg-white rounded-xl border border-gray-200 p-5"
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center">
               <Eye className="w-5 h-5 text-emerald-600" />
             </div>
             <div>
@@ -315,7 +314,7 @@ const ProjectManagement = () => {
           className="bg-white rounded-xl border border-gray-200 p-5"
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
               <CheckCircle2 className="w-5 h-5 text-green-600" />
             </div>
             <div>
@@ -368,9 +367,7 @@ const ProjectManagement = () => {
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center">
-                      <Icon className="w-5 h-5 text-white" />
-                    </div>
+                    <IconBadge icon={Icon} gradient="from-teal-500" size={40} />
                     <div>
                       <h3 className="font-semibold text-gray-900 text-sm group-hover:text-teal-600 transition-colors">
                         {agent.name}

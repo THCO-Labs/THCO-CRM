@@ -48,7 +48,7 @@ const ApprovalDetailModal = ({ approval, onClose, onAction }) => {
         <DialogHeader className="px-6 pt-6 pb-4 border-b border-gray-100 sticky top-0 bg-white z-10">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center">
                 <Zap className="w-5 h-5 text-emerald-600" />
               </div>
               <div>

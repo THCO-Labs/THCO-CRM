@@ -299,6 +299,56 @@ Things that have already cost time. Do not rediscover them.
 - **Clearing `node_modules/.cache` while the dev server is running** leaves it
   compiling from a broken state and reporting errors at lines that no longer
   exist. Restart it.
+- **The same icon badge is written at least five ways** — `bg-gradient-to-br
+  ${x.gradient}`, a literal gradient, a flat `bg-gray-200` (the "Coming Soon"
+  cards), a template literal `` className={`… ${statusConfig.color}`} ``, and a
+  class inside a **quoted ternary branch** (`? 'bg-gradient-to-br …' : …`).
+  Each of those defeated a different sweep. Two rules that cost real rework:
+  - **Tokenise on `[\s`'"]+`, not whitespace.** A class inside a ternary arrives
+    as `'bg-gradient-to-br` with the quote attached, so `startsWith("bg-")`
+    misses it and the audit reports clean.
+  - **A gradient paints via `background-image`, not `background-color`.** A DOM
+    check that reads only `backgroundColor` sees `transparent` and passes every
+    gradient badge in the app.
+- **"Round" is not the rule — pale is.** An audit that only flagged
+  `border-radius < width / 2` passed eight solid `bg-[#1B4332]` circles with
+  white icons on the Flow dashboard. The rule is a **pale wash (8%) with a 20%
+  border and the icon drawn in the accent**; treat a saturated or gradient fill
+  as a violation regardless of its corner radius.
+- **Judge arbitrary hex fills by lightness, not by shape.** `bg-[#FBF8F1]` is
+  paper and fine; `bg-[#1B4332]` is not. Flagging every `bg-[#…]` produced 36
+  false positives across the unit pages.
+- **`pushState` + `popstate` does not re-render routes here.** The URL changes,
+  the sidebar stays, and route content never mounts — so a per-route DOM sweep
+  silently audits a blank page and reports zero. Use real navigations.
+- **"The projects list under Technology & Build" is two different pages.** The
+  Overview tab renders a demo Engineering Board table inside
+  `pages/TechnologyAndBuild.jsx`; the real, API-backed list is
+  `pages/MyProjects.jsx` at `/technology/my-projects`, behind the My Projects
+  tab. Changing one leaves the other untouched.
+
+### Visual language
+
+- **Icons** sit in a pale circle — an 8% wash of the accent, a 20% border, the
+  icon drawn in the accent itself, never white on a filled disc.
+  `components/ui/icon-badge.jsx` is the component. `accentFromClass()` reads the
+  accent out of whatever the page already declared — `bg-amber-500`,
+  `bg-[#1B4332]`, or a `from-… to-…` gradient — so a page keeps its own colours
+  and only the treatment changes. Converting a badge is therefore
+  `<IconBadge icon={X} accent={accentFromClass(color)} size={40} />`, with no
+  change to the page's data.
+- **Chat avatars are deliberately exempt** (`pages/FlowForgeChat.jsx`). They
+  follow the avatar convention — a solid disc, like the initials avatar in the
+  sidebar — not the icon-badge one.
+- **Brand colours** are seafoam `#1FB58A`, forest `#1B4332`, gold `#C6A15B` /
+  `#A9834E`, and the paper tones `#EAE7E0` / `#F7F6F3`. Project lists use
+  seafoam for progress and identity (pod chips), deepening to forest as a
+  project advances. Amber is kept for "Under Review" only: it is the one status
+  that asks someone to act, and the brand palette has no warning colour.
+- **Cards carry no internal rules or top strips** — border and spacing separate
+  them, not lines.
+- The ProcureAI decks and the Pebbles presentation are **deliberately excluded**
+  from all of the above; they are client-facing and keep their own identity.
 
 ### Infrastructure
 

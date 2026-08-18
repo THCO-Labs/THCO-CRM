@@ -142,7 +142,7 @@ const Settings = () => {
             <div className="mt-6 pt-5 border-t border-[#F0EEE9]">
               <Link to="/profile" className="flex items-center justify-between group">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-[#EFEDE8] flex items-center justify-center">
+                  <div className="w-9 h-9 rounded-full bg-[#EFEDE8] flex items-center justify-center">
                     <KeyRound className="w-4 h-4 text-[#A9834E]" />
                   </div>
                   <div>
@@ -158,7 +158,7 @@ const Settings = () => {
           {hasFullAccess(user) && (
             <div className="lux-card p-6 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-[#1FB58A]/10 flex items-center justify-center">
+                <div className="w-9 h-9 rounded-full bg-[#1FB58A]/10 flex items-center justify-center">
                   <UserCog className="w-4 h-4 text-[#179C76]" />
                 </div>
                 <div>

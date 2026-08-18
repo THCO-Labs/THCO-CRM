@@ -96,7 +96,7 @@ const ApprovalCard = ({ approval, onAction, onViewDetails }) => {
       <div className="flex items-start justify-between">
         <div className="flex items-start gap-4">
           {/* Request Type Icon */}
-          <div className={`w-10 h-10 rounded-lg bg-gray-50 flex items-center justify-center ${requestConfig.color}`}>
+          <div className={`w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center ${requestConfig.color}`}>
             <RequestIcon className="w-5 h-5" />
           </div>
           
@@ -355,7 +355,7 @@ const ApprovalQueue = () => {
       <div className="grid grid-cols-4 gap-4">
         <div className="bg-yellow-50 border border-yellow-100 rounded-xl p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
+            <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
               <Clock className="w-5 h-5 text-yellow-600" />
             </div>
             <div>
@@ -366,7 +366,7 @@ const ApprovalQueue = () => {
         </div>
         <div className="bg-green-50 border border-green-100 rounded-xl p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+            <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
               <CheckCircle2 className="w-5 h-5 text-green-600" />
             </div>
             <div>
@@ -377,7 +377,7 @@ const ApprovalQueue = () => {
         </div>
         <div className="bg-red-50 border border-red-100 rounded-xl p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
+            <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
               <XCircle className="w-5 h-5 text-red-600" />
             </div>
             <div>
@@ -388,7 +388,7 @@ const ApprovalQueue = () => {
         </div>
         <div className="bg-orange-50 border border-orange-100 rounded-xl p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
+            <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
               <AlertCircle className="w-5 h-5 text-orange-600" />
             </div>
             <div>

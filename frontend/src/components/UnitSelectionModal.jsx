@@ -114,7 +114,7 @@ const UnitSelectionModal = ({ isOpen, onClose }) => {
                 className="flex flex-col items-center p-4 rounded-xl border border-gray-100 hover:border-[#1FB58A]/30 hover:shadow-md transition-all group"
                 data-testid={`unit-select-${unit.slug}`}
               >
-                <div className={`w-12 h-12 rounded-xl ${unit.gradient} flex items-center justify-center mb-3 group-hover:scale-105 transition-transform`}>
+                <div className={`w-12 h-12 rounded-full ${unit.gradient} flex items-center justify-center mb-3 group-hover:scale-105 transition-transform`}>
                   <Icon className="w-6 h-6 text-white" />
                 </div>
                 <span className="text-sm font-medium text-gray-700 text-center group-hover:text-[#1FB58A] transition-colors">

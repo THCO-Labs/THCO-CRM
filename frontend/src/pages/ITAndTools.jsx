@@ -1,4 +1,5 @@
 import { useState } from "react";
+import IconBadge from "../components/ui/icon-badge";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { 
@@ -303,12 +304,9 @@ const ITAndTools = () => {
                   className="group bg-white rounded-2xl border border-gray-100 overflow-hidden hover:border-gray-200 hover:shadow-lg transition-all duration-300"
                   data-testid={`tool-card-${tool.slug}`}
                 >
-                  <div className={`h-2 bg-gradient-to-r ${tool.gradient}`}></div>
                   <div className="p-6">
                     <div className="flex items-start justify-between mb-4">
-                      <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${tool.gradient} flex items-center justify-center shadow-lg`}>
-                        <Icon className="w-6 h-6 text-white" />
-                      </div>
+                      <IconBadge icon={Icon} gradient={tool.gradient} size={48} />
                       <span className="text-[10px] font-mono px-2 py-1 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">
                         ACTIVE
                       </span>
@@ -350,12 +348,9 @@ const ITAndTools = () => {
                 className="bg-white rounded-2xl border border-gray-100 overflow-hidden opacity-60"
                 data-testid={`tool-card-${tool.slug}`}
               >
-                <div className="h-2 bg-gray-200"></div>
                 <div className="p-6">
                   <div className="flex items-start justify-between mb-4">
-                    <div className="w-12 h-12 rounded-xl bg-gray-200 flex items-center justify-center">
-                      <Icon className="w-6 h-6 text-gray-400" />
-                    </div>
+                    <IconBadge icon={Icon} accent="#8E8A82" size={48} />
                     <span className="text-[10px] font-mono px-2 py-1 rounded-full bg-amber-50 text-amber-600 border border-amber-200">
                       COMING SOON
                     </span>
@@ -407,7 +402,7 @@ const ITAndTools = () => {
                   data-testid={`agent-${agent.id}`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${statusConfig.color}`}>
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${statusConfig.color}`}>
                       <StatusIcon className="w-4 h-4" />
                     </div>
                     <div>

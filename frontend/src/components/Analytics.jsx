@@ -33,6 +33,7 @@ import {
 } from "../components/ui/dialog";
 import { analyticsAPI } from "../lib/api";
 import { toast } from "sonner";
+import IconBadge, { accentFromClass } from "./ui/icon-badge";
 
 const Analytics = () => {
   const [summary, setSummary] = useState(null);
@@ -167,9 +168,7 @@ const Analytics = () => {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-5 border border-blue-100">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-500 flex items-center justify-center">
-              <Users className="w-5 h-5 text-white" />
-            </div>
+            <IconBadge icon={Users} accent={accentFromClass("bg-blue-500")} size={40} />
             <div>
               <p className="text-2xl font-bold text-gray-900">{summary?.total_users || 0}</p>
               <p className="text-xs text-gray-500">Total Users</p>
@@ -184,9 +183,7 @@ const Analytics = () => {
 
         <div className="bg-gradient-to-br from-emerald-50 to-pink-50 rounded-xl p-5 border border-emerald-100">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-emerald-500 flex items-center justify-center">
-              <Activity className="w-5 h-5 text-white" />
-            </div>
+            <IconBadge icon={Activity} accent={accentFromClass("bg-emerald-500")} size={40} />
             <div>
               <p className="text-2xl font-bold text-gray-900">{summary?.total_sessions || 0}</p>
               <p className="text-xs text-gray-500">Total Sessions</p>
@@ -199,9 +196,7 @@ const Analytics = () => {
 
         <div className="bg-gradient-to-br from-green-50 to-teal-50 rounded-xl p-5 border border-green-100">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-500 flex items-center justify-center">
-              <Eye className="w-5 h-5 text-white" />
-            </div>
+            <IconBadge icon={Eye} accent={accentFromClass("bg-green-500")} size={40} />
             <div>
               <p className="text-2xl font-bold text-gray-900">{summary?.total_page_views || 0}</p>
               <p className="text-xs text-gray-500">Page Views</p>
@@ -214,9 +209,7 @@ const Analytics = () => {
 
         <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl p-5 border border-orange-100">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-orange-500 flex items-center justify-center">
-              <MousePointer className="w-5 h-5 text-white" />
-            </div>
+            <IconBadge icon={MousePointer} accent={accentFromClass("bg-orange-500")} size={40} />
             <div>
               <p className="text-2xl font-bold text-gray-900">
                 {Object.values(summary?.user_actions_summary || {}).reduce((a, b) => a + b, 0)}

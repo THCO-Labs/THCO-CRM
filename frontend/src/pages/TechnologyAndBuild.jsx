@@ -1,4 +1,5 @@
 import { useState } from "react";
+import IconBadge from "../components/ui/icon-badge";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { 
@@ -284,7 +285,7 @@ const TechnologyAndBuild = () => {
                 Now also limited to unit heads, who are the ones who open work. */}
             {canCreateProjects(user) && (
               <Link to="/flow/projects/new">
-                <Button className="bg-cyan-600 hover:bg-cyan-700" data-testid="tech-new-project-btn">
+                <Button className="bg-[#1B4332] hover:bg-[#1B4332]/90" data-testid="tech-new-project-btn">
                   <Plus className="w-4 h-4 mr-2" />
                   New Project
                 </Button>
@@ -439,9 +440,7 @@ const TechnologyAndBuild = () => {
               data-testid={`pod-card-${pod.id}`}
             >
               <div className="flex items-center gap-3 mb-4">
-                <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${pod.color} flex items-center justify-center`}>
-                  <Code className="w-6 h-6 text-white" />
-                </div>
+                <IconBadge icon={Code} gradient={pod.color} size={48} />
                 <div>
                   <h3 className="font-semibold text-gray-900">{pod.name}</h3>
                   <p className="text-sm text-gray-500">{pod.focus}</p>
@@ -489,18 +488,15 @@ const TechnologyAndBuild = () => {
                   className="group bg-white rounded-2xl border border-gray-100 overflow-hidden hover:border-gray-200 hover:shadow-lg transition-all duration-300"
                   data-testid={`tool-card-${tool.slug}`}
                 >
-                  <div className={`h-2 bg-gradient-to-r ${tool.gradient}`}></div>
                   <div className="p-6">
                     <div className="flex items-start justify-between mb-4">
-                      <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${tool.gradient} flex items-center justify-center shadow-lg`}>
-                        <Icon className="w-6 h-6 text-white" />
-                      </div>
+                      <IconBadge icon={Icon} gradient={tool.gradient} size={48} />
                       <span className="text-[10px] font-mono px-2 py-1 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">
                         ACTIVE
                       </span>
                     </div>
                     
-                    <h3 className="font-display text-lg text-gray-900 mb-2 group-hover:text-cyan-600 transition-colors">
+                    <h3 className="font-display text-lg text-gray-900 mb-2 group-hover:text-[#158567] transition-colors">
                       {tool.name}
                     </h3>
                     <p className="text-sm text-gray-500 mb-4">
@@ -508,7 +504,7 @@ const TechnologyAndBuild = () => {
                     </p>
                     
                     <div className="flex items-center justify-end pt-4 border-t border-gray-100">
-                      <span className="text-sm text-cyan-600 flex items-center gap-1 group-hover:gap-2 transition-all font-medium">
+                      <span className="text-sm text-[#158567] flex items-center gap-1 group-hover:gap-2 transition-all font-medium">
                         Open Tool
                         <ChevronRight className="w-4 h-4" />
                       </span>
@@ -526,12 +522,9 @@ const TechnologyAndBuild = () => {
                 transition={{ delay: index * 0.1 }}
                 className="bg-white rounded-2xl border border-gray-100 overflow-hidden opacity-60"
               >
-                <div className="h-2 bg-gray-200"></div>
                 <div className="p-6">
                   <div className="flex items-start justify-between mb-4">
-                    <div className="w-12 h-12 rounded-xl bg-gray-200 flex items-center justify-center">
-                      <Icon className="w-6 h-6 text-gray-400" />
-                    </div>
+                    <IconBadge icon={Icon} accent="#8E8A82" size={48} />
                     <span className="text-[10px] font-mono px-2 py-1 rounded-full bg-amber-50 text-amber-600 border border-amber-200">
                       COMING SOON
                     </span>
@@ -567,11 +560,9 @@ const TechnologyAndBuild = () => {
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center">
-                      <Icon className="w-5 h-5 text-white" />
-                    </div>
+                    <IconBadge icon={Icon} gradient="from-cyan-500" size={40} />
                     <div>
-                      <h3 className="font-semibold text-gray-900 text-sm group-hover:text-cyan-600 transition-colors">
+                      <h3 className="font-semibold text-gray-900 text-sm group-hover:text-[#158567] transition-colors">
                         {agent.name}
                       </h3>
                       <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${PRIORITY_COLORS[agent.priority]}`}>
@@ -640,7 +631,9 @@ const TechnologyAndBuild = () => {
                       <span className="text-sm text-gray-600">{project.client}</span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="text-xs font-medium px-2 py-1 rounded-full bg-cyan-100 text-cyan-700">
+                      {/* Brand seafoam rather than a stock cyan, so the list
+                          belongs to this product and not to Tailwind. */}
+                      <span className="text-xs font-medium px-2 py-1 rounded-full bg-[#1FB58A]/12 text-[#158567] border border-[#1FB58A]/25">
                         {project.pod}
                       </span>
                     </td>
@@ -652,9 +645,9 @@ const TechnologyAndBuild = () => {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <div className="w-20 h-2 bg-gray-100 rounded-full overflow-hidden">
-                          <div 
-                            className="h-full bg-cyan-500 rounded-full"
+                        <div className="w-20 h-1.5 bg-[#EAE7E0] rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-[#1FB58A] rounded-full transition-[width] duration-700 ease-out"
                             style={{ width: `${project.progress}%` }}
                           />
                         </div>

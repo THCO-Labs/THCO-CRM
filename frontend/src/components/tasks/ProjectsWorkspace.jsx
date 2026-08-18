@@ -26,7 +26,7 @@ function lastMoved(p) {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-export default function ProjectsWorkspace({ onSelect }) {
+export default function ProjectsWorkspace({ onSelect, autoSelectId }) {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
@@ -42,6 +42,15 @@ export default function ProjectsWorkspace({ onSelect }) {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // The open board lives in the address bar, so a reload or a shared link
+  // arrives here naming a project we have not fetched yet. Once the list is
+  // in, hand that project straight back up.
+  useEffect(() => {
+    if (!autoSelectId || !projects.length) return;
+    const match = projects.find((p) => p.id === autoSelectId);
+    if (match) onSelect(match, { fromUrl: true });
+  }, [autoSelectId, projects, onSelect]);
 
   // One frame after the first paint, so the width transition has a start.
   useEffect(() => {

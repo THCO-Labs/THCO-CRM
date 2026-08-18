@@ -1,6 +1,6 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { ArrowLeft, Share2 } from "lucide-react";
-import { useLocation } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import ProjectsWorkspace from "../components/tasks/ProjectsWorkspace";
 import TaskBoard from "../components/tasks/TaskBoard";
 import ShareModal from "../components/tasks/ShareModal";
@@ -24,12 +24,37 @@ export default function Tasks() {
   const user = useUser();
   const [selected, setSelected] = useState(null); // project object or null
   const [shareOpen, setShareOpen] = useState(false);
-  const location = useLocation();
 
-  // When navigating back to /tasks (sidebar click), reset to project list
+  // Which board is open is held in the address bar rather than in state alone.
+  //
+  // It used to be state only, so opening a board added nothing to the browser's
+  // history. Pressing Back from inside a board skipped the project list
+  // entirely and went to whatever page you were on before Tasks -- usually a
+  // business unit. The list is a step you walked through, so it should be a
+  // step you can walk back to.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const openProjectId = searchParams.get("project");
+
+  // Back, a sidebar click, or anything else that drops the parameter closes
+  // the board. This is the only thing that closes it, so the URL and the
+  // screen cannot disagree.
   useEffect(() => {
+    if (!openProjectId) setSelected(null);
+  }, [openProjectId]);
+
+  const openProject = useCallback((project, { fromUrl = false } = {}) => {
+    setSelected(project);
+    // Resolving a project named in the URL must not add a second identical
+    // entry, or Back would land on the same board it just left.
+    if (!fromUrl) setSearchParams({ project: project.id });
+  }, [setSearchParams]);
+
+  const closeProject = useCallback(() => {
     setSelected(null);
-  }, [location.key]);
+    // Replace, so the button and the browser's Back arrow agree: both leave
+    // one /tasks entry behind rather than stacking another one.
+    setSearchParams({}, { replace: true });
+  }, [setSearchParams]);
 
   // What this person may do depends on the project, not on their account
   // alone: a unit head shapes their own unit's boards, collaborators work
@@ -86,7 +111,7 @@ export default function Tasks() {
           {/* Back to Projects action when a project is open */}
           {selected && (
             <button
-              onClick={() => setSelected(null)}
+              onClick={closeProject}
               data-testid="back-to-projects"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-[#F0EEE9] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C6A15B]/40"
             >
@@ -102,7 +127,7 @@ export default function Tasks() {
         {selected ? (
           <TaskBoard key={projectId} permissions={permissions} api={api} />
         ) : (
-          <ProjectsWorkspace onSelect={setSelected} />
+          <ProjectsWorkspace onSelect={openProject} autoSelectId={openProjectId} />
         )}
       </div>
 

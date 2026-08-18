@@ -297,9 +297,22 @@ const Inp = ({ label, v, on, placeholder, testid }) => (
 // "22-08" into "22 Aug" for display; the field itself is the shared DateField.
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+// Two shapes arrive here. Anything entered from now on is a whole date,
+// "YYYY-MM-DD". Records created before the year was kept hold "DD-MM" and have
+// no year to show, so they are still read and displayed without one.
 const parseDayMonth = (value) => {
   if (!value || typeof value !== "string") return undefined;
-  const m = /^(\d{1,2})-(\d{1,2})$/.exec(value.trim());
+  const text = value.trim();
+
+  const full = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(text);
+  if (full) {
+    const [, y, mo, dd] = full.map(Number);
+    const d = new Date(y, mo - 1, dd);
+    if (d.getMonth() !== mo - 1 || d.getDate() !== dd) return undefined;
+    return d;
+  }
+
+  const m = /^(\d{1,2})-(\d{1,2})$/.exec(text);
   if (!m) return undefined;
   const day = Number(m[1]);
   const month = Number(m[2]);
@@ -311,7 +324,11 @@ const parseDayMonth = (value) => {
 
 const formatDayMonth = (value) => {
   const d = parseDayMonth(value);
-  return d ? `${d.getDate()} ${MONTH_NAMES[d.getMonth()]}` : value || "";
+  if (!d) return value || "";
+  const dayMonth = `${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`;
+  // Only a whole date has a year worth printing; the old records do not.
+  const hasYear = /^\d{4}-/.test(String(value).trim());
+  return hasYear ? `${dayMonth} ${d.getFullYear()}` : dayMonth;
 };
 
 const DayMonthField = ({ label, value, onChange, testid }) => (
@@ -319,8 +336,8 @@ const DayMonthField = ({ label, value, onChange, testid }) => (
     <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
     {/* The shared date field, so picking a birthday here is the same action
         as picking one on a profile -- and on a phone it opens the operating
-        system's own date wheel. Still stored day-month; the year is not
-        anyone's business on a contact record. */}
-    <DateField value={value} onChange={onChange} dayMonth icon={CalendarDays} data-testid={testid} />
+        system's own date wheel. The whole date is kept: pinning the year to
+        2000 meant it was shown but could never be changed. */}
+    <DateField value={value} onChange={onChange} icon={CalendarDays} data-testid={testid} />
   </div>
 );

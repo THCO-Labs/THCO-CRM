@@ -3,7 +3,22 @@
 import asyncio
 from motor.motor_asyncio import AsyncIOMotorClient
 
-PROD_URL = "mongodb://thcoadmin:Thco042148521dfac6d6185cCrm!@fc-ecf1916945d5-000.mongocluster.cosmos.azure.com:10260/?tls=true&authMechanism=SCRAM-SHA-256&retrywrites=false&maxIdleTimeMS=120000"
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+
+# This used to be a hardcoded connection string in a committed file, so the
+# production database password was readable by anyone with repository access.
+# It now comes from backend/.env, which git ignores. The password remains in
+# git history and should be rotated.
+PROD_URL = os.environ.get("PROD_MONGO_URL", "")
+if not PROD_URL:
+    raise RuntimeError(
+        "PROD_MONGO_URL is not set. Put the production connection string in "
+        "backend/.env as PROD_MONGO_URL=..."
+    )
 DB_NAME = "thco_crm"
 
 async def main():

@@ -22,6 +22,12 @@ import re
 from services import permissions
 from services import notifications
 
+
+def _clear_identity_cache() -> None:
+    """Drop cached identities after a change that can alter who manages what."""
+    from server import clear_user_cache
+    clear_user_cache()
+
 router = APIRouter(prefix="/units", tags=["units"])
 
 # Will be set from server.py
@@ -162,6 +168,7 @@ async def update_unit(slug: str, data: UnitUpdate, request: Request):
     update = {k: v for k, v in data.dict(exclude_unset=True).items() if v is not None}
     update["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.units.update_one({"slug": slug}, {"$set": update})
+    _clear_identity_cache()
     unit = await db.units.find_one({"slug": slug}, {"_id": 0})
     return serialize(unit)
 
@@ -245,6 +252,7 @@ async def set_unit_head(slug: str, data: UnitHeadSet, request: Request):
             {"$set": {"head_user_id": None, "head_name": None,
                       "updated_at": datetime.now(timezone.utc).isoformat()}},
         )
+        _clear_identity_cache()
         return {"slug": slug, "head_user_id": None, "head_name": None,
                 "previous_head_id": previous_id, "previous_head_name": previous_name}
 
@@ -268,6 +276,7 @@ async def set_unit_head(slug: str, data: UnitHeadSet, request: Request):
         {"user_id": head["user_id"]},
         {"$addToSet": {"accessible_units": {"$each": [slug, "flow"]}}},
     )
+    _clear_identity_cache()
 
     if head["user_id"] != previous_id:
         await notifications.notify_made_unit_head(
@@ -331,6 +340,7 @@ async def invite_members(slug: str, data: InviteMember, request: Request):
                     {"email": email},
                     {"$set": {"accessible_units": units, "status": "active"}},
                 )
+                _clear_identity_cache()
                 updated.append(email)
                 pw = shared_pw or "(your existing password)"
             else:

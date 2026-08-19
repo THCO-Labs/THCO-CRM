@@ -96,7 +96,10 @@ export default function TaskBoard({ permissions = READ_ONLY_PERMISSIONS, api }) 
         // Not mid-drag: replacing the array under a card being moved would
         // drop it.
         if (!document.hidden && !activeCardRef.current) load();
-      }, 25000);
+        // 25s per open board, per person, each costing a full identity
+        // resolution as well as the board itself. A minute still feels live
+        // and is less than half the load.
+      }, 60000);
     };
     const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
     const onVisibility = () => {

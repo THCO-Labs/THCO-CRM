@@ -64,7 +64,7 @@ export default function ProjectsWorkspace({ onSelect, autoSelectId }) {
   // paused when it is not.
   useEffect(() => {
     let timer = null;
-    const start = () => { stop(); timer = setInterval(() => { if (!document.hidden) load(); }, 30000); };
+    const start = () => { stop(); timer = setInterval(() => { if (!document.hidden) load(); }, 90000); };
     const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
     const onVisibility = () => { if (document.hidden) { stop(); } else { load(); start(); } };
     start();

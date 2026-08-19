@@ -83,7 +83,10 @@ export const AnalyticsProvider = ({ children, user }) => {
         const timeOnPage = Math.floor((Date.now() - pageStartTimeRef.current) / 1000);
         analyticsAPI.heartbeat(sessionIdRef.current, lastPageRef.current, timeOnPage);
       }
-    }, 30000); // 30 seconds
+      // Every 30s per person was a database write plus a full identity
+      // resolution, for a number nobody reads during the day. Five minutes
+      // gives the same picture at a tenth of the cost.
+    }, 300000); // 5 minutes
 
   }, [location.pathname, user]);
 

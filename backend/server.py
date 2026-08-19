@@ -7,6 +7,7 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import time
 import logging
 import shutil
 from pathlib import Path
@@ -354,6 +355,67 @@ def decode_jwt_token(token: str) -> dict:
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+# Resolving who is calling costs four database round trips: the session, the
+# user, the units they head, and a count to decide whether they have any real
+# project. Every authenticated request paid all four, and with page polling and
+# analytics heartbeats on top that was hundreds of operations a minute before
+# anybody did any work. On 19 August, after the CV migration, the free-tier
+# cluster stopped answering queries entirely under that weight.
+#
+# The result is cached briefly, keyed on the session token. None of the
+# permission logic changes -- it is computed exactly as before and the answer
+# is simply reused for a few seconds rather than recomputed for every request
+# in a page load.
+#
+# The cost is that a permission change takes up to AUTH_CACHE_SECONDS to be
+# felt. Signing out, changing a password and editing a profile all clear the
+# entry immediately, so the cases that matter are exact.
+_USER_CACHE: dict = {}
+_USER_CACHE_TTL = float(os.environ.get("AUTH_CACHE_SECONDS", "45"))
+_USER_CACHE_MAX = 2000
+
+
+def _user_cache_get(token: str):
+    entry = _USER_CACHE.get(token)
+    if not entry:
+        return None
+    cached_at, user = entry
+    if (time.monotonic() - cached_at) > _USER_CACHE_TTL:
+        _USER_CACHE.pop(token, None)
+        return None
+    # A copy, because callers decorate the dict they are handed.
+    return dict(user)
+
+
+def _user_cache_put(token: str, user: dict) -> None:
+    if len(_USER_CACHE) >= _USER_CACHE_MAX:
+        # Cheap bound: drop the oldest quarter rather than track an LRU.
+        for stale in sorted(_USER_CACHE, key=lambda k: _USER_CACHE[k][0])[: _USER_CACHE_MAX // 4]:
+            _USER_CACHE.pop(stale, None)
+    _USER_CACHE[token] = (time.monotonic(), dict(user))
+
+
+def clear_user_cache() -> None:
+    """Forget every cached identity.
+
+    Used when a change could alter more than one person's rights -- naming a
+    unit head rewrites both that person's grants and, by implication, everyone
+    who was managed under the previous head. Working out exactly who is
+    affected is not worth the risk of getting it wrong, and the cache refills
+    within a few requests.
+    """
+    _USER_CACHE.clear()
+
+
+def invalidate_user_cache(token: str = None, user_id: str = None) -> None:
+    """Forget a cached identity at once, by session or by person."""
+    if token:
+        _USER_CACHE.pop(token, None)
+    if user_id:
+        for k in [k for k, (_, u) in _USER_CACHE.items() if u.get("user_id") == user_id]:
+            _USER_CACHE.pop(k, None)
+
+
 async def get_current_user(request: Request) -> dict:
     # Try cookie first
     session_token = request.cookies.get("session_token")
@@ -366,7 +428,11 @@ async def get_current_user(request: Request) -> dict:
     
     if not session_token:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    
+
+    cached = _user_cache_get(session_token)
+    if cached is not None:
+        return cached
+
     # Check session in database
     session_doc = await db.user_sessions.find_one({"session_token": session_token}, {"_id": 0})
     if not session_doc:
@@ -427,6 +493,7 @@ async def get_current_user(request: Request) -> dict:
             {**permissions.project_scope_filter(user), "is_demo": {"$ne": True}}
         ) > 0
 
+    _user_cache_put(session_token, user)
     return user
 
 async def log_activity(user_id: str, user_name: str, action: str, unit_slug: str = "", entity_type: str = "", entity_id: str = "", details: str = ""):
@@ -1008,6 +1075,7 @@ async def logout(request: Request, response: Response):
     session_token = request.cookies.get("session_token")
     if session_token:
         await db.user_sessions.delete_one({"session_token": session_token})
+        invalidate_user_cache(token=session_token)
     
     response.delete_cookie(key="session_token", path="/", samesite="none", secure=True)
     return {"message": "Logged out successfully"}
@@ -1210,6 +1278,7 @@ async def change_my_password(data: MyPasswordChange, request: Request):
     await db.user_sessions.delete_many(
         {"user_id": user["user_id"], "session_token": {"$ne": current_token}}
     )
+    invalidate_user_cache(user_id=user["user_id"])
 
     return {"message": "Password changed"}
 
@@ -1463,6 +1532,7 @@ async def delete_user(user_id: str, request: Request):
 
     await db.users.delete_one({"user_id": user_id})
     await db.user_sessions.delete_many({"user_id": user_id})
+    invalidate_user_cache(user_id=user_id)
     await db.notifications.delete_many({"user_id": user_id})
 
     await log_activity(

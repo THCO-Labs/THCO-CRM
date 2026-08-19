@@ -477,7 +477,14 @@ openable document.
   Not yet done.
 - **Bundles rejected before the splitter existed** are recorded and re-runnable
   but have not been re-run.
-- **Skipped migration chunks** need a final pass once the main run finishes.
+- **The CV migration finished on 19 August but left 5,574 files behind.**
+  Production holds 65,278 of 70,852. Sixty chunks — 6,000 candidates — were
+  abandoned when the cluster began failing every write, and they are recorded
+  in `ops/cv-migration-outstanding.json`. That file is the only durable record:
+  the run deletes its own checkpoint when it finishes, so the list would
+  otherwise exist nowhere. Those candidates have a profile and no openable CV.
+  Do not re-run this on the free tier while people are working; it is what took
+  the database down.
 - **~81 mailbox messages were skipped and need re-reading**: UIDs 4485-4565,
   passed over by the runs of 14 and 17 August when every document failed with
   code 50 and the cursor advanced anyway. The cursor bug is fixed, but these

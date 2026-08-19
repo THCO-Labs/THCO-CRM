@@ -1,6 +1,6 @@
 # THCO CRM — Project State and Handover
 
-**Last updated:** 17 August 2026
+**Last updated:** 19 August 2026
 
 This document exists so that work can be picked up by someone (or something)
 with no prior context. It records what the system is, what has been done, what
@@ -21,7 +21,7 @@ internal CV database, and external candidate sourcing.
 |---|---|
 | Frontend | React 19, CRA via craco, Tailwind, shadcn/ui |
 | Backend | FastAPI (Python 3.12 in the container), Motor async MongoDB driver |
-| Database | MongoDB — Azure Cosmos DB for MongoDB (vCore, **Free tier**) |
+| Database | MongoDB — Azure Cosmos DB for MongoDB (vCore, **M10**, cluster `thco-crm-mongo-r1`) |
 | Hosting | Azure Container Apps, West Europe |
 | Email | Resend, sending from `noreply@thcohq.com` |
 | Repo | `github.com/THCO-Labs/THCO-CRM` (org-owned) |
@@ -114,6 +114,26 @@ manager's rights across the firm.
 querying `users.headed_units` alone will under-report who is a manager — a
 count taken that way missed Anabel entirely.
 
+### The resolved identity is cached for 45 seconds
+
+`get_current_user` costs four database round trips — session, user, the units
+they head, and a count deciding whether they have any real project. Every
+authenticated request paid all four, and page polling multiplied it. On
+19 August that load was part of what took the cluster down.
+
+The result is now cached against the session token (`AUTH_CACHE_SECONDS`,
+default 45). **None of the permission logic changed** — it is computed exactly
+as before and the answer reused.
+
+The cost is that a rights change can take up to 45 seconds to be felt, so the
+cases that matter clear it immediately: signing out and deleting an account drop
+that session, changing a password drops every session of that person, and any
+write that can move management around calls `clear_user_cache()` — the whole
+cache, rather than guessing who was affected. `backend/tests/test_auth_cache.py`
+pins all of it, including that the cached record is handed out as a **copy**;
+callers decorate that dict, and a shared reference would leak one person's
+rights into another's request.
+
 ### THCO Flow is managers and administrators
 
 `has_unit_access(user, "flow")` returns `is_unit_head(user)`. Being on a
@@ -152,8 +172,10 @@ name, sometimes an email. Do not assume one field.
   tickets, messages, audit log, calendar. Managers and admins only.
 - **Task board** — Trello-style under `/api/tasks`. Cards carry labels,
   assignees, priority, due dates, **attachments** and a **cover picture**. The
-  board refreshes every 25s while on screen, pauses when the tab is hidden, and
-  never refreshes mid-drag.
+  board refreshes every 60s while on screen, pauses when the tab is hidden, and
+  never refreshes mid-drag. The project list refreshes every 90s and the
+  analytics heartbeat every 5 minutes — all three were far more eager until
+  19 August, when the database load they created became a problem.
 - **Internal CV database** — ~33,500 candidates in production. Upload, parse
   (PDF/DOCX/DOC), search, de-duplication, resume versioning.
 - **Gmail CV ingestion** — built and run. See §7; it is no longer blocked.
@@ -243,20 +265,31 @@ cannot: agencies name ordinary one-person CVs `..._merged.pdf` and stamp deck
 wording on every page. A three-address rule condemned 959 documents to catch
 about a dozen real bundles.
 
-### The production migration (in flight)
+### The production migration (finished, incomplete)
 
 `backend/migrate_new_gmail_cvs.py` appends local CVs to production. Strictly an
 add; nothing in production is updated or deleted.
 
-Status at the time of writing: `candidates` and `resume_versions` are done.
-**`resume_files` — the CV documents themselves — is still running**, at roughly
-34 files/minute against Cosmos on the free tier.
+It ran 18-19 August and **took the database down with it**. See §8. Production
+holds 65,278 of 70,852 files; the missing 5,574 are listed in
+`ops/cv-migration-outstanding.json`.
 
-The runner used for it lives outside the repo and works a **checkpointed**
-100-candidate chunk at a time, so a crash or a sleeping laptop costs only the
-chunk in flight. A chunk that fails three times is recorded in
-`skipped_chunks` and stepped over rather than stalling the rest; those are
-re-runnable afterwards by resetting `next_index`.
+The runner lives outside the repo and works a **checkpointed** 100-candidate
+chunk at a time, so a crash or a sleeping laptop costs only the chunk in
+flight. A chunk that fails three times is recorded in `skipped_chunks` and
+stepped over rather than stalling the rest.
+
+**Two things to know before running it again.**
+
+It deletes its own checkpoint on finishing, so the record of what it skipped
+disappears at the moment you most want it. Copy `skipped_chunks` out before the
+run ends, or read it back from the log.
+
+And it must not run flat out during working hours. Sixty chunks were abandoned
+in the last five hours of the run because the database could no longer take the
+writes, and the failures accelerated as it went: the first 6,800 candidates
+migrated clean, then a chunk was lost every ~2,600, and by the end one every
+100. Throttle it and run it overnight.
 
 ---
 
@@ -351,6 +384,56 @@ Things that have already cost time. Do not rediscover them.
   from all of the above; they are client-facing and keep their own identity.
 
 ### Infrastructure
+
+**The outage of 19 August — read this before running anything heavy.**
+
+The CV migration ran for eighteen hours against the free tier and the cluster
+never recovered from it. By morning `ping` still answered while every command
+that had to reach the data shard — `listDatabases`, `dbStats`, `currentOp`,
+every query — returned `InternalError`. CPU sat at 90% with IOPS in single
+digits: burning cycles internally with no work coming in. That is the signature
+of a wedged cluster rather than a busy one, and none of the usual levers touch
+it. Azure exposes no restart or failover for `mongoClusters`, and scaling the
+tier restarted the compute without clearing it.
+
+What actually fixed it was a point-in-time restore onto a new cluster. Lessons
+worth keeping:
+
+- **A restored cluster comes up with no firewall rules.** Connections then hang
+  rather than fail, which looks exactly like the fault you are escaping.
+  Recreate them: `AllowAzureServices` (`0.0.0.0`-`0.0.0.0`, which is what lets
+  the app in) and any operator IP.
+- **Restore needs the administrator password in the request**, and the restored
+  cluster keeps its own hostname. Read the new host from
+  `listConnectionStrings`; the app connects by the internal `fc-…` host, not
+  the friendly name.
+- **`mongodb+srv://` may not resolve on a home network.** Use the direct
+  `mongodb://host:10260` form, which is what production already uses.
+- **A broken database blocks deployments.** Two startup handlers talk to Mongo
+  before the app serves — `seed_initial_admin` counts users, `startup_scheduler`
+  builds talent indexes. Both raise, FastAPI treats a failed startup event as
+  fatal, the container exits 3, and Container Apps refuses to shift traffic. The
+  symptom is a deploy that "never came up" while production serves the old
+  build. The app should not refuse to boot because a seeding check failed; that
+  is still worth fixing.
+- **Changing a container app secret does not restart running replicas.** It
+  creates a new revision, but a replica already running keeps the old value.
+  After rotating anything, check `revision list` for what is actually active and
+  restart if the old replica is still serving. This caught us twice in one
+  morning, the second time forty minutes after writing it down.
+- **After any credential change, exercise a write, not a page load.** The
+  identity cache (§4) serves reads without touching the database, so with a
+  wrong password the site looks perfectly healthy — 158 requests returning 200 —
+  while every write fails with `AuthenticationFailed: Invalid key`. It was found
+  by a person trying to log out, not by monitoring. Log out, or save something,
+  and check the response.
+
+**Cost and sizing.** The database runs on **one burstable vCore**. Burstable
+means credits accrue while idle and are spent under load; drain them and you are
+throttled hard, which is what eighteen hours of bulk writing did. Fine for ~30
+people doing ordinary work — at rest the cluster sees about 7 operations a
+second — and not fine for a bulk import during the day, which peaked at 566.
+
 
 - **Do not verify a frontend deploy by grepping `main.js`.** The app is code
   split into ~139 chunks, so page code and anything it imports lands in a
@@ -450,21 +533,29 @@ produced two runs a day, every day, from 10 August.
 
 ---
 
-## 10. Data (production, 17 August 2026)
+## 10. Data (production, 19 August 2026)
 
 | Collection | Rows | Note |
 |---|---|---|
 | `candidates` | 33,547 | Internal CV database |
 | `resume_versions` | 75,856 | Every CV ever received, never overwritten |
-| `resume_files` | 21,425 | **Migration in flight** — target ~70,000 |
+| `resume_files` | 65,278 | Target 70,852 — see §11, 5,574 still outstanding |
 | `users` | 30 | |
 | `projects` | 15 | |
 | `contacts` | 4 | Still thin — data entry, not a development task |
+| `notifications` | 25 | |
 | `events` | 2 | Contact occasions; staff birthdays are computed, not stored |
 
-Candidate records exceed CV files because the file migration is incomplete:
-until it finishes, many candidates in production have a profile but no
-openable document.
+**Why 33,547 people hold 75,856 CVs.** A CV is never overwritten. The same
+person applies again months later, or arrives through a second agency, and each
+document is kept as a new version — 2.29 per candidate on average. Fewer than
+half have only one: 14,913 people have a single CV, 7,391 have two, 4,226 have
+three, and 1,467 have seven or more. The 5,000-odd versions with no file
+predate storing the original document; they hold extracted text only.
+
+Those files are ~21 GB. Individually small, but 65,000 of them add up, and that
+is what made the migration heavy — not the space, the number of write
+operations.
 
 ---
 
@@ -492,6 +583,15 @@ openable document.
   once the migration is done and the import can actually succeed:
   `db.import_cursors.updateOne({connector:"gmail"}, {$set:{cursor:"4484"}})`.
   Re-reading is safe — an identical document is recognised by its hash.
+- **The production database password is in git history.** It was hardcoded in
+  `sync_from_prod.py`, `fix_sync.py` and `set_prod_privileges.py`. Those files
+  now read `PROD_MONGO_URL` from `backend/.env`, and the live password was
+  rotated on 19 August, so the exposed one is dead — it belonged to a cluster
+  that has been deleted. History is still readable, so treat any other
+  credential in it as compromised.
+- **The app will not start if the database is unreachable**, because two
+  startup handlers query it. That turns a database problem into a deployment
+  problem. See §8.
 - **`import_failures` is new and nothing reads it yet.** Documents set aside
   after three attempts land there with their error; there is no screen for them.
 - **Collaborators cannot raise tickets**, since tickets live in Flow. A

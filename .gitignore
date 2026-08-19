@@ -207,3 +207,7 @@ backend/service_account*.json
 backend/added_gmail_cvs_*.json
 backend/removed_non_cvs.json
 backend/candidates_needing_manual_review.csv
+
+# scratch files from credential rotation — must never be committed
+*_newurl.tmp
+*.tmp

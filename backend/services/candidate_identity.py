@@ -28,6 +28,7 @@ Bands:
 
 import hashlib
 import logging
+import time
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -232,7 +233,13 @@ async def find_match(db, incoming: Dict[str, Any]) -> Dict[str, Any]:
         return {"decision": "create", "score": 0.0, "candidate": None, "reasons": []}
 
     best, best_score, best_reasons = None, 0.0, []
+    # Timed because the mailbox import spends most of its life somewhere, and
+    # guessing where has been wrong twice. This is the one database read per
+    # document, so it is the first place to look.
+    _t0 = time.monotonic()
+    _examined = 0
     async for existing in db.candidates.find({"$or": clauses}).limit(50):
+        _examined += 1
         # A pair a recruiter has already judged to be different people is not
         # raised again, however similar the records look.
         if incoming.get("candidate_id") in (existing.get("not_duplicates_of") or []):
@@ -240,6 +247,11 @@ async def find_match(db, incoming: Dict[str, Any]) -> Dict[str, Any]:
         score, reasons = score_pair(incoming, existing)
         if score > best_score:
             best, best_score, best_reasons = existing, score, reasons
+
+    _elapsed = time.monotonic() - _t0
+    if _elapsed > 1.0:
+        logger.info("identity lookup took %.1fs over %d clause(s), %d record(s) scored",
+                    _elapsed, len(clauses), _examined)
 
     # A name-only agreement is not identification. Two people called
     # "Chinedu Okeke" are not the same person, and merging them loses a real

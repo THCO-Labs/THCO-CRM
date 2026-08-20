@@ -13,6 +13,7 @@ would be slow and would spend API quota needlessly.
 import asyncio
 import logging
 import os
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -178,9 +179,16 @@ async def run_connector(
             continue
 
         try:
+            # The whole cost of one document, which is what decides whether a
+            # bounded run clears two messages or two hundred. Everything inside
+            # reports its own share when it is slow enough to matter.
+            _t0 = time.monotonic()
             outcome = await import_cv(
                 db, document.content, document.filename, document.import_source()
             )
+            _took = time.monotonic() - _t0
+            logger.info("imported %s in %.1fs (%d KB)", document.filename,
+                        _took, len(document.content or b"") // 1024)
             action = outcome.get("action", "failed")
             # An action with no bucket is something this code has never seen.
             # Counting it and walking on would carry the cursor past a document
@@ -262,10 +270,14 @@ async def run_connector(
             "ran_at": started.isoformat(),
         })
 
+    _secs = (datetime.now(timezone.utc) - started).total_seconds()
+    _docs = sum(counts.values())
     logger.info(
-        "%s import: %d created, %d updated, %d rejected, %d failed",
-        connector.name, counts["created"], counts["updated"],
-        counts["rejected"], counts["failed"],
+        "%s import: %d created, %d updated, %d rejected, %d split, %d failed "
+        "-- %d document(s) in %.0fs (%.1fs each)",
+        connector.name, counts["created"], counts["updated"], counts["rejected"],
+        counts.get("split", 0), counts["failed"], _docs, _secs,
+        _secs / _docs if _docs else 0.0,
     )
     return result
 

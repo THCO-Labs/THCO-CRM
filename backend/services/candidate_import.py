@@ -16,6 +16,7 @@ Two guarantees:
 
 import logging
 import re
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -407,13 +408,21 @@ async def import_cv(db, file_bytes: bytes, filename: str,
     is new and create them twice. Callers importing a single document have no
     such concern and should keep using this.
     """
+    _t = time.monotonic()
     parsed = parse_bytes(file_bytes, filename)
+    _parse = time.monotonic() - _t
 
     # A deck becomes its candidates, each imported as the CV it is. The depth
     # guard is belt and braces: a piece cut out of a deck should never look
     # like a deck itself, and if one ever did this would otherwise not stop.
+    _split = 0.0
     if _split_depth == 0:
+        _t = time.monotonic()
         pieces = split_out_candidates(parsed, file_bytes, filename)
+        _split = time.monotonic() - _t
+        if _parse + _split > 2.0:
+            logger.info("%s: parse %.1fs, split check %.1fs (%d KB)",
+                        filename, _parse, _split, len(file_bytes) // 1024)
         if pieces:
             results = [
                 await import_cv(db, body, name, source, _split_depth=1)

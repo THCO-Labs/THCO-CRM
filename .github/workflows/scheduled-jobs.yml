@@ -19,12 +19,31 @@ on:
   schedule:
     # 06:00 UTC daily — 07:00 in Lagos, before the working day.
     - cron: '0 6 * * *'
+    # Overnight only, every 20 minutes, to work down the mailbox backlog.
+    #
+    # 19,612 messages carrying attachments were queued on 20 August. A run is
+    # bounded to 180 seconds and clears about 59 documents, so one run a day
+    # would never finish; at this cadence it is roughly a week.
+    #
+    # 18:00-05:59 UTC is 19:00-06:59 in Lagos, so this never overlaps the
+    # working day. Each run is bounded and backs off on its own, and the
+    # concurrency guard below stops two ever running at once.
+    - cron: '*/20 18-23 * * *'
+    - cron: '*/20 0-5 * * *'
+
   workflow_dispatch:
     inputs:
       job:
         description: 'Run a single job only (blank runs all)'
         required: false
         default: ''
+
+# A run takes about three minutes, comfortably inside the twenty between
+# starts. This is the guard for when it is not: a second run would work the
+# same cursor as the first and repeat its messages.
+concurrency:
+  group: scheduled-jobs
+  cancel-in-progress: false
 
 # Flip to 'true' to pause the daily mailbox import again -- worth doing before
 # any bulk load against the database.

@@ -26,10 +26,10 @@ on:
         required: false
         default: ''
 
-# Flip to 'false' to let the daily mailbox import run again. See the comment on
-# the step below for why it is paused.
+# Flip to 'true' to pause the daily mailbox import again -- worth doing before
+# any bulk load against the database.
 env:
-  MAILBOX_IMPORT_PAUSED: 'true'
+  MAILBOX_IMPORT_PAUSED: 'false'
 
 jobs:
   run:
@@ -46,14 +46,14 @@ jobs:
 
     steps:
       - name: Run ${{ matrix.job }}
-        # Paused for scheduled runs on 18 August 2026: the resume_files
-        # migration is loading the free-tier Cosmos instance hard enough that
-        # every document fails with code 50, and the run holds a container
-        # awake for three hours to achieve nothing. Set MAILBOX_IMPORT_PAUSED
-        # to 'false' once the migration has finished.
+        # Paused on 18 August 2026 while the resume_files migration was
+        # loading the database hard enough that every document failed with
+        # code 50; resumed on 20 August once that finished and the cluster
+        # moved off the free tier.
         #
-        # Only the schedule is paused -- "Run workflow" with job=mailbox-import
-        # still works, so it can be tried by hand at any point.
+        # Only the schedule is ever paused -- "Run workflow" with
+        # job=mailbox-import still works, so it can be tried by hand at any
+        # point, including while paused.
         if: ${{ (github.event.inputs.job == '' || github.event.inputs.job == matrix.job)
                 && !(matrix.job == 'mailbox-import'
                      && env.MAILBOX_IMPORT_PAUSED == 'true'

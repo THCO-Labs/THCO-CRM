@@ -1,0 +1,830 @@
+<title>Delivery OS vs THCO CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+
+<style>
+  :root {
+    --ground:       #F7F6F3;
+    --surface:      #FFFFFF;
+    --surface-2:    #FBFAF7;
+    --border:       #E3E0D8;
+    --border-hard:  #CBC6BA;
+    --ink:          #16211C;
+    --ink-mid:      #5A6862;
+    --ink-faint:    #8B948F;
+    --forest:       #1B4332;
+    --seafoam:      #12805F;
+    --seafoam-wash: rgba(31, 181, 138, 0.10);
+    --gold:         #8F6C38;
+    --gold-wash:    rgba(169, 131, 78, 0.13);
+    --rose:         #9E3D35;
+    --rose-wash:    rgba(158, 61, 53, 0.10);
+    --shadow:       0 1px 2px rgba(22, 33, 28, .05), 0 8px 24px -16px rgba(22, 33, 28, .18);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:       #0E1412;
+      --surface:      #161E1A;
+      --surface-2:    #1A2420;
+      --border:       #2A3630;
+      --border-hard:  #3C4A43;
+      --ink:          #E7EDE9;
+      --ink-mid:      #96A49C;
+      --ink-faint:    #6D7B74;
+      --forest:       #79D3B2;
+      --seafoam:      #3FD3A6;
+      --seafoam-wash: rgba(63, 211, 166, 0.12);
+      --gold:         #D9B37C;
+      --gold-wash:    rgba(217, 179, 124, 0.13);
+      --rose:         #E68B82;
+      --rose-wash:    rgba(230, 139, 130, 0.12);
+      --shadow:       0 1px 2px rgba(0,0,0,.3), 0 8px 24px -16px rgba(0,0,0,.6);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:       #0E1412;
+    --surface:      #161E1A;
+    --surface-2:    #1A2420;
+    --border:       #2A3630;
+    --border-hard:  #3C4A43;
+    --ink:          #E7EDE9;
+    --ink-mid:      #96A49C;
+    --ink-faint:    #6D7B74;
+    --forest:       #79D3B2;
+    --seafoam:      #3FD3A6;
+    --seafoam-wash: rgba(63, 211, 166, 0.12);
+    --gold:         #D9B37C;
+    --gold-wash:    rgba(217, 179, 124, 0.13);
+    --rose:         #E68B82;
+    --rose-wash:    rgba(230, 139, 130, 0.12);
+    --shadow:       0 1px 2px rgba(0,0,0,.3), 0 8px 24px -16px rgba(0,0,0,.6);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
+    font-size: 17px;
+    line-height: 1.65;
+    margin: 0;
+    padding: 0 24px 120px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1120px; margin: 0 auto; }
+  .prose { max-width: 68ch; }
+
+  /* ---------- type ---------- */
+  h1, h2, h3, h4 {
+    font-family: Archivo, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    text-wrap: balance;
+    margin: 0;
+  }
+  h1 { font-size: clamp(2.1rem, 4.6vw, 3.05rem); font-weight: 700; letter-spacing: -.028em; line-height: 1.06; }
+  h2 { font-size: clamp(1.45rem, 2.6vw, 1.85rem); font-weight: 600; letter-spacing: -.019em; line-height: 1.18; }
+  h3 { font-size: 1.14rem; font-weight: 600; letter-spacing: -.012em; }
+  h4 { font-size: .95rem; font-weight: 600; letter-spacing: -.005em; }
+  p { margin: 0; }
+  strong { font-weight: 600; color: var(--ink); }
+  a { color: var(--seafoam); }
+
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .69rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: .17em;
+    color: var(--ink-faint);
+  }
+  .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .87em; }
+  code {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .84em;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: .08em .34em;
+  }
+
+  /* ---------- rhythm ---------- */
+  section { display: flex; flex-direction: column; gap: 22px; }
+  .stack   { display: flex; flex-direction: column; gap: 16px; }
+  .stack-s { display: flex; flex-direction: column; gap: 9px; }
+  .stack-l { display: flex; flex-direction: column; gap: 30px; }
+
+  header.masthead {
+    display: flex; flex-direction: column; gap: 26px;
+    padding: 74px 0 40px;
+    border-bottom: 2px solid var(--forest);
+  }
+  .lede {
+    font-size: 1.19rem;
+    line-height: 1.55;
+    color: var(--ink-mid);
+    max-width: 62ch;
+  }
+  .meta-row {
+    display: flex; flex-wrap: wrap; gap: 10px 26px;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .72rem; letter-spacing: .04em;
+    color: var(--ink-faint);
+  }
+
+  section.block { padding-top: 62px; }
+  .section-head { display: flex; flex-direction: column; gap: 7px; margin-bottom: 4px; }
+
+  /* ---------- callout ---------- */
+  .note {
+    display: flex; flex-direction: column; gap: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--gold);
+    border-radius: 3px;
+    padding: 20px 22px;
+    box-shadow: var(--shadow);
+  }
+  .note.alert { border-left-color: var(--rose); }
+  .note.good  { border-left-color: var(--seafoam); }
+  .note p { font-size: .96rem; color: var(--ink-mid); }
+  .note strong { color: var(--ink); }
+
+  /* ---------- compare grid ---------- */
+  .compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .compare > div { background: var(--surface); padding: 22px 24px; display: flex; flex-direction: column; gap: 12px; }
+  .compare .col-head {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .68rem; text-transform: uppercase; letter-spacing: .15em;
+    padding-bottom: 11px; border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+  }
+  .compare .now  .col-head { color: var(--ink-faint); }
+  .compare .next .col-head { color: var(--seafoam); }
+  .compare ul { margin: 0; padding-left: 1.15em; display: flex; flex-direction: column; gap: 7px; }
+  .compare li { font-size: .93rem; line-height: 1.5; color: var(--ink-mid); }
+  .compare li strong { color: var(--ink); font-weight: 600; }
+  @media (max-width: 720px) { .compare { grid-template-columns: 1fr; } }
+
+  /* ---------- tables ---------- */
+  .tablewrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); box-shadow: var(--shadow); }
+  table { border-collapse: collapse; width: 100%; min-width: 640px; }
+  th, td { text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  thead th {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .66rem; font-weight: 600; text-transform: uppercase; letter-spacing: .13em;
+    color: var(--ink-faint); background: var(--surface-2);
+    border-bottom: 1px solid var(--border-hard);
+    position: sticky; top: 0;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td { font-size: .93rem; line-height: 1.48; color: var(--ink-mid); }
+  td.k { color: var(--ink); font-weight: 600; }
+  td.num { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; font-size: .86rem; }
+  td .step {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .78rem; color: var(--ink-faint); margin-right: .55em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- chips ---------- */
+  .chip {
+    display: inline-block; white-space: nowrap;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .64rem; font-weight: 600; text-transform: uppercase; letter-spacing: .09em;
+    padding: 3px 8px; border-radius: 3px; border: 1px solid;
+  }
+  .chip.built   { color: var(--seafoam); background: var(--seafoam-wash); border-color: var(--seafoam); }
+  .chip.partial { color: var(--gold);    background: var(--gold-wash);    border-color: var(--gold); }
+  .chip.none    { color: var(--rose);    background: var(--rose-wash);    border-color: var(--rose); }
+
+  /* ---------- tally ---------- */
+  .tally { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .tally > div {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
+    padding: 18px 20px; display: flex; flex-direction: column; gap: 5px; box-shadow: var(--shadow);
+  }
+  .tally .n {
+    font-family: Archivo, sans-serif; font-weight: 700; font-size: 2.3rem;
+    line-height: 1; letter-spacing: -.03em; font-variant-numeric: tabular-nums;
+  }
+  .tally .l { font-size: .87rem; color: var(--ink-mid); line-height: 1.4; }
+  .tally .built   .n { color: var(--seafoam); }
+  .tally .partial .n { color: var(--gold); }
+  .tally .none    .n { color: var(--rose); }
+  @media (max-width: 620px) { .tally { grid-template-columns: 1fr; } }
+
+  /* ---------- phases ---------- */
+  ol.phases { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+  ol.phases > li { background: var(--surface); padding: 20px 24px; display: grid; grid-template-columns: 58px 1fr; gap: 20px; align-items: start; }
+  ol.phases .ph {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .7rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--seafoam); padding-top: 3px;
+  }
+  ol.phases .body { display: flex; flex-direction: column; gap: 7px; }
+  ol.phases h4 { color: var(--ink); }
+  ol.phases p { font-size: .93rem; color: var(--ink-mid); }
+  ol.phases .cost {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .72rem; color: var(--ink-faint); letter-spacing: .03em;
+  }
+  @media (max-width: 620px) { ol.phases > li { grid-template-columns: 1fr; gap: 8px; } }
+
+  ul.plain { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 9px; }
+  ul.plain li { color: var(--ink-mid); }
+  ul.plain li strong { color: var(--ink); }
+
+  hr.rule { border: none; border-top: 1px solid var(--border); margin: 0; }
+
+  footer.foot {
+    margin-top: 76px; padding-top: 26px; border-top: 1px solid var(--border);
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .72rem; color: var(--ink-faint); line-height: 1.7;
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="stack-s">
+      <span class="eyebrow">Architecture review — 20 August 2026</span>
+      <h1>The Delivery OS proposal, measured against what THCO CRM is today</h1>
+    </div>
+    <p class="lede">
+      The three attached diagrams describe a seventeen-step delivery operating system with an AI
+      layer, a client portal and an enterprise data platform underneath it. A full 34-page master
+      specification has since been supplied and is folded in below; it confirms most of this reading
+      and corrects one significant point — see the updated note under section 01. This is a read of
+      the proposal against the code that is actually running: what is already built, what is
+      genuinely new, what conflicts, and what it would cost to get from one to the other.
+    </p>
+    <div class="meta-row">
+      <span>Current: 10 stages · 30 users · 15 projects</span>
+      <span>Proposed: 17 steps · 12 named roles · 10 AI agents · 31 entities</span>
+      <span>Source: <span class="mono">backend/routers/flow.py</span>, <span class="mono">PROJECT_STATE.md</span>, Master Specification V2.0</span>
+    </div>
+  </header>
+
+  <!-- ============ 1 ============ -->
+  <section class="block">
+    <div class="section-head">
+      <span class="eyebrow">01 — The short version</span>
+      <h2>What the proposal actually changes</h2>
+    </div>
+
+    <div class="prose stack">
+      <p>
+        Read the three diagrams together and they say one thing: <strong>THCO's system today is a
+        sales pipeline with a build bucket bolted on the end. The proposal turns it into a delivery
+        system.</strong>
+      </p>
+      <p>
+        Everything before a signed deal is already modelled in some form — intake, an owner, a
+        meeting, a package, a proposal, an approval. Everything <em>after</em> it collapses into a
+        single stage called "In Build (Engineering)" with a four-value status field. The proposal
+        breaks that one stage into eleven: scoping, architecture, mockup, client iteration, POD
+        formation, engineering, QA, UAT, handover, closure. That is the substance of the upgrade.
+        The AI layer, the portal and the platform diagrams are real, but they are consequences and
+        ambitions around that central change, not the change itself.
+      </p>
+      <p>
+        The second real change is <strong>ownership</strong>. Today a project has a "delivery owner"
+        chosen from a dropdown. The proposal names a TSD who owns delivery end to end, and puts a
+        named owner and named supporting roles on every one of the seventeen steps. That is a
+        governance model, and it is the part most likely to survive contact with reality.
+      </p>
+    </div>
+
+    <div class="note alert">
+      <h3>One thing still to settle before anyone estimates this</h3>
+      <p>
+        <strong>Crowther is confirmed as THCO's own working name for this system, not a separate
+        entity.</strong> The master specification never names THCO across 34 pages, and its appendix
+        cites three internal working sessions dated 18, 19 and 20 August 2026 — which briefly made the
+        naming look like an open question. Confirmed directly (20 August 2026): this is THCO updating
+        and bringing the new changes to itself.
+      </p>
+      <p>
+        <strong>Neither document has a home for the talent database.</strong> Diagram A lists
+        "HR / Talent Systems" as an <em>external</em> integration, and the specification's own data
+        model (Appendix B, 31 entities) has no candidate, resume or sourcing entity anywhere in it.
+        Today that is not external: it is 33,547 candidates, 75,856 CV versions and roughly 21 GB of
+        files sitting inside this application, and it is the largest thing the system holds by two
+        orders of magnitude. If the Delivery OS is meant to replace the CRM, that has to be answered.
+        If it is meant to sit alongside it, that is a different and much smaller project.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ 2 ============ -->
+  <section class="block">
+    <div class="section-head">
+      <span class="eyebrow">02 — Process</span>
+      <h2>Ten stages against seventeen steps</h2>
+    </div>
+
+    <div class="prose stack">
+      <p>
+        The current pipeline lives in one dictionary, <code>STAGES</code> in
+        <span class="mono">backend/routers/flow.py</span>. It runs 1 to 10 and does something unusual
+        at stage 5: it <strong>splits the project into two sibling records</strong> — a proposal track
+        (stages 6–8) and a build track (stages 9–10) that then run in parallel as separate rows in the
+        database.
+      </p>
+      <p>
+        The proposal is a single sequential flow with commercial readiness sitting at step 11, between
+        client iteration and POD formation. <strong>These two shapes are not compatible.</strong>
+        Adopting the seventeen steps means retiring the split and merging the sibling records back
+        together — which is a data migration on live projects, not a config change.
+      </p>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 30%">Proposed step</th>
+            <th style="width: 10%">Status</th>
+            <th>What exists today</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="k"><span class="step">01</span>Client Project Intake Form</td>
+            <td><span class="chip partial">Partial</span></td>
+            <td>A create form takes name, client, website, description, type, source, notes, unit and collaborators. No project template, no desired-outcome field, no transcript or document attachment at intake.</td>
+          </tr>
+          <tr>
+            <td class="k"><span class="step">02</span>AI Analysis &amp; TSD Assignment</td>
+            <td><span class="chip none">Missing</span></td>
+            <td>Stage 2 is a human picking a name from a dropdown. Nothing analyses the brief, and nothing scores or ranks anyone.</td>
+          </tr>
+          <tr>
+            <td class="k"><span class="step">03</span>TSD Receives Project</td>
+            <td><span class="chip partial">Partial</span></td>
+            <td>Email plus in-app notification on assignment already works. There is no auto-created workspace and no recommended next steps.</td>
+          </tr>
+          <tr>
+            <td class="k"><span class="step">04</span>TSD Intake &amp; Discovery</td>
+            <td><span class="chip partial">Partial</span></td>
+            <td>Stage 3 "Meeting Scheduled" marks that a meeting happened. There is no structured clarification loop back to the client.</td>
+          </tr>
+          <tr>
+            <td class="k"><span class="step">05</span>Product Definition &amp; Outcome Brief</td>
+            <td><span class="chip partial">Partial</span></td>
+            <td>Stage 4 "Package Building" holds a document URL. Success metrics, scope boundaries, assumptions and risks are not fields.</td>
+          </tr>
+          <tr>
+            <td class="k"><span class="step">06</span>Request Solution Architect / Tech Lead</td>
+            <td><span class="chip none">Missing</span></td>
+            <td>No architect role, no request-and-approve flow, no partner approval gate.</td>
+          </tr>
+          <tr>
+            <td class="k"><span class="step">07</span>Product Discovery &amp; Scoping</td>
+            <td><span class="chip none">Missing</span></td>
+            <td>No user needs, process flows, feature list, effort estimate or roadmap anywhere in the model.</td>
+          </tr>
+          <tr>
+            <td class="k"><span class="step">08</span>Solution Architecture</td>
+            <td><span class="chip none">Missing</span></td>
+            <td>No tech stack, integrations, data architecture or security review captured against a project.</td>
+          </tr>
+          <tr>
+            <td class="k"><span class="step">09</span>Mockup / First Demo</td>
+            <td><span class="chip none">Missing</span></td>
+            <td>No design artefact stage. The system has never modelled a demo.</td>
+          </tr>
+          <tr>
+            <td class="k"><span class="step">10</span>Client Feedback &amp; Iteration</td>
+            <td><span class="chip none">Missing</span></td>
+            <td>Clients have no login at all. Feedback has no route in, and no scope-change record.</td>
+          </tr>
+          <tr>
+            <td class="k"><span class="step">11</span>Validation &amp; Readiness</td>
+            <td><span class="chip partial">Contested</span></td>
+            <td>The three diagrams and the master specification disagree here. Read against the diagrams (Legal + Finance, commercial proposal, contract prep), this matches the existing proposal track — stages 6, 7 and 8. Read against the specification's own text, which states step 11 is owned by "TSD + Client" only and gates on a client validating direction, not a contract, the CRM has nothing: there is no client login, so nothing resembling a formal client-validation record exists. Which reading is correct changes this row from Built to Missing.</td>
+          </tr>
+          <tr>
+            <td class="k"><span class="step">12</span>Delivery Preparation (POD Formation)</td>
+            <td><span class="chip partial">Partial</span></td>
+            <td>Stage 5 names an operations owner and an engineer and requires both. There is no POD as an object, no resource confirmation, no kickoff plan.</td>
+          </tr>
+          <tr>
+            <td class="k"><span class="step">13</span>Engineering / Build</td>
+            <td><span class="chip built">Built</span></td>
+            <td>Stage 9 plus the task board — Trello-style boards with labels, assignees, priorities, due dates, attachments and covers. The strongest part of the current system.</td>
+          </tr>
+          <tr>
+            <td class="k"><span class="step">14</span>QA / Testing</td>
+            <td><span class="chip partial">Partial</span></td>
+            <td>A <code>build_status</code> field can read "ready_for_qa". No test plans, no defect tracking, no QA role.</td>
+          </tr>
+          <tr>
+            <td class="k"><span class="step">15</span>Client Acceptance (UAT)</td>
+            <td><span class="chip none">Missing</span></td>
+            <td>No sign-off, no acceptance criteria, no acceptance document.</td>
+          </tr>
+          <tr>
+            <td class="k"><span class="step">16</span>Handover</td>
+            <td><span class="chip none">Missing</span></td>
+            <td>No knowledge transfer, handover docs, training or operational-readiness record.</td>
+          </tr>
+          <tr>
+            <td class="k"><span class="step">17</span>Project Closure</td>
+            <td><span class="chip partial">Partial</span></td>
+            <td>Stage 10 "Completed" writes a timestamp. No closure report, lessons learned, archive step or repository cleanup.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="tally">
+      <div class="built">
+        <span class="n">1</span>
+        <span class="l">step genuinely built — engineering build (the task board)</span>
+      </div>
+      <div class="partial">
+        <span class="n">8</span>
+        <span class="l">steps partially covered or contested, usually a field rather than a workflow</span>
+      </div>
+      <div class="none">
+        <span class="n">8</span>
+        <span class="l">steps with nothing behind them at all — almost all of them post-sale</span>
+      </div>
+    </div>
+
+    <div class="note">
+      <p>
+        The shape of that tally is the finding. The gaps are not scattered — they are
+        <strong>concentrated between the brief and the build, and between the build and the
+        client</strong>. Discovery, architecture, design and acceptance are exactly the work a
+        delivery consultancy is paid for, and exactly the work the current system does not see.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ 3 ============ -->
+  <section class="block">
+    <div class="section-head">
+      <span class="eyebrow">03 — People</span>
+      <h2>The role model, and why the current one already broke</h2>
+    </div>
+
+    <div class="prose stack">
+      <p>
+        Authorisation today comes from three overlapping mechanisms: a role
+        (<code>super_admin</code>, <code>mini_admin</code>, <code>team_member</code>), a set of headed
+        units that make someone a project manager, and seven boolean flags on the user record —
+        <code>is_delivery_coordinator</code>, <code>is_delivery_owner</code>,
+        <code>is_operations_owner</code>, <code>is_executive_approver</code>, <code>is_engineer</code>,
+        and two more.
+      </p>
+      <p>
+        Those flags are the closest thing the system has to the proposal's named roles, and the code
+        records plainly that they failed. Stage 2 originally required the person named to hold
+        <code>is_delivery_coordinator</code>; the requirement was removed because
+        <strong>nobody in the company holds that flag, so the stage could not be reached at all</strong>.
+        Stage 5 originally required <code>is_engineer</code>; removed for the same reason — one person
+        holds it. The comments in <span class="mono">flow.py</span> say so directly.
+      </p>
+      <p>
+        This matters for the proposal, which asks for <strong>twelve named roles</strong> — TSD,
+        Solution Architect, Product Designer, Security Engineer, QA, Legal, People &amp; Ops, Finance,
+        Senior Partner, Commercial Initiator, Engineers, Client — with an owner and supporting cast on
+        every step. That is a stronger version of the mechanism that has already been abandoned once
+        here. It works only if the roles are actually filled, which is an organisational question
+        before it is a software one.
+      </p>
+    </div>
+
+    <div class="compare">
+      <div class="now">
+        <div class="col-head"><span>Today</span><span>THCO CRM</span></div>
+        <ul>
+          <li><strong>3 access tiers</strong> — administrator, project manager, collaborator</li>
+          <li>Manager rights come from <strong>two separate places</strong> (<code>users.headed_units</code> and <code>units.head_user_id</code>) and both must be read</li>
+          <li><strong>7 role flags</strong>, most of them unheld and their gates removed</li>
+          <li>Collaborators see <strong>the task board only</strong> — no pipeline, no tickets</li>
+          <li>Clients have <strong>no account</strong> and no way in</li>
+          <li>Identity resolution cached 45 s per session token</li>
+        </ul>
+      </div>
+      <div class="next">
+        <div class="col-head"><span>Proposed</span><span>Delivery OS</span></div>
+        <ul>
+          <li><strong>12 named roles</strong>, each with defined responsibilities</li>
+          <li>A single <strong>Role &amp; Access Management</strong> service as the source of truth</li>
+          <li>An <strong>owner named on every one of 17 steps</strong>, plus supporting roles</li>
+          <li>SSO and MFA at the access layer, RBAC behind it</li>
+          <li>A <strong>client portal</strong> with limited access — clients act at steps 10 and 15</li>
+          <li>Approval Engine as a distinct service, not per-stage code</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 4 ============ -->
+  <section class="block">
+    <div class="section-head">
+      <span class="eyebrow">04 — Intelligence</span>
+      <h2>The AI layer is the biggest genuine departure</h2>
+    </div>
+
+    <div class="prose stack">
+      <p>
+        There is AI in the current system, but it is doing something completely different. FlowForge is
+        an automation builder: staff describe a repetitive task in conversation and it generates an n8n
+        workflow for approval. It runs against its own Supabase database, separate from the CRM's
+        MongoDB, and it has <strong>no connection to the delivery pipeline whatsoever</strong>.
+      </p>
+      <p>
+        The proposal puts AI on the critical path. Step 02 is an AI system reading the intake, scoring
+        and ranking every TSD by expertise, domain, capacity, experience and history, then recommending
+        an assignment. A "What Next" engine suggests the next action at every stage. A knowledge graph
+        holds project context. Document intelligence reads what comes in. A copilot sits over all of it.
+      </p>
+    </div>
+
+    <div class="note alert">
+      <h3>The scoring engine cannot work yet, and it is worth saying so early</h3>
+      <p>
+        Ranking TSDs "based on expertise, domain, capacity, experience &amp; history" requires data this
+        system does not hold. There are <strong>no skill records, no capacity records and no delivery
+        history on any user account</strong>. There are 15 projects in production total. Even a perfect
+        model has nothing to rank on.
+      </p>
+      <p>
+        That is not an argument against the feature — it is an argument about sequence. The structured
+        data has to be captured first, through the seventeen steps, for a year or so, before an
+        assignment engine has anything to say. Build the process; the intelligence becomes possible
+        as a by-product.
+      </p>
+    </div>
+
+    <div class="prose">
+      <p>
+        One genuine irony worth noting: the existing CV parser, deck splitter, identity resolver and
+        duplicate detector already constitute a working document-intelligence pipeline — they just
+        point at candidate CVs rather than client briefs. That capability is real and reusable.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ 5 ============ -->
+  <section class="block">
+    <div class="section-head">
+      <span class="eyebrow">05 — Platform</span>
+      <h2>Data and infrastructure: an enterprise stack for thirty people</h2>
+    </div>
+
+    <div class="compare">
+      <div class="now">
+        <div class="col-head"><span>Today</span><span>Running in production</span></div>
+        <ul>
+          <li><strong>One MongoDB cluster</strong> — Cosmos DB for MongoDB (vCore), a single burstable core</li>
+          <li><strong>Files live in the database.</strong> ~21 GB of CVs, task attachments and profile photos, all as documents</li>
+          <li>Search is Mongo's <code>$text</code> index</li>
+          <li>Caching is a 45-second in-process dict — no Redis</li>
+          <li>An <code>audit_log</code> collection, mutable like any other</li>
+          <li>No warehouse, no analytics store</li>
+          <li><strong>One container</strong> on Azure Container Apps, one region, scaling to zero</li>
+          <li>GitHub Actions deploy on push. No CI test suite</li>
+          <li>No WAF, no IDS, no Prometheus, no ELK, no rate limiting</li>
+        </ul>
+      </div>
+      <div class="next">
+        <div class="col-head"><span>Proposed</span><span>Diagrams D &amp; E</span></div>
+        <ul>
+          <li><strong>PostgreSQL</strong> as the operational database</li>
+          <li><strong>MinIO / S3</strong> object store for documents and artefacts</li>
+          <li><strong>OpenSearch</strong> as the search index</li>
+          <li><strong>Redis</strong> as a shared cache</li>
+          <li>An <strong>immutable</strong> audit log store, separate from operational data</li>
+          <li>A <strong>data warehouse</strong> feeding reports and dashboards</li>
+          <li><strong>Kubernetes across three availability zones</strong>, behind a WAF and load balancer</li>
+          <li>Prometheus / Grafana / ELK observability, automated backup and DR</li>
+          <li>Secrets management, compliance and governance, rate limiting as cross-cutting services</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="prose stack">
+      <p>
+        Three honest observations about that column on the right.
+      </p>
+      <p>
+        <strong>The Postgres move is already costed, and it is not small.</strong>
+        <span class="mono">docs/POSTGRES_MIGRATION.md</span> measured it: 463 MongoDB driver call sites,
+        275+ query operators, 40 collections, 27 aggregation pipelines, 27 index definitions — all
+        written inline, with no ORM and no repository layer to swap. The estimate is
+        <strong>6–9 weeks for one engineer</strong>, roughly doubling if feature work continues in
+        parallel. The data itself is clean and would map well; it is the code that is welded to Mongo.
+      </p>
+      <p>
+        <strong>The object store is the one infrastructure change that pays for itself immediately.</strong>
+        Storing 21 GB of files in the operational database is what made the 19 August migration heavy
+        enough to take the cluster down — not the space, the sheer number of write operations against a
+        single burstable core. Moving files to blob storage is a contained change with a direct
+        reliability payoff, and it does not require Postgres, Kubernetes or anything else on that list.
+      </p>
+      <p>
+        <strong>The rest is sized for a company THCO is not yet.</strong> Multi-AZ Kubernetes, OpenSearch,
+        a warehouse, WAF, IDS and a full observability stack for 30 users and 15 projects is a
+        substantial recurring cost against a system that currently scales to zero overnight to save
+        money. These are the right destinations. They are not the right next step.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ 6 ============ -->
+  <section class="block">
+    <div class="section-head">
+      <span class="eyebrow">06 — Coverage</span>
+      <h2>What the new diagrams leave out</h2>
+    </div>
+
+    <div class="prose">
+      <p>
+        Comparison runs both ways. Several things the CRM does today have no place in the proposed
+        architecture, and each needs a decision rather than an assumption.
+      </p>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 26%">In the CRM today</th>
+            <th style="width: 16%">Scale</th>
+            <th>Where it lands in the proposal</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="k">Internal CV database</td>
+            <td class="num">33,547 candidates<br>75,856 versions</td>
+            <td>Shown only as an external "HR / Talent Systems" integration. The largest asset in the system is drawn as somebody else's.</td>
+          </tr>
+          <tr>
+            <td class="k">Gmail CV ingestion &amp; deck splitter</td>
+            <td class="num">leased queue<br>IMAP</td>
+            <td>Not represented. A real, working document pipeline with no box on any diagram.</td>
+          </tr>
+          <tr>
+            <td class="k">External candidate sourcing</td>
+            <td class="num">SerpAPI · Serper</td>
+            <td>Not represented.</td>
+          </tr>
+          <tr>
+            <td class="k">FlowForge automation builder</td>
+            <td class="num">n8n + Supabase</td>
+            <td>Not represented — and it runs on a second database the diagrams do not acknowledge.</td>
+          </tr>
+          <tr>
+            <td class="k">The ten business units</td>
+            <td class="num">10 unit pages</td>
+            <td>Absent. The proposal organises by role and project, not by unit — a real organisational shift, not an oversight to patch over.</td>
+          </tr>
+          <tr>
+            <td class="k">Client presentation decks</td>
+            <td class="num">~40 pages</td>
+            <td>Not represented. Client-facing, deliberately outside the design system, and probably fine to leave outside this too.</td>
+          </tr>
+          <tr>
+            <td class="k">Client contacts &amp; relationship calendar</td>
+            <td class="num">birthdays, anniversaries</td>
+            <td>Partly absorbed by "Calendar &amp; Reminders", but the relationship-touch model has no equivalent.</td>
+          </tr>
+          <tr>
+            <td class="k">Tickets, questions, feedback console</td>
+            <td class="num">in Flow</td>
+            <td>Loosely covered by "Risk &amp; Issue Engine". Note that collaborators still cannot raise tickets today.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ 7 ============ -->
+  <section class="block">
+    <div class="section-head">
+      <span class="eyebrow">07 — Recommendation</span>
+      <h2>Take the process now, and the platform later</h2>
+    </div>
+
+    <div class="prose stack">
+      <p>
+        The most useful thing in these three diagrams is the seventeen-step process and the named
+        owner at each step. That part is <strong>correct, overdue, and cheap</strong> — it is a
+        dictionary, a set of validators and a set of forms in a codebase that already has a working
+        state machine, audit trail, notification service and task board.
+      </p>
+      <p>
+        The platform diagrams are a different project with a different budget, and bundling them
+        together is how this stalls. Below is the sequence I would actually run.
+      </p>
+    </div>
+
+    <ol class="phases">
+      <li>
+        <span class="ph">Phase 1</span>
+        <div class="body">
+          <h4>Adopt the seventeen steps on the existing stack</h4>
+          <p>
+            Rewrite <code>STAGES</code>, add the per-step structured fields, extend
+            <code>LEGACY_STAGE_MAP</code> so the 15 live projects land somewhere sensible, and decide
+            what happens to the stage-5 sibling split. Most of the business value of this proposal is
+            in this phase.
+          </p>
+          <span class="cost">Estimate 2–3 weeks · no new infrastructure · reversible</span>
+        </div>
+      </li>
+      <li>
+        <span class="ph">Phase 2</span>
+        <div class="body">
+          <h4>Build the missing delivery artefacts</h4>
+          <p>
+            Discovery and scoping, solution architecture, mockup and demo, UAT sign-off, handover pack,
+            closure report. These are forms and documents attached to a project, reusing the attachment
+            infrastructure the task board already has. Add the architect, designer and QA roles here —
+            but only for roles that are genuinely filled.
+          </p>
+          <span class="cost">Estimate 4–6 weeks · this is where the delivery gap actually closes</span>
+        </div>
+      </li>
+      <li>
+        <span class="ph">Phase 3</span>
+        <div class="body">
+          <h4>Move files out of the database</h4>
+          <p>
+            Blob storage for CVs, attachments and artefacts. Independent of everything else on this
+            list, and the single highest-value reliability change available — it directly addresses
+            what caused the 19 August outage.
+          </p>
+          <span class="cost">Estimate 1–2 weeks · do this regardless of what else is agreed</span>
+        </div>
+      </li>
+      <li>
+        <span class="ph">Phase 4</span>
+        <div class="body">
+          <h4>Introduce a data access layer, still on MongoDB</h4>
+          <p>
+            Collapse the 463 scattered driver calls into a repository interface. Worth doing on its own
+            merits, and it turns the eventual Postgres move from a rewrite of the whole application into
+            a rewrite of one layer. This is the recommendation the migration document already made.
+          </p>
+          <span class="cost">Estimate 3–4 weeks · prerequisite for any database decision</span>
+        </div>
+      </li>
+      <li>
+        <span class="ph">Phase 5</span>
+        <div class="body">
+          <h4>Client portal, then AI, then platform — in that order</h4>
+          <p>
+            The portal unlocks steps 10 and 15 and is the first thing clients ever see, so it earns its
+            place before anything internal. AI assignment waits until the seventeen steps have produced
+            enough structured history to rank on. Kubernetes, OpenSearch, the warehouse and the
+            observability stack wait until headcount or client exposure demands them.
+          </p>
+          <span class="cost">Not estimable yet · revisit once Phases 1–4 have landed</span>
+        </div>
+      </li>
+    </ol>
+
+    <div class="note good">
+      <h3>The one-line version, for whoever asks</h3>
+      <p>
+        The proposal is right about the process and ahead of itself on the platform. Adopting the
+        seventeen steps and the named owners is a few weeks of work on the system that already exists,
+        and it fixes the real problem — that everything after "we won the deal" is currently invisible.
+        The AI, the portal and the enterprise data platform are worth building toward, but they should
+        follow the process rather than arrive with it.
+      </p>
+    </div>
+  </section>
+
+  <footer class="foot">
+    Prepared 20 August 2026 against commit state on <span class="mono">main</span>, and updated the
+    same day once the 34-page Master Specification V2.0 was supplied.<br>
+    Figures taken from <span class="mono">PROJECT_STATE.md</span> §10 (production data, 19 August 2026),
+    <span class="mono">backend/routers/flow.py</span> (stage and role model) and
+    <span class="mono">docs/POSTGRES_MIGRATION.md</span> (migration scope and effort).<br>
+    Estimates are engineering time for one engineer with no parallel feature work.<br>
+    Companion document: <span class="mono">docs/delivery-os-flow.html</span> section 07 covers the
+    intelligence and control layer the specification adds beyond the seventeen steps.
+  </footer>
+
+</div>

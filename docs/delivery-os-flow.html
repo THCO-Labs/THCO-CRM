@@ -1,0 +1,928 @@
+<title>The Seventeen-Step Delivery Flow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+
+<style>
+  :root {
+    --ground:       #F7F6F3;
+    --surface:      #FFFFFF;
+    --surface-2:    #FBFAF7;
+    --border:       #E3E0D8;
+    --border-hard:  #B9B3A5;
+    --ink:          #16211C;
+    --ink-mid:      #5A6862;
+    --ink-faint:    #8B948F;
+    --forest:       #1B4332;
+    --seafoam:      #12805F;
+    --seafoam-wash: rgba(31, 181, 138, 0.10);
+    --gold:         #8F6C38;
+    --gold-wash:    rgba(169, 131, 78, 0.13);
+    --rose:         #9E3D35;
+    --shadow:       0 1px 2px rgba(22, 33, 28, .05), 0 8px 24px -16px rgba(22, 33, 28, .18);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:       #0E1412;
+      --surface:      #161E1A;
+      --surface-2:    #1A2420;
+      --border:       #2A3630;
+      --border-hard:  #4C5B53;
+      --ink:          #E7EDE9;
+      --ink-mid:      #96A49C;
+      --ink-faint:    #6D7B74;
+      --forest:       #79D3B2;
+      --seafoam:      #3FD3A6;
+      --seafoam-wash: rgba(63, 211, 166, 0.12);
+      --gold:         #D9B37C;
+      --gold-wash:    rgba(217, 179, 124, 0.13);
+      --rose:         #E68B82;
+      --shadow:       0 1px 2px rgba(0,0,0,.3), 0 8px 24px -16px rgba(0,0,0,.6);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:       #0E1412;
+    --surface:      #161E1A;
+    --surface-2:    #1A2420;
+    --border:       #2A3630;
+    --border-hard:  #4C5B53;
+    --ink:          #E7EDE9;
+    --ink-mid:      #96A49C;
+    --ink-faint:    #6D7B74;
+    --forest:       #79D3B2;
+    --seafoam:      #3FD3A6;
+    --seafoam-wash: rgba(63, 211, 166, 0.12);
+    --gold:         #D9B37C;
+    --gold-wash:    rgba(217, 179, 124, 0.13);
+    --rose:         #E68B82;
+    --shadow:       0 1px 2px rgba(0,0,0,.3), 0 8px 24px -16px rgba(0,0,0,.6);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
+    font-size: 17px;
+    line-height: 1.65;
+    margin: 0;
+    padding: 0 24px 120px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap  { max-width: 1000px; margin: 0 auto; }
+  .prose { max-width: 68ch; }
+
+  h1, h2, h3, h4 {
+    font-family: Archivo, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink); text-wrap: balance; margin: 0;
+  }
+  h1 { font-size: clamp(2.05rem, 4.4vw, 2.9rem); font-weight: 700; letter-spacing: -.028em; line-height: 1.07; }
+  h2 { font-size: clamp(1.42rem, 2.5vw, 1.8rem); font-weight: 600; letter-spacing: -.019em; line-height: 1.2; }
+  h3 { font-size: 1.12rem; font-weight: 600; letter-spacing: -.012em; }
+  p  { margin: 0; }
+  strong { font-weight: 600; color: var(--ink); }
+
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .69rem; font-weight: 500; text-transform: uppercase;
+    letter-spacing: .17em; color: var(--ink-faint);
+  }
+  .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .87em; }
+  code {
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .84em;
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 4px; padding: .08em .34em;
+  }
+
+  section  { display: flex; flex-direction: column; gap: 22px; }
+  .stack   { display: flex; flex-direction: column; gap: 16px; }
+  .stack-s { display: flex; flex-direction: column; gap: 7px; }
+  section.block { padding-top: 60px; }
+  .section-head { display: flex; flex-direction: column; gap: 7px; }
+
+  header.masthead {
+    display: flex; flex-direction: column; gap: 24px;
+    padding: 74px 0 38px; border-bottom: 2px solid var(--forest);
+  }
+  .lede { font-size: 1.18rem; line-height: 1.55; color: var(--ink-mid); max-width: 62ch; }
+
+  /* ---------- figures ---------- */
+  figure {
+    margin: 0; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 4px;
+    padding: 26px 26px 20px; box-shadow: var(--shadow);
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .figscroll { overflow-x: auto; }
+  figure svg { display: block; width: 100%; min-width: 560px; height: auto; }
+  figcaption {
+    font-size: .89rem; line-height: 1.55; color: var(--ink-mid);
+    border-top: 1px solid var(--border); padding-top: 14px; max-width: 74ch;
+  }
+  figcaption strong { color: var(--ink); }
+
+  /* ---------- phase writeups ---------- */
+  .phase {
+    display: grid; grid-template-columns: 156px 1fr; gap: 26px;
+    padding: 24px 0; border-top: 1px solid var(--border);
+  }
+  .phase:last-of-type { border-bottom: 1px solid var(--border); }
+  .phase .side { display: flex; flex-direction: column; gap: 6px; }
+  .phase .tag {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .66rem; text-transform: uppercase; letter-spacing: .14em;
+    color: var(--ink-faint);
+  }
+  .phase .rng {
+    font-family: Archivo, sans-serif; font-weight: 700; font-size: 1.5rem;
+    letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--seafoam);
+  }
+  .phase .who { font-size: .84rem; color: var(--ink-mid); line-height: 1.4; }
+  .phase .body { display: flex; flex-direction: column; gap: 11px; }
+  .phase .body p { font-size: .97rem; color: var(--ink-mid); }
+  .phase .body p strong { color: var(--ink); }
+  .phase .out {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .73rem; letter-spacing: .02em; color: var(--ink-faint);
+    line-height: 1.6; padding-top: 4px;
+  }
+  .phase .out b { color: var(--seafoam); font-weight: 600; }
+  @media (max-width: 660px) { .phase { grid-template-columns: 1fr; gap: 12px; } }
+
+  .note {
+    display: flex; flex-direction: column; gap: 8px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-left: 3px solid var(--gold); border-radius: 3px;
+    padding: 20px 22px; box-shadow: var(--shadow);
+  }
+  .note.good { border-left-color: var(--seafoam); }
+  .note p { font-size: .96rem; color: var(--ink-mid); }
+  .note strong { color: var(--ink); }
+
+  .tablewrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); box-shadow: var(--shadow); }
+  table { border-collapse: collapse; width: 100%; min-width: 560px; }
+  th, td { text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  thead th {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .66rem; font-weight: 600; text-transform: uppercase; letter-spacing: .13em;
+    color: var(--ink-faint); background: var(--surface-2); border-bottom: 1px solid var(--border-hard);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td { font-size: .93rem; line-height: 1.48; color: var(--ink-mid); }
+  td.k { color: var(--ink); font-weight: 600; }
+
+  footer.foot {
+    margin-top: 70px; padding-top: 24px; border-top: 1px solid var(--border);
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .72rem; color: var(--ink-faint); line-height: 1.7;
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="stack-s">
+      <span class="eyebrow">Delivery OS — process explainer</span>
+      <h1>How a project moves through the new seventeen-step flow</h1>
+    </div>
+    <p class="lede">
+      The source diagrams pack the whole platform onto one sheet, which makes the process itself hard
+      to follow. This redraws the flow, now checked against the 34-page master specification rather
+      than the diagrams alone: who holds the project at each step, where the client comes in and out,
+      where the one loop is, and where the specification's own gate sits. Section 07 covers what the
+      full specification adds beyond what the diagrams show.
+    </p>
+  </header>
+
+  <!-- ================= FIGURE 1 ================= -->
+  <section class="block">
+    <div class="section-head">
+      <span class="eyebrow">01 — The flow</span>
+      <h2>Seventeen steps, five phases, one gate</h2>
+    </div>
+
+    <figure>
+      <div class="figscroll">
+        <svg viewBox="0 0 880 950" role="img"
+             aria-label="Vertical flow of seventeen delivery steps grouped into five phases. Each step shows its owner. A client lane on the right connects at eight points. A feedback loop runs from step ten back to step nine. A dashed validation gate sits between step eleven and step twelve: below it the client has formally validated direction and delivery preparation begins.">
+          <defs>
+            <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6"
+                    orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--gold)"/>
+            </marker>
+            <marker id="ahn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6"
+                    orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--ink-mid)"/>
+            </marker>
+          </defs>
+
+          <!-- lane headers -->
+          <text x="52" y="60" font-family="IBM Plex Mono, monospace" font-size="10.5" font-weight="600"
+                letter-spacing="1.6" fill="var(--ink-faint)">THCO — INTERNAL</text>
+          <text x="712" y="60" font-family="IBM Plex Mono, monospace" font-size="10.5" font-weight="600"
+                letter-spacing="1.6" fill="var(--gold)">CLIENT</text>
+          <line x1="52" y1="70" x2="600" y2="70" stroke="var(--border)" stroke-width="1"/>
+          <line x1="700" y1="70" x2="700" y2="930" stroke="var(--gold)" stroke-width="1.5"/>
+
+          <!-- ============ PHASE A ============ -->
+          <text x="24" y="94" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600"
+                letter-spacing="1.5" fill="var(--ink-faint)">PHASE A · INTAKE &amp; ASSIGNMENT</text>
+          <rect x="24" y="103" width="4" height="110" rx="2" fill="var(--border-hard)"/>
+
+          <rect x="52" y="103" width="548" height="30" rx="3" fill="var(--surface-2)" stroke="var(--border)"/>
+          <text x="66" y="123" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">01</text>
+          <text x="96" y="123" font-family="Archivo, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Client Project Intake Form</text>
+          <text x="372" y="123" font-size="11.5" fill="var(--ink-mid)">Commercial / Initiator</text>
+
+          <rect x="52" y="143" width="548" height="30" rx="3" fill="var(--surface-2)" stroke="var(--border)"/>
+          <text x="66" y="163" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">02</text>
+          <text x="96" y="163" font-family="Archivo, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">AI Analysis &amp; TSD Assignment</text>
+          <text x="372" y="163" font-size="11.5" fill="var(--ink-mid)">AI System</text>
+
+          <rect x="52" y="183" width="548" height="30" rx="3" fill="var(--surface-2)" stroke="var(--border)"/>
+          <text x="66" y="203" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">03</text>
+          <text x="96" y="203" font-family="Archivo, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">TSD Receives Project</text>
+          <text x="372" y="203" font-size="11.5" fill="var(--ink-mid)">TSD — takes ownership</text>
+
+          <!-- ============ PHASE B ============ -->
+          <text x="24" y="244" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600"
+                letter-spacing="1.5" fill="var(--ink-faint)">PHASE B · DEFINITION &amp; DESIGN</text>
+          <rect x="24" y="253" width="4" height="190" rx="2" fill="var(--border-hard)"/>
+
+          <rect x="52" y="253" width="548" height="30" rx="3" fill="var(--surface-2)" stroke="var(--border)"/>
+          <text x="66" y="273" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">04</text>
+          <text x="96" y="273" font-family="Archivo, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">TSD Intake &amp; Discovery</text>
+          <text x="372" y="273" font-size="11.5" fill="var(--ink-mid)">TSD</text>
+
+          <rect x="52" y="293" width="548" height="30" rx="3" fill="var(--surface-2)" stroke="var(--border)"/>
+          <text x="66" y="313" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">05</text>
+          <text x="96" y="313" font-family="Archivo, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Product Definition &amp; Outcome Brief</text>
+          <text x="372" y="313" font-size="11.5" fill="var(--ink-mid)">TSD</text>
+
+          <rect x="52" y="333" width="548" height="30" rx="3" fill="var(--surface-2)" stroke="var(--border)"/>
+          <text x="66" y="353" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">06</text>
+          <text x="96" y="353" font-family="Archivo, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Request Solution Architect</text>
+          <text x="372" y="353" font-size="11.5" fill="var(--ink-mid)">TSD → Senior Partner approves</text>
+
+          <rect x="52" y="373" width="548" height="30" rx="3" fill="var(--surface-2)" stroke="var(--border)"/>
+          <text x="66" y="393" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">07</text>
+          <text x="96" y="393" font-family="Archivo, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Product Discovery &amp; Scoping</text>
+          <text x="372" y="393" font-size="11.5" fill="var(--ink-mid)">Solution Architect + Designer</text>
+
+          <rect x="52" y="413" width="548" height="30" rx="3" fill="var(--surface-2)" stroke="var(--border)"/>
+          <text x="66" y="433" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">08</text>
+          <text x="96" y="433" font-family="Archivo, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Solution Architecture</text>
+          <text x="372" y="433" font-size="11.5" fill="var(--ink-mid)">Solution Architect + Security</text>
+
+          <!-- ============ PHASE C ============ -->
+          <text x="24" y="474" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600"
+                letter-spacing="1.5" fill="var(--ink-faint)">PHASE C · VALIDATE &amp; COMMIT</text>
+          <rect x="24" y="483" width="4" height="110" rx="2" fill="var(--border-hard)"/>
+
+          <rect x="52" y="483" width="548" height="30" rx="3" fill="var(--surface-2)" stroke="var(--border)"/>
+          <text x="66" y="503" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">09</text>
+          <text x="96" y="503" font-family="Archivo, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Mockup / First Demo</text>
+          <text x="372" y="503" font-size="11.5" fill="var(--ink-mid)">Solution Architect + Designer</text>
+
+          <rect x="52" y="523" width="548" height="30" rx="3" fill="var(--surface-2)" stroke="var(--border)"/>
+          <text x="66" y="543" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">10</text>
+          <text x="96" y="543" font-family="Archivo, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Client Feedback &amp; Iteration</text>
+          <text x="372" y="543" font-size="11.5" fill="var(--ink-mid)">TSD</text>
+
+          <rect x="52" y="563" width="548" height="30" rx="3" fill="var(--surface-2)" stroke="var(--border)"/>
+          <text x="66" y="583" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">11</text>
+          <text x="96" y="583" font-family="Archivo, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Validation &amp; Readiness</text>
+          <text x="372" y="583" font-size="11.5" fill="var(--ink-mid)">TSD + Client + approvers</text>
+
+          <!-- feedback loop 10 -> 09 -->
+          <path d="M 52 538 C 34 538, 34 498, 50 498" fill="none" stroke="var(--ink-mid)"
+                stroke-width="1.4" marker-end="url(#ahn)"/>
+          <text transform="rotate(-90 40 518)" x="40" y="518" text-anchor="middle"
+                font-family="IBM Plex Mono, monospace" font-size="8.5" letter-spacing="0.6"
+                fill="var(--ink-mid)">iterate</text>
+
+          <!-- ============ VALIDATION GATE ============ -->
+          <text x="52" y="608" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600"
+                letter-spacing="1.1" fill="var(--gold)">▲  ABOVE: NOTHING IS YET CLIENT-VALIDATED</text>
+          <line x1="24" y1="616" x2="700" y2="616" stroke="var(--gold)" stroke-width="1.4" stroke-dasharray="5 4"/>
+          <text x="52" y="631" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600"
+                letter-spacing="1.1" fill="var(--seafoam)">▼  BELOW: CLIENT VALIDATED — DELIVERY PREPARATION BEGINS</text>
+
+          <!-- ============ PHASE D ============ -->
+          <text x="24" y="648" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600"
+                letter-spacing="1.5" fill="var(--ink-faint)">PHASE D · BUILD</text>
+          <rect x="24" y="655" width="4" height="110" rx="2" fill="var(--seafoam)"/>
+
+          <rect x="52" y="655" width="548" height="30" rx="3" fill="var(--surface-2)" stroke="var(--border)"/>
+          <text x="66" y="675" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">12</text>
+          <text x="96" y="675" font-family="Archivo, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Delivery Preparation — POD Formation</text>
+          <text x="372" y="675" font-size="11.5" fill="var(--ink-mid)">TSD + People &amp; Ops</text>
+
+          <rect x="52" y="695" width="548" height="30" rx="3" fill="var(--surface-2)" stroke="var(--border)"/>
+          <text x="66" y="715" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">13</text>
+          <text x="96" y="715" font-family="Archivo, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Engineering / Build</text>
+          <text x="372" y="715" font-size="11.5" fill="var(--ink-mid)">Engineering Lead (POD)</text>
+
+          <rect x="52" y="735" width="548" height="30" rx="3" fill="var(--surface-2)" stroke="var(--border)"/>
+          <text x="66" y="755" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">14</text>
+          <text x="96" y="755" font-family="Archivo, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">QA / Testing</text>
+          <text x="372" y="755" font-size="11.5" fill="var(--ink-mid)">QA Lead</text>
+
+          <!-- ============ PHASE E ============ -->
+          <text x="24" y="796" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600"
+                letter-spacing="1.5" fill="var(--ink-faint)">PHASE E · ACCEPT &amp; CLOSE</text>
+          <rect x="24" y="805" width="4" height="110" rx="2" fill="var(--seafoam)"/>
+
+          <rect x="52" y="805" width="548" height="30" rx="3" fill="var(--surface-2)" stroke="var(--border)"/>
+          <text x="66" y="825" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">15</text>
+          <text x="96" y="825" font-family="Archivo, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Client Acceptance (UAT)</text>
+          <text x="372" y="825" font-size="11.5" fill="var(--ink-mid)">Client signs · TSD + QA</text>
+
+          <rect x="52" y="845" width="548" height="30" rx="3" fill="var(--surface-2)" stroke="var(--border)"/>
+          <text x="66" y="865" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">16</text>
+          <text x="96" y="865" font-family="Archivo, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Handover</text>
+          <text x="372" y="865" font-size="11.5" fill="var(--ink-mid)">TSD + Solution Architect</text>
+
+          <rect x="52" y="885" width="548" height="30" rx="3" fill="var(--surface-2)" stroke="var(--border)"/>
+          <text x="66" y="905" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">17</text>
+          <text x="96" y="905" font-family="Archivo, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Project Closure</text>
+          <text x="372" y="905" font-size="11.5" fill="var(--ink-mid)">TSD + Finance</text>
+
+
+          <!-- ============ CLIENT CONNECTORS ============ -->
+          <!-- 01 client -> THCO -->
+          <line x1="700" y1="118" x2="602" y2="118" stroke="var(--gold)" stroke-width="1.3" marker-end="url(#ah)"/>
+          <text x="712" y="115" font-size="11" fill="var(--gold)">brief, documents,</text>
+          <text x="712" y="128" font-size="11" fill="var(--gold)">call transcripts</text>
+
+          <!-- 04 both -->
+          <line x1="602" y1="268" x2="698" y2="268" stroke="var(--gold)" stroke-width="1.3"
+                marker-start="url(#ah)" marker-end="url(#ah)"/>
+          <text x="712" y="272" font-size="11" fill="var(--gold)">discovery call</text>
+
+          <!-- 07 both -->
+          <line x1="602" y1="388" x2="698" y2="388" stroke="var(--gold)" stroke-width="1.3"
+                marker-start="url(#ah)" marker-end="url(#ah)"/>
+          <text x="712" y="392" font-size="11" fill="var(--gold)">scope questions</text>
+
+          <!-- 09 THCO -> client -->
+          <line x1="602" y1="498" x2="698" y2="498" stroke="var(--gold)" stroke-width="1.3" marker-end="url(#ah)"/>
+          <text x="712" y="502" font-size="11" fill="var(--gold)">demo presented</text>
+
+          <!-- 10 client -> THCO -->
+          <line x1="700" y1="538" x2="602" y2="538" stroke="var(--gold)" stroke-width="1.3" marker-end="url(#ah)"/>
+          <text x="712" y="542" font-size="11" fill="var(--gold)">feedback returned</text>
+
+          <!-- 11 both -->
+          <line x1="602" y1="578" x2="698" y2="578" stroke="var(--gold)" stroke-width="1.3"
+                marker-start="url(#ah)" marker-end="url(#ah)"/>
+          <text x="712" y="575" font-size="11" fill="var(--gold)">final direction,</text>
+          <text x="712" y="588" font-size="11" fill="var(--gold)">formal validation</text>
+
+          <!-- 15 client -> THCO -->
+          <line x1="700" y1="820" x2="602" y2="820" stroke="var(--gold)" stroke-width="1.3" marker-end="url(#ah)"/>
+          <text x="712" y="824" font-size="11" fill="var(--gold)">acceptance sign-off</text>
+
+          <!-- 16 THCO -> client -->
+          <line x1="602" y1="860" x2="698" y2="860" stroke="var(--gold)" stroke-width="1.3" marker-end="url(#ah)"/>
+          <text x="712" y="857" font-size="11" fill="var(--gold)">system, docs,</text>
+          <text x="712" y="870" font-size="11" fill="var(--gold)">training</text>
+        </svg>
+      </div>
+      <figcaption>
+        <strong>The whole flow, with the parts that carry meaning drawn and nothing else.</strong>
+        The client is a lane, not a box — they enter and leave the process eight times, and the
+        direction of each arrow says whether they are giving or receiving. The only cycle in the
+        entire flow is steps 09 and 10, which repeat until the client validates the demo. The dashed
+        line is the state-machine gate the master specification names explicitly: <code>Demo →
+        Client Validation</code>. Below it, delivery preparation may begin.
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- ================= THE GATE ================= -->
+  <section class="block">
+    <div class="section-head">
+      <span class="eyebrow">02 — The validation gate</span>
+      <h2>A demo is not permission to build</h2>
+    </div>
+
+    <div class="prose stack">
+      <p>
+        The master specification names this rule directly, twice — once as a stage gate and once as
+        one of its twenty non-negotiables: <strong>"A demo does not automatically authorize
+        engineering. Client validation is a formal gate into delivery preparation."</strong> Steps 01
+        through 10 — intake, discovery, product definition, an architect's brief, a designer's time,
+        scoping, architecture, a working mockup, and however many rounds of client feedback it takes —
+        all run before that gate. Step 11, <strong>Validation &amp; Readiness</strong>, is where the
+        client confirms final direction, scope and acceptance criteria and the project is marked
+        <code>CLIENT VALIDATED</code>. Only then does step 12 — Delivery Preparation / Pod Formation —
+        begin.
+      </p>
+      <p>
+        That much is unambiguous in the 34-page specification. What is <strong>not</strong> settled is
+        whether a contract sits at that same point. The three architecture diagrams label step 11
+        "Validation &amp; <em>Commercial</em> Readiness," own it to TSD + Legal + Finance, and list
+        "commercial proposal, legal review, contract preparation" as its activities. The specification
+        text, by contrast, states the opposite as a deliberate V2 change: <strong>"Commercial/finance
+        administration is outside the core technical Delivery OS flow"</strong> — and Stage 11's
+        owner in the spec's own lifecycle table is <code>TSD + Client</code>, full stop.
+      </p>
+      <p>
+        That is a real disagreement between two documents describing the same system, not a reading
+        error. It changes what step 11 is: either a commercial and legal milestone, or a purely
+        product-and-scope milestone that a signed contract sits outside of entirely. This diagram
+        follows the specification text, since it is the newer, more explicit document — but the
+        discrepancy needs resolving with whoever owns both documents before step 11 is built.
+      </p>
+      <p>
+        Whichever reading wins, two practical consequences follow and neither is a software detail:
+      </p>
+      <ul style="margin:0; padding-left:1.2em; display:flex; flex-direction:column; gap:9px;">
+        <li style="color:var(--ink-mid)">
+          <strong>Steps 01–10 need a kill switch.</strong> The flow as drawn has no exit before step 11.
+          Something has to let a TSD or a partner stop a project at step 07 when it is clearly not
+          going anywhere — and record why, so the pattern is visible later. The current CRM has this
+          in crude form (<code>mark_lost</code> with a reason); the new flow needs it at every
+          pre-validation step.
+        </li>
+        <li style="color:var(--ink-mid)">
+          <strong>Pre-validation effort has to be measurable.</strong> If the firm is investing real
+          delivery capacity — an architect's time, a designer's time — before a client has validated
+          anything, someone will eventually ask what that costs and what the conversion rate is. The
+          system should be able to answer. Today it cannot — there is no way to attribute anyone's
+          time to a project at all.
+        </li>
+      </ul>
+    </div>
+
+    <div class="note alert">
+      <h3>Open, and worth resolving before Sprint 3</h3>
+      <p>
+        Is step 11 a product/scope gate only, or does it also carry the commercial proposal, legal
+        review and contract preparation the diagrams show? The answer decides whether Legal and
+        Finance are stakeholders in the core Delivery OS flow at all, which the spec says they are
+        not.
+      </p>
+    </div>
+  </section>
+
+  <!-- ================= FIGURE 2 ================= -->
+  <section class="block">
+    <div class="section-head">
+      <span class="eyebrow">03 — Ownership</span>
+      <h2>One person holds the project from step 03 to the end</h2>
+    </div>
+
+    <figure>
+      <div class="figscroll">
+        <svg viewBox="0 0 880 360" role="img"
+             aria-label="Timeline showing which roles are active across the seventeen steps. The TSD holds one continuous bar from step three through step seventeen; every other role appears in short intervals. A dashed client-validation gate sits between steps eleven and twelve.">
+          <!-- step numbers -->
+          <text x="219" y="52" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-faint)">01</text>
+          <text x="258" y="52" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-faint)">02</text>
+          <text x="297" y="52" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-faint)">03</text>
+          <text x="336" y="52" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-faint)">04</text>
+          <text x="375" y="52" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-faint)">05</text>
+          <text x="414" y="52" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-faint)">06</text>
+          <text x="453" y="52" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-faint)">07</text>
+          <text x="492" y="52" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-faint)">08</text>
+          <text x="531" y="52" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-faint)">09</text>
+          <text x="570" y="52" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-faint)">10</text>
+          <text x="609" y="52" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-faint)">11</text>
+          <text x="648" y="52" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-faint)">12</text>
+          <text x="687" y="52" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-faint)">13</text>
+          <text x="726" y="52" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-faint)">14</text>
+          <text x="765" y="52" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-faint)">15</text>
+          <text x="804" y="52" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-faint)">16</text>
+          <text x="843" y="52" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-faint)">17</text>
+          <line x1="200" y1="60" x2="863" y2="60" stroke="var(--border)" stroke-width="1"/>
+
+          <!-- client-validation gate -->
+          <line x1="629" y1="40" x2="629" y2="340" stroke="var(--gold)" stroke-width="1.4" stroke-dasharray="5 4"/>
+          <text x="634" y="34" font-family="IBM Plex Mono, monospace" font-size="9" font-weight="600"
+                letter-spacing="1.1" fill="var(--gold)">VALIDATED</text>
+
+          <!-- row 1: Commercial -->
+          <text x="190" y="82" text-anchor="end" font-size="11.5" fill="var(--ink-mid)">Commercial / Initiator</text>
+          <rect x="204" y="71" width="31" height="14" rx="3" fill="var(--border-hard)"/>
+
+          <!-- row 2: AI -->
+          <text x="190" y="112" text-anchor="end" font-size="11.5" fill="var(--ink-mid)">AI System</text>
+          <rect x="243" y="101" width="31" height="14" rx="3" fill="var(--border-hard)"/>
+
+          <!-- row 3: TSD  (the claim) -->
+          <text x="190" y="142" text-anchor="end" font-size="11.5" font-weight="600" fill="var(--ink)">TSD — Delivery Owner</text>
+          <rect x="282" y="130" width="577" height="16" rx="4" fill="var(--seafoam)"/>
+
+          <!-- row 4: Solution Architect -->
+          <text x="190" y="172" text-anchor="end" font-size="11.5" fill="var(--ink-mid)">Solution Architect / Tech Lead</text>
+          <rect x="399" y="161" width="187" height="14" rx="3" fill="var(--border-hard)"/>
+          <rect x="672" y="161" width="148" height="14" rx="3" fill="var(--border-hard)"/>
+
+          <!-- row 5: Product Designer -->
+          <text x="190" y="202" text-anchor="end" font-size="11.5" fill="var(--ink-mid)">Product Designer</text>
+          <rect x="438" y="191" width="31" height="14" rx="3" fill="var(--border-hard)"/>
+          <rect x="516" y="191" width="70" height="14" rx="3" fill="var(--border-hard)"/>
+
+          <!-- row 6: Engineers -->
+          <text x="190" y="232" text-anchor="end" font-size="11.5" fill="var(--ink-mid)">Engineers (POD)</text>
+          <rect x="633" y="221" width="70" height="14" rx="3" fill="var(--border-hard)"/>
+
+          <!-- row 7: QA -->
+          <text x="190" y="262" text-anchor="end" font-size="11.5" fill="var(--ink-mid)">QA / Testers</text>
+          <rect x="711" y="251" width="70" height="14" rx="3" fill="var(--border-hard)"/>
+
+          <!-- row 8: Legal / Finance / Ops -->
+          <text x="190" y="292" text-anchor="end" font-size="11.5" fill="var(--ink-mid)">Legal · Finance · People &amp; Ops</text>
+          <rect x="594" y="281" width="31" height="14" rx="3" fill="var(--border-hard)"/>
+          <rect x="633" y="281" width="31" height="14" rx="3" fill="var(--border-hard)"/>
+          <rect x="828" y="281" width="31" height="14" rx="3" fill="var(--border-hard)"/>
+
+          <!-- row 9: Client -->
+          <text x="190" y="322" text-anchor="end" font-size="11.5" fill="var(--gold)">Client</text>
+          <rect x="204" y="311" width="31" height="14" rx="3" fill="var(--gold)"/>
+          <rect x="321" y="311" width="31" height="14" rx="3" fill="var(--gold)"/>
+          <rect x="438" y="311" width="31" height="14" rx="3" fill="var(--gold)"/>
+          <rect x="516" y="311" width="109" height="14" rx="3" fill="var(--gold)"/>
+          <rect x="750" y="311" width="70" height="14" rx="3" fill="var(--gold)"/>
+        </svg>
+      </div>
+      <figcaption>
+        <strong>"Owner at every stage" in one picture.</strong> The TSD's bar is unbroken from step 03
+        to step 17 — they take the project at assignment and carry it through closure. Every other
+        role is a specialist who is pulled in, does their piece, and steps back out. That is the whole
+        governance model: <em>specialists rotate, accountability does not</em>. It is also why the
+        TSD role has to be a real, staffed job before any of this works.
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- ================= PHASE WRITEUPS ================= -->
+  <section class="block">
+    <div class="section-head">
+      <span class="eyebrow">04 — Walkthrough</span>
+      <h2>What actually happens in each phase</h2>
+    </div>
+
+    <div class="phase">
+      <div class="side">
+        <span class="tag">Phase A</span>
+        <span class="rng">01–03</span>
+        <span class="who">Commercial · AI · TSD</span>
+      </div>
+      <div class="body">
+        <h3>Intake &amp; Assignment</h3>
+        <p>
+          Someone commercial — sales, BD, a partner — creates the project from a single form. Not just
+          a name and a client: <strong>the desired outcome, the initial brief, call transcripts,
+          supporting documents, client website and context</strong>, all captured at the point of
+          entry rather than living in somebody's inbox.
+        </p>
+        <p>
+          The AI then reads all of it and scores every available TSD against the brief on expertise,
+          domain, capacity, experience and past delivery history, ranks the best matches and
+          recommends one. <strong>A human still confirms.</strong> The chosen TSD gets an email and an
+          in-app notification, a project workspace is created for them automatically, and they land on
+          a summary with recommended next steps rather than an empty record.
+        </p>
+        <p class="out">Produces: <b>intake record · TSD ranking &amp; rationale · project workspace</b></p>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="side">
+        <span class="tag">Phase B</span>
+        <span class="rng">04–08</span>
+        <span class="who">TSD, then Solution Architect &amp; Designer</span>
+      </div>
+      <div class="body">
+        <h3>Definition &amp; Design</h3>
+        <p>
+          This is the phase that does not exist today, and it is where most of the value of the
+          upgrade sits. The TSD reads everything, <strong>identifies the gaps</strong>, and goes back
+          to the client with clarification questions rather than guessing. Then they write the outcome
+          brief: the problem stated plainly, defined outcomes, success metrics, scope boundaries,
+          initial assumptions, risks and constraints.
+        </p>
+        <p>
+          Only once that exists do they request a Solution Architect — a request that goes through the
+          system, may need Senior Partner approval, and delivers the architect a proper brief rather
+          than a conversation. The architect and a product designer then run discovery and scoping
+          (user needs, process flows, features, effort estimate, roadmap) and produce the architecture
+          itself (tech stack, integrations, data architecture, security and compliance, high-level
+          estimate).
+        </p>
+        <p>
+          The difference from today is the difference between <em>"we sent them a package"</em> and
+          <em>"we know exactly what we are building, what it will take, and where the risk is."</em>
+        </p>
+        <p class="out">Produces: <b>outcome brief · scoping document · architecture record · effort estimate</b></p>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="side">
+        <span class="tag">Phase C</span>
+        <span class="rng">09–11</span>
+        <span class="who">Architect, Designer, TSD, Client</span>
+      </div>
+      <div class="body">
+        <h3>Validate &amp; Commit</h3>
+        <p>
+          A mockup or first demo — wireframes, a prototype, a technical walkthrough — goes in front of
+          the client. They respond, the solution is refined, scope is updated, and the AI analyses
+          what changed. <strong>Then it goes round again, as many times as it takes.</strong> This is
+          the only loop in the flow and it is deliberate: the demo is the sales instrument, so it
+          iterates until the client is convinced.
+        </p>
+        <p>
+          Step 11 closes the loop for good. The client confirms final direction, scope and acceptance
+          criteria, and the project is marked <strong>CLIENT VALIDATED</strong> — the formal gate the
+          specification requires before delivery preparation can open. <em>Whether a contract, legal
+          review and commercial proposal sit inside this step or outside the Delivery OS flow entirely
+          is unresolved</em> — see §02.
+        </p>
+        <p class="out">Produces: <b>demo · feedback &amp; change log · client-validated gate</b></p>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="side">
+        <span class="tag">Phase D</span>
+        <span class="rng">12–14</span>
+        <span class="who">TSD, People &amp; Ops, POD, QA</span>
+      </div>
+      <div class="body">
+        <h3>Build</h3>
+        <p>
+          A <strong>POD</strong> is formed — a named delivery team, with talent engaged, resources
+          confirmed, kickoff planned and a delivery plan agreed. The POD is a real object in the new
+          model, not just a set of people assigned to a project.
+        </p>
+        <p>
+          Engineering then runs conventionally: sprint planning, development, code reviews, CI/CD,
+          documentation. QA runs as its own step with its own lead — test planning, test execution,
+          defect tracking, and preparation for UAT. <strong>This is the part THCO already does
+          well</strong>; the existing task board covers most of step 13 today. What is missing is QA
+          as a distinct, owned step rather than a status value.
+        </p>
+        <p class="out">Produces: <b>POD · delivery plan · built system · test plan &amp; defect log</b></p>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="side">
+        <span class="tag">Phase E</span>
+        <span class="rng">15–17</span>
+        <span class="who">Client, TSD, Architect, Finance</span>
+      </div>
+      <div class="body">
+        <h3>Accept &amp; Close</h3>
+        <p>
+          The client runs UAT against the acceptance criteria agreed back at step 11 and signs off.
+          Then handover: knowledge transfer, handover documentation, training, operational readiness —
+          the client's team has to be able to run the thing without THCO in the room.
+        </p>
+        <p>
+          Closure is a real step, not a status flip. A closure report, lessons learned, the project
+          archived, repositories cleaned up, final documentation filed. <strong>Lessons learned is
+          the step that feeds everything back</strong> — it is what eventually gives the AI assignment
+          engine at step 02 something real to rank people on.
+        </p>
+        <p class="out">Produces: <b>acceptance record · handover pack · closure report · lessons learned</b></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= FIGURE 3 ================= -->
+  <section class="block">
+    <div class="section-head">
+      <span class="eyebrow">05 — Migration</span>
+      <h2>What this does to the fifteen live projects</h2>
+    </div>
+
+    <figure>
+      <div class="figscroll">
+        <svg viewBox="0 0 880 270" role="img"
+             aria-label="Two process shapes side by side. On the left, today's pipeline runs through five stages then forks into a three-stage proposal track and a two-stage build track running in parallel. On the right, the proposed flow is a single line of seventeen steps with one feedback loop at steps nine and ten and a client-validation gate after step eleven.">
+          <defs>
+            <marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--ink-mid)"/>
+            </marker>
+          </defs>
+
+          <line x1="440" y1="20" x2="440" y2="250" stroke="var(--border)" stroke-width="1"/>
+
+          <!-- ============ LEFT: today ============ -->
+          <text x="20" y="34" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600"
+                letter-spacing="1.4" fill="var(--ink-faint)">TODAY · 10 STAGES, FORKS AT 5</text>
+
+          <rect x="30" y="119" width="30" height="24" rx="3" fill="var(--surface-2)" stroke="var(--border-hard)"/>
+          <text x="45" y="135" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-mid)">1</text>
+          <rect x="68" y="119" width="30" height="24" rx="3" fill="var(--surface-2)" stroke="var(--border-hard)"/>
+          <text x="83" y="135" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-mid)">2</text>
+          <rect x="106" y="119" width="30" height="24" rx="3" fill="var(--surface-2)" stroke="var(--border-hard)"/>
+          <text x="121" y="135" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-mid)">3</text>
+          <rect x="144" y="119" width="30" height="24" rx="3" fill="var(--surface-2)" stroke="var(--border-hard)"/>
+          <text x="159" y="135" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-mid)">4</text>
+          <rect x="182" y="119" width="30" height="24" rx="3" fill="var(--surface-2)" stroke="var(--border-hard)"/>
+          <text x="197" y="135" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-mid)">5</text>
+
+          <!-- fork -->
+          <path d="M 214 131 C 236 131, 236 92, 256 92" fill="none" stroke="var(--rose)" stroke-width="1.4" marker-end="url(#ah3)"/>
+          <path d="M 214 131 C 236 131, 236 178, 256 178" fill="none" stroke="var(--rose)" stroke-width="1.4" marker-end="url(#ah3)"/>
+          <text x="228" y="150" font-family="IBM Plex Mono, monospace" font-size="8.5" fill="var(--rose)">split</text>
+
+          <text x="262" y="70" font-family="IBM Plex Mono, monospace" font-size="9" fill="var(--ink-faint)">proposal track</text>
+          <rect x="262" y="80" width="30" height="24" rx="3" fill="var(--surface-2)" stroke="var(--border-hard)"/>
+          <text x="277" y="96" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-mid)">6</text>
+          <rect x="300" y="80" width="30" height="24" rx="3" fill="var(--surface-2)" stroke="var(--border-hard)"/>
+          <text x="315" y="96" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-mid)">7</text>
+          <rect x="338" y="80" width="30" height="24" rx="3" fill="var(--surface-2)" stroke="var(--border-hard)"/>
+          <text x="353" y="96" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-mid)">8</text>
+
+          <text x="262" y="212" font-family="IBM Plex Mono, monospace" font-size="9" fill="var(--ink-faint)">build track</text>
+          <rect x="262" y="166" width="30" height="24" rx="3" fill="var(--surface-2)" stroke="var(--border-hard)"/>
+          <text x="277" y="182" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-mid)">9</text>
+          <rect x="300" y="166" width="30" height="24" rx="3" fill="var(--surface-2)" stroke="var(--border-hard)"/>
+          <text x="315" y="182" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-mid)">10</text>
+
+          <text x="20" y="243" font-size="11" fill="var(--rose)">Two database rows per project, running in parallel.</text>
+
+          <!-- ============ RIGHT: proposed ============ -->
+          <text x="470" y="34" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600"
+                letter-spacing="1.4" fill="var(--ink-faint)">PROPOSED · 17 STEPS, ONE LINE</text>
+
+          <rect x="480" y="119" width="16" height="24" rx="2" fill="var(--surface-2)" stroke="var(--border-hard)"/>
+          <rect x="502" y="119" width="16" height="24" rx="2" fill="var(--surface-2)" stroke="var(--border-hard)"/>
+          <rect x="524" y="119" width="16" height="24" rx="2" fill="var(--surface-2)" stroke="var(--border-hard)"/>
+          <rect x="546" y="119" width="16" height="24" rx="2" fill="var(--surface-2)" stroke="var(--border-hard)"/>
+          <rect x="568" y="119" width="16" height="24" rx="2" fill="var(--surface-2)" stroke="var(--border-hard)"/>
+          <rect x="590" y="119" width="16" height="24" rx="2" fill="var(--surface-2)" stroke="var(--border-hard)"/>
+          <rect x="612" y="119" width="16" height="24" rx="2" fill="var(--surface-2)" stroke="var(--border-hard)"/>
+          <rect x="634" y="119" width="16" height="24" rx="2" fill="var(--surface-2)" stroke="var(--border-hard)"/>
+          <rect x="656" y="119" width="16" height="24" rx="2" fill="var(--surface-2)" stroke="var(--border-hard)"/>
+          <rect x="678" y="119" width="16" height="24" rx="2" fill="var(--surface-2)" stroke="var(--border-hard)"/>
+          <rect x="700" y="119" width="16" height="24" rx="2" fill="var(--surface-2)" stroke="var(--border-hard)"/>
+          <rect x="722" y="119" width="16" height="24" rx="2" fill="var(--seafoam-wash)" stroke="var(--seafoam)"/>
+          <rect x="744" y="119" width="16" height="24" rx="2" fill="var(--seafoam-wash)" stroke="var(--seafoam)"/>
+          <rect x="766" y="119" width="16" height="24" rx="2" fill="var(--seafoam-wash)" stroke="var(--seafoam)"/>
+          <rect x="788" y="119" width="16" height="24" rx="2" fill="var(--seafoam-wash)" stroke="var(--seafoam)"/>
+          <rect x="810" y="119" width="16" height="24" rx="2" fill="var(--seafoam-wash)" stroke="var(--seafoam)"/>
+          <rect x="832" y="119" width="16" height="24" rx="2" fill="var(--seafoam-wash)" stroke="var(--seafoam)"/>
+
+          <!-- loop over 09-10 -->
+          <path d="M 686 113 C 686 94, 664 94, 664 111" fill="none" stroke="var(--ink-mid)" stroke-width="1.3" marker-end="url(#ah3)"/>
+          <text x="675" y="86" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="8.5" fill="var(--ink-mid)">iterate</text>
+
+          <!-- gate after 11 -->
+          <line x1="719" y1="105" x2="719" y2="160" stroke="var(--gold)" stroke-width="1.4" stroke-dasharray="4 3"/>
+          <text x="719" y="174" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="8.5" font-weight="600" fill="var(--gold)">validated</text>
+
+          <text x="488" y="158" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9" fill="var(--ink-faint)">01</text>
+          <text x="840" y="158" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9" fill="var(--ink-faint)">17</text>
+
+          <text x="470" y="243" font-size="11" fill="var(--seafoam)">One row per project, start to finish.</text>
+        </svg>
+      </div>
+      <figcaption>
+        <strong>The two shapes are not compatible, and this is the migration.</strong> Today a project
+        splits at stage 5 into two sibling records that run in parallel — a proposal track and a build
+        track. The new flow is a single sequence with the commercial work sitting <em>inside</em> it
+        at step 11. Adopting it means retiring the fork and merging the siblings on every project that
+        has already split. That is a data migration against live work, and it is the one part of
+        Phase 1 that cannot be done with a config change.
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- ================= NEW OBJECTS ================= -->
+  <section class="block">
+    <div class="section-head">
+      <span class="eyebrow">06 — What the system has to hold</span>
+      <h2>Ten things a project needs that it has no field for today</h2>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 26%">New object</th>
+            <th style="width: 10%">Step</th>
+            <th>What it carries</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="k">Outcome brief</td><td>05</td><td>Problem statement, defined outcomes, success metrics, scope boundaries, assumptions, risks</td></tr>
+          <tr><td class="k">Architect request</td><td>06</td><td>The ask, who approved it, which architect was assigned and when they received the brief</td></tr>
+          <tr><td class="k">Scoping document</td><td>07</td><td>User needs, process flows, feature list, effort estimate, roadmap</td></tr>
+          <tr><td class="k">Architecture record</td><td>08</td><td>Tech stack, integrations, data architecture, security and compliance review</td></tr>
+          <tr><td class="k">Demo artefact</td><td>09</td><td>Wireframes, prototype link, walkthrough notes, what version the client saw</td></tr>
+          <tr><td class="k">Feedback &amp; change log</td><td>10</td><td>Every round of client feedback, what changed as a result, and the scope impact</td></tr>
+          <tr><td class="k">POD</td><td>12</td><td>The named delivery team as an object — members, roles, resourcing, kickoff date</td></tr>
+          <tr><td class="k">Test plan &amp; defects</td><td>14</td><td>Test cases, execution results, open and closed defects</td></tr>
+          <tr><td class="k">Acceptance record</td><td>15</td><td>Acceptance criteria, who signed, when, and against which build</td></tr>
+          <tr><td class="k">Closure report</td><td>17</td><td>Outcome against original objective, lessons learned, archive location</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note good">
+      <p>
+        <strong>Every one of these is a form and a document attached to a project.</strong> None of
+        them needs a new database, a new cluster or a new search engine, since the attachment,
+        notification, audit and permission machinery they all sit on is already built and working.
+        <strong>This is true of the ten steps themselves.</strong> It stops being true once the
+        intelligence and control layer the master specification describes is added, which is
+        covered below.
+      </p>
+    </div>
+  </section>
+
+  <!-- ================= SPEC-ONLY LAYER ================= -->
+  <section class="block">
+    <div class="section-head">
+      <span class="eyebrow">07 — Beyond the diagrams</span>
+      <h2>What the 34-page master specification adds that the three diagrams did not show</h2>
+    </div>
+
+    <div class="prose stack">
+      <p>
+        A full written specification, <span class="mono">Crowther_Delivery_OS_Updated_Master_Specification_V2.pdf</span>,
+        dated August 2026, sits behind the diagrams and goes considerably further than they do. It
+        confirms the seventeen steps and the ownership model above almost exactly, but it also
+        describes a second layer that the diagrams only hinted at with single boxes such as "AI
+        Delivery Copilot" and "Knowledge Graph." Spelled out, that layer is substantial on its own.
+      </p>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th style="width:26%">Layer</th><th>What the specification actually asks for</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="k">Ten AI agents</td>
+            <td>Not one AI step at intake, but a named agent per concern: Project Intelligence, Product Scoping, Architecture Intelligence, Delivery, Contract Intelligence, Talent, QA, Risk, Executive, and the <strong>What Next? Engine</strong> that recommends the next action on every open project.</td>
+          </tr>
+          <tr>
+            <td class="k">Thirty-one core entities</td>
+            <td>Appendix B lists User, Role, Client, Stakeholder, Project, Project Stage, Stage Transition, Requirement, Feature, User Journey, Product Brief, Architect Brief, Architecture Version, Architecture Component, Integration, Decision, Risk, Dependency, Task, Milestone, Pod, Assignment, Document, Feedback Item, Notification, QA Test, Defect, Acceptance Record, Handover Record, Closure Record and Knowledge Item, each with its own relationships. Section 6 of the sprint plan lists ten new objects; the specification's own count is three times that.</td>
+          </tr>
+          <tr>
+            <td class="k">Knowledge Graph and Project Memory</td>
+            <td>A dedicated graph connecting client, project, requirement, decision, document, person and architecture-component entities, so AI "uses relevant historical context rather than only the latest message or document." Nothing in the current CRM resembles this, so it is new infrastructure rather than a new field.</td>
+          </tr>
+          <tr>
+            <td class="k">Decision Log, immutable activity log, stage history</td>
+            <td>Every consequential decision gets its own record: title, description, decision maker, participants, reason, alternatives considered, and which requirements, architecture, timeline or scope it affects. The CRM's existing <code>audit_log</code> collection is a reasonable start on the activity-log half of this, but the structured decision record is new.</td>
+          </tr>
+          <tr>
+            <td class="k">Risk and Dependency Intelligence</td>
+            <td>A formal risk register (probability, impact, severity, mitigation, contingency) and a dependency engine tracking blockers across tasks, people, documents, approvals, client actions and external systems. Not represented anywhere in the current system.</td>
+          </tr>
+          <tr>
+            <td class="k">Project Control Tower</td>
+            <td>A portfolio-level view of health (green/amber/red), schedule risk, blockers, scope creep, staffing gaps and QA readiness, plus an Executive Exception View that shows leadership only what needs intervention. This is a reporting surface built on top of everything else, not a step in the pipeline.</td>
+          </tr>
+          <tr>
+            <td class="k">Information Continuity / Change Propagation</td>
+            <td>Every new piece of information, a transcript, a message, a document, is meant to be extracted, classified as fact, change, new requirement, question or conflict, run through impact analysis against product, architecture, scope and timeline, and routed to affected owners automatically. This is the mechanism the AI agents actually run on, and it is the single largest piece of unbuilt infrastructure in the whole specification.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note alert">
+      <h3>What this means for the sprint plan</h3>
+      <p>
+        The ten-sprint plan in <span class="mono">docs/DELIVERY_OS_SPRINT_PLAN.md</span> delivers the
+        seventeen-step <em>process</em>, the part of the specification the diagrams communicated
+        clearly. It does not deliver the intelligence and control layer above. That is not a gap in
+        the plan; it is a deliberate sequencing choice the specification itself endorses in its own
+        words, in <strong>section 46, MVP Build Sequence</strong>: "Do not attempt to build every
+        feature simultaneously. Establish the operating architecture, build the control system, test
+        it, then expand." The specification's own MVP 1 ("Project Control System") and part of MVP 2
+        ("Product + Architecture") are roughly what the ten sprints cover. MVPs 3 through 5, the demo
+        loop's AI change analysis, the ten agents, the Knowledge Graph, and the Control Tower, are a
+        second project, not a phase that was forgotten.
+      </p>
+    </div>
+  </section>
+
+  <footer class="foot">
+    Drawn from the three source architecture diagrams (Delivery OS, sections A and B), the 34-page
+    <span class="mono">Crowther Delivery OS Master Specification V2.0</span> (August 2026), and read
+    against <span class="mono">backend/routers/flow.py</span> and <span class="mono">PROJECT_STATE.md</span>.<br>
+    The specification and the diagrams disagree on whether step 11 carries a commercial or contract
+    component. See section 02. That is unresolved as of this writing.<br>
+    Companion documents: the architecture comparison, and the sprint plan.
+  </footer>
+
+</div>

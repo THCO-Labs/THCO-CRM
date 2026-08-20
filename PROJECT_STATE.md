@@ -1,6 +1,6 @@
 # THCO CRM — Project State and Handover
 
-**Last updated:** 19 August 2026
+**Last updated:** 20 August 2026
 
 This document exists so that work can be picked up by someone (or something)
 with no prior context. It records what the system is, what has been done, what
@@ -8,6 +8,28 @@ is deliberately not done, and where the traps are.
 
 Read this first. Then read `DEPLOYMENT.md` for hosting and
 `docs/POSTGRES_MIGRATION.md` if the database question comes up.
+
+**Proposed work, not started.** A restructure of the delivery pipeline from 10
+stages to 17 was proposed on 20 August 2026, grounded in three architecture
+diagrams, a 34-page master specification, and the 19 August 2026 meeting
+transcript the specification draws on. **"Crowther Delivery OS" is THCO's own
+working name for this system, confirmed directly on 20 August 2026 — not a
+rebrand or a second entity.** Three documents cover the proposal and none of it
+has been built:
+
+- `docs/delivery-os-comparison.html` — the proposal measured against what exists
+- `docs/delivery-os-flow.html` — the seventeen-step process explained, including
+  what the specification adds beyond the diagrams (§07)
+- `docs/DELIVERY_OS_SPRINT_PLAN.md` — 10 sprints, 20 weeks, the two remaining
+  questions that block starting, and where the plan sits in the specification's
+  own five-tier MVP sequence (§8) — it covers roughly MVP 1–2 and half of
+  MVP 3–4; MVP 5 (the ten-agent AI layer, Knowledge Graph, Control Tower) is
+  untouched
+
+The riskiest part is retiring the stage-5 split (§5), which is a data migration
+against live projects. Separately unresolved: whether step 11 carries a contract,
+since the diagrams and the specification disagree on this — see the sprint plan
+§2, blocker 3.
 
 ---
 
@@ -517,10 +539,11 @@ Deploys pass only `--image`, so scale settings survive a push.
 the container and runs the sweep. Sends are deduplicated per contact, occasion,
 lead time and year, so a late or repeated run cannot resend.
 
-**`mailbox-import` is paused on the schedule** (18 August 2026). Flip
-`MAILBOX_IMPORT_PAUSED` to `'false'` at the top of the workflow once the
-`resume_files` migration has finished. Running it by hand still works —
-"Run workflow" with `job=mailbox-import` ignores the pause.
+**`mailbox-import` runs on the schedule again** (resumed 20 August 2026, after
+the migration finished and the cluster moved off the free tier). Set
+`MAILBOX_IMPORT_PAUSED` to `'true'` at the top of the workflow before any bulk
+load against the database. Running it by hand always works — "Run workflow"
+with `job=mailbox-import` ignores the pause.
 
 **Every scheduled job must finish inside 240 seconds.** Container Apps ends any
 HTTP request at that point, and the caller then sees a 504 while the job carries
@@ -568,21 +591,15 @@ operations.
   Not yet done.
 - **Bundles rejected before the splitter existed** are recorded and re-runnable
   but have not been re-run.
-- **The CV migration finished on 19 August but left 5,574 files behind.**
-  Production holds 65,278 of 70,852. Sixty chunks — 6,000 candidates — were
-  abandoned when the cluster began failing every write, and they are recorded
-  in `ops/cv-migration-outstanding.json`. That file is the only durable record:
-  the run deletes its own checkpoint when it finishes, so the list would
-  otherwise exist nowhere. Those candidates have a profile and no openable CV.
-  Do not re-run this on the free tier while people are working; it is what took
-  the database down.
-- **~81 mailbox messages were skipped and need re-reading**: UIDs 4485-4565,
-  passed over by the runs of 14 and 17 August when every document failed with
-  code 50 and the cursor advanced anyway. The cursor bug is fixed, but these
-  are already behind the resume point. To recover, set the gmail cursor back
-  once the migration is done and the import can actually succeed:
-  `db.import_cursors.updateOne({connector:"gmail"}, {$set:{cursor:"4484"}})`.
-  Re-reading is safe — an identical document is recognised by its hash.
+- **The CV migration is complete** (20 August 2026). Production holds 76,690 CV
+  files: every file local had, plus ~5,860 it received from daily mailbox
+  imports that local never had. The two databases legitimately diverge, so
+  comparing their totals is meaningless — compare sets of `version_id`.
+  `ops/cv-migration-outstanding.json` is now history rather than a to-do list.
+- **The ~81 skipped mailbox messages are queued for re-reading.** The gmail
+  cursor was rewound from 4565 to 4484 on 20 August, so the next import
+  re-reads UIDs 4485-4565. Re-reading is safe — an identical document is
+  recognised by its hash.
 - **The production database password is in git history.** It was hardcoded in
   `sync_from_prod.py`, `fix_sync.py` and `set_prod_privileges.py`. Those files
   now read `PROD_MONGO_URL` from `backend/.env`, and the live password was

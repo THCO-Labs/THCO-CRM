@@ -1,0 +1,635 @@
+<title>Delivery OS Sprint Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+
+<style>
+  :root {
+    --ground:#F7F6F3; --surface:#FFFFFF; --surface-2:#FBFAF7;
+    --border:#E3E0D8; --border-hard:#B9B3A5;
+    --ink:#16211C; --ink-mid:#5A6862; --ink-faint:#8B948F;
+    --forest:#1B4332; --seafoam:#12805F; --seafoam-wash:rgba(31,181,138,.10);
+    --gold:#8F6C38; --gold-wash:rgba(169,131,78,.13);
+    --rose:#9E3D35; --rose-wash:rgba(158,61,53,.10);
+    --shadow:0 1px 2px rgba(22,33,28,.05), 0 8px 24px -16px rgba(22,33,28,.18);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:#0E1412; --surface:#161E1A; --surface-2:#1A2420;
+      --border:#2A3630; --border-hard:#4C5B53;
+      --ink:#E7EDE9; --ink-mid:#96A49C; --ink-faint:#6D7B74;
+      --forest:#79D3B2; --seafoam:#3FD3A6; --seafoam-wash:rgba(63,211,166,.12);
+      --gold:#D9B37C; --gold-wash:rgba(217,179,124,.13);
+      --rose:#E68B82; --rose-wash:rgba(230,139,130,.12);
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -16px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:#0E1412; --surface:#161E1A; --surface-2:#1A2420;
+    --border:#2A3630; --border-hard:#4C5B53;
+    --ink:#E7EDE9; --ink-mid:#96A49C; --ink-faint:#6D7B74;
+    --forest:#79D3B2; --seafoam:#3FD3A6; --seafoam-wash:rgba(63,211,166,.12);
+    --gold:#D9B37C; --gold-wash:rgba(217,179,124,.13);
+    --rose:#E68B82; --rose-wash:rgba(230,139,130,.12);
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -16px rgba(0,0,0,.6);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--ground); color: var(--ink);
+    font-family: "Source Serif 4", Georgia, serif;
+    font-size: 17px; line-height: 1.65; margin: 0; padding: 0 24px 120px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  .prose { max-width: 68ch; }
+
+  h1,h2,h3,h4 { font-family: Archivo, "Helvetica Neue", Arial, sans-serif; color: var(--ink); text-wrap: balance; margin: 0; }
+  h1 { font-size: clamp(2.05rem,4.4vw,2.9rem); font-weight:700; letter-spacing:-.028em; line-height:1.07; }
+  h2 { font-size: clamp(1.42rem,2.5vw,1.8rem); font-weight:600; letter-spacing:-.019em; line-height:1.2; }
+  h3 { font-size:1.1rem; font-weight:600; letter-spacing:-.012em; }
+  p { margin:0; }
+  strong { font-weight:600; color:var(--ink); }
+
+  .eyebrow { font-family:"IBM Plex Mono",monospace; font-size:.69rem; font-weight:500;
+             text-transform:uppercase; letter-spacing:.17em; color:var(--ink-faint); }
+  .mono { font-family:"IBM Plex Mono",monospace; font-size:.87em; }
+  code { font-family:"IBM Plex Mono",monospace; font-size:.84em; background:var(--surface-2);
+         border:1px solid var(--border); border-radius:4px; padding:.08em .34em; }
+
+  section { display:flex; flex-direction:column; gap:22px; }
+  section.block { padding-top:60px; }
+  .section-head { display:flex; flex-direction:column; gap:7px; }
+  .stack-s { display:flex; flex-direction:column; gap:7px; }
+
+  header.masthead { display:flex; flex-direction:column; gap:24px; padding:74px 0 38px;
+                    border-bottom:2px solid var(--forest); }
+  .lede { font-size:1.18rem; line-height:1.55; color:var(--ink-mid); max-width:62ch; }
+  .meta-row { display:flex; flex-wrap:wrap; gap:10px 26px; font-family:"IBM Plex Mono",monospace;
+              font-size:.72rem; letter-spacing:.04em; color:var(--ink-faint); }
+
+  figure { margin:0; background:var(--surface); border:1px solid var(--border); border-radius:4px;
+           padding:26px 26px 20px; box-shadow:var(--shadow); display:flex; flex-direction:column; gap:16px; }
+  .figscroll { overflow-x:auto; }
+  figure svg { display:block; width:100%; min-width:600px; height:auto; }
+  figcaption { font-size:.89rem; line-height:1.55; color:var(--ink-mid);
+               border-top:1px solid var(--border); padding-top:14px; max-width:74ch; }
+  figcaption strong { color:var(--ink); }
+
+  .note { display:flex; flex-direction:column; gap:8px; background:var(--surface);
+          border:1px solid var(--border); border-left:3px solid var(--gold); border-radius:3px;
+          padding:20px 22px; box-shadow:var(--shadow); }
+  .note.alert { border-left-color:var(--rose); }
+  .note.good  { border-left-color:var(--seafoam); }
+  .note p { font-size:.96rem; color:var(--ink-mid); }
+  .note strong { color:var(--ink); }
+
+  /* ---- sprint cards ---- */
+  .sprints { display:flex; flex-direction:column; gap:1px; background:var(--border);
+             border:1px solid var(--border); border-radius:4px; overflow:hidden; }
+  .sprint { background:var(--surface); padding:24px 26px; display:grid;
+            grid-template-columns:112px 1fr; gap:24px; }
+  .sprint .side { display:flex; flex-direction:column; gap:6px; }
+  .sprint .no { font-family:Archivo,sans-serif; font-weight:700; font-size:1.35rem;
+                letter-spacing:-.02em; color:var(--ink); line-height:1; }
+  .sprint .wk { font-family:"IBM Plex Mono",monospace; font-size:.7rem; letter-spacing:.06em;
+                color:var(--ink-faint); }
+  .sprint .body { display:flex; flex-direction:column; gap:11px; }
+  .sprint .head { display:flex; flex-wrap:wrap; align-items:baseline; gap:10px; }
+  .sprint .goal { font-size:.97rem; color:var(--ink-mid); }
+  .sprint .goal strong { color:var(--ink); }
+  .sprint ul { margin:0; padding-left:1.15em; display:flex; flex-direction:column; gap:6px; }
+  .sprint li { font-size:.93rem; line-height:1.5; color:var(--ink-mid); }
+  .sprint li strong { color:var(--ink); }
+  .kv { display:flex; flex-direction:column; gap:5px; padding-top:4px; }
+  .kv div { font-size:.87rem; color:var(--ink-mid); display:flex; gap:9px; }
+  .kv b { font-family:"IBM Plex Mono",monospace; font-size:.66rem; text-transform:uppercase;
+          letter-spacing:.11em; color:var(--ink-faint); flex:0 0 74px; padding-top:4px; font-weight:600; }
+  @media (max-width:660px){ .sprint { grid-template-columns:1fr; gap:12px; }
+                            .kv b { flex-basis:64px; } }
+
+  .chip { display:inline-block; white-space:nowrap; font-family:"IBM Plex Mono",monospace;
+          font-size:.63rem; font-weight:600; text-transform:uppercase; letter-spacing:.09em;
+          padding:3px 8px; border-radius:3px; border:1px solid; }
+  .chip.low  { color:var(--ink-mid); background:var(--surface-2); border-color:var(--border-hard); }
+  .chip.med  { color:var(--gold); background:var(--gold-wash); border-color:var(--gold); }
+  .chip.high { color:var(--rose); background:var(--rose-wash); border-color:var(--rose); }
+  .chip.blok { color:var(--rose); background:var(--rose-wash); border-color:var(--rose); }
+
+  .tablewrap { overflow-x:auto; border:1px solid var(--border); border-radius:4px;
+               background:var(--surface); box-shadow:var(--shadow); }
+  table { border-collapse:collapse; width:100%; min-width:560px; }
+  th,td { text-align:left; padding:11px 16px; border-bottom:1px solid var(--border); vertical-align:top; }
+  thead th { font-family:"IBM Plex Mono",monospace; font-size:.66rem; font-weight:600;
+             text-transform:uppercase; letter-spacing:.13em; color:var(--ink-faint);
+             background:var(--surface-2); border-bottom:1px solid var(--border-hard); }
+  tbody tr:last-child td { border-bottom:none; }
+  td { font-size:.93rem; line-height:1.48; color:var(--ink-mid); }
+  td.k { color:var(--ink); font-weight:600; }
+
+  ul.plain { margin:0; padding-left:1.2em; display:flex; flex-direction:column; gap:9px; }
+  ul.plain li { color:var(--ink-mid); }
+  ul.plain li strong { color:var(--ink); }
+
+  footer.foot { margin-top:70px; padding-top:24px; border-top:1px solid var(--border);
+                font-family:"IBM Plex Mono",monospace; font-size:.72rem; color:var(--ink-faint);
+                line-height:1.7; }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="stack-s">
+      <span class="eyebrow">Delivery OS — implementation plan</span>
+      <h1>Ten sprints to the seventeen-step process</h1>
+    </div>
+    <p class="lede">
+      This delivers the delivery <em>process</em> on the infrastructure THCO already runs, checked
+      against the full 34-page master specification as well as the three diagrams. The enterprise
+      platform and intelligence layer the specification describes are a separate track with their own
+      budget, deferred here with reasons rather than dropped. Bundling the two is how this stalls.
+    </p>
+    <div class="meta-row">
+      <span>10 sprints · 20 weeks · one engineer</span>
+      <span>No parallel feature work assumed</span>
+      <span>Reference: <span class="mono">docs/DELIVERY_OS_SPRINT_PLAN.md</span></span>
+    </div>
+  </header>
+
+  <!-- ============ BLOCKERS ============ -->
+  <section class="block">
+    <div class="section-head">
+      <span class="eyebrow">Sprint 0</span>
+      <h2>Three questions block starting</h2>
+    </div>
+
+    <div class="prose">
+      <p>
+        None of these are engineering questions, and each one changes the shape of the work. Sprint 1
+        should not open until they are answered. A fourth question stood here — whether "Crowther
+        Delivery OS" was THCO's own system or a different organisation's. It is resolved:
+        <strong>Crowther is THCO.</strong> Confirmed directly (20 August 2026) — this is THCO updating
+        and bringing the new changes to itself.
+      </p>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th style="width:34%">Question</th><th>Why it blocks</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="k">Does the talent database stay inside this system?</td>
+            <td>The diagrams show "HR / Talent Systems" as an <em>external</em> integration, and the specification's own 31-entity data model has no candidate, resume or sourcing entity anywhere in it. Today it is 33,547 candidates and ~21 GB living inside this application. Moving it out is a project that dwarfs this one.</td>
+          </tr>
+          <tr>
+            <td class="k">Which of the twelve roles are actually staffed?</td>
+            <td>The current seven-flag role model already failed for this exact reason — the stage-2 and stage-5 gates were removed from the code because nobody held the flags. Building gates for unstaffed roles repeats that mistake.</td>
+          </tr>
+          <tr>
+            <td class="k">Does step 11 carry a contract, or is commercial work outside this flow entirely?</td>
+            <td>The three diagrams label step 11 "Validation &amp; <em>Commercial</em> Readiness," owned by TSD + Legal + Finance. The specification's own text states the opposite as a deliberate change — "commercial/finance administration is outside the core technical Delivery OS flow" — and gives step 11's owner as TSD + Client only. Sprint 9 cannot be scoped correctly until this is settled.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note">
+      <p>
+        <strong>The rule that follows from question 2:</strong> a role that is not staffed gets
+        <em>modelled but not gated</em>. Record who did the work; do not block the step on a flag
+        nobody carries.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ TIMELINE ============ -->
+  <section class="block">
+    <div class="section-head">
+      <span class="eyebrow">Sequence</span>
+      <h2>Twenty weeks, and where the risk sits</h2>
+    </div>
+
+    <figure>
+      <div class="figscroll">
+        <svg viewBox="0 0 880 380" role="img"
+             aria-label="Timeline of ten two-week sprints across twenty weeks. Each sprint is a bar coloured by risk: Sprint 3, the seventeen-step model and live migration, is the only high-risk sprint. Milestone markers show first visible business value at the end of Sprint 4 and process completion at the end of Sprint 10.">
+          <!-- week axis -->
+          <text x="190" y="34" font-family="IBM Plex Mono, monospace" font-size="9" fill="var(--ink-faint)">WEEK</text>
+          <text x="257" y="34" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9" fill="var(--ink-faint)">2</text>
+          <text x="324" y="34" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9" fill="var(--ink-faint)">4</text>
+          <text x="391" y="34" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9" fill="var(--ink-faint)">6</text>
+          <text x="458" y="34" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9" fill="var(--ink-faint)">8</text>
+          <text x="525" y="34" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9" fill="var(--ink-faint)">10</text>
+          <text x="592" y="34" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9" fill="var(--ink-faint)">12</text>
+          <text x="659" y="34" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9" fill="var(--ink-faint)">14</text>
+          <text x="726" y="34" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9" fill="var(--ink-faint)">16</text>
+          <text x="793" y="34" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9" fill="var(--ink-faint)">18</text>
+          <text x="860" y="34" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9" fill="var(--ink-faint)">20</text>
+          <line x1="190" y1="42" x2="860" y2="42" stroke="var(--border)" stroke-width="1"/>
+
+          <!-- milestone: first visible value -->
+          <line x1="458" y1="42" x2="458" y2="330" stroke="var(--seafoam)" stroke-width="1.4" stroke-dasharray="5 4"/>
+          <text x="464" y="348" font-family="IBM Plex Mono, monospace" font-size="9" font-weight="600"
+                letter-spacing="1" fill="var(--seafoam)">FIRST VISIBLE VALUE — A WORKING 17-STEP BOARD</text>
+          <!-- milestone: complete -->
+          <line x1="860" y1="42" x2="860" y2="330" stroke="var(--seafoam)" stroke-width="1.4" stroke-dasharray="5 4"/>
+          <text x="854" y="348" text-anchor="end" font-family="IBM Plex Mono, monospace" font-size="9"
+                font-weight="600" letter-spacing="1" fill="var(--seafoam)">PROCESS COMPLETE</text>
+
+          <!-- S1 -->
+          <text x="180" y="70" text-anchor="end" font-size="11.5" fill="var(--ink-mid)">1 · Safety net</text>
+          <rect x="190" y="59" width="61" height="15" rx="3" fill="var(--border-hard)"/>
+          <!-- S2 -->
+          <text x="180" y="97" text-anchor="end" font-size="11.5" fill="var(--ink-mid)">2 · Files out of the DB</text>
+          <rect x="257" y="86" width="61" height="15" rx="3" fill="var(--gold)"/>
+          <!-- S3 -->
+          <text x="180" y="124" text-anchor="end" font-size="11.5" font-weight="600" fill="var(--ink)">3 · 17-step model</text>
+          <rect x="324" y="112" width="61" height="17" rx="3" fill="var(--rose)"/>
+          <!-- S4 -->
+          <text x="180" y="151" text-anchor="end" font-size="11.5" fill="var(--ink-mid)">4 · The board</text>
+          <rect x="391" y="140" width="61" height="15" rx="3" fill="var(--border-hard)"/>
+          <!-- S5 -->
+          <text x="180" y="178" text-anchor="end" font-size="11.5" fill="var(--ink-mid)">5 · Roles &amp; ownership</text>
+          <rect x="458" y="167" width="61" height="15" rx="3" fill="var(--gold)"/>
+          <!-- S6 -->
+          <text x="180" y="205" text-anchor="end" font-size="11.5" fill="var(--ink-mid)">6 · Definition artefacts</text>
+          <rect x="525" y="194" width="61" height="15" rx="3" fill="var(--border-hard)"/>
+          <!-- S7 -->
+          <text x="180" y="232" text-anchor="end" font-size="11.5" fill="var(--ink-mid)">7 · Design artefacts</text>
+          <rect x="592" y="221" width="61" height="15" rx="3" fill="var(--border-hard)"/>
+          <!-- S8 -->
+          <text x="180" y="259" text-anchor="end" font-size="11.5" fill="var(--ink-mid)">8 · Demo &amp; the loop</text>
+          <rect x="659" y="248" width="61" height="15" rx="3" fill="var(--gold)"/>
+          <!-- S9 -->
+          <text x="180" y="286" text-anchor="end" font-size="11.5" fill="var(--ink-mid)">9 · Gate &amp; POD</text>
+          <rect x="726" y="275" width="61" height="15" rx="3" fill="var(--gold)"/>
+          <!-- S10 -->
+          <text x="180" y="313" text-anchor="end" font-size="11.5" fill="var(--ink-mid)">10 · Accept &amp; close</text>
+          <rect x="793" y="302" width="61" height="15" rx="3" fill="var(--border-hard)"/>
+
+          <!-- legend -->
+          <rect x="190" y="360" width="11" height="11" rx="2" fill="var(--border-hard)"/>
+          <text x="207" y="369" font-family="IBM Plex Mono, monospace" font-size="9" fill="var(--ink-faint)">LOW RISK</text>
+          <rect x="278" y="360" width="11" height="11" rx="2" fill="var(--gold)"/>
+          <text x="295" y="369" font-family="IBM Plex Mono, monospace" font-size="9" fill="var(--ink-faint)">MEDIUM</text>
+          <rect x="356" y="360" width="11" height="11" rx="2" fill="var(--rose)"/>
+          <text x="373" y="369" font-family="IBM Plex Mono, monospace" font-size="9" fill="var(--ink-faint)">HIGH</text>
+        </svg>
+      </div>
+      <figcaption>
+        <strong>The risk is concentrated, not spread.</strong> Sprint 3 is the only high-risk sprint —
+        it rewrites the stage model and migrates fifteen live projects off the stage-5 fork in the same
+        two weeks. Everything after it is additive. The two green markers are the only dates worth
+        quoting to anyone outside the team.
+      </figcaption>
+    </figure>
+
+    <div class="note">
+      <p>
+        <strong>Sprint 2 is the one you can move.</strong> Nothing else depends on it. It sits second
+        because the reliability debt is live — storing 21 GB of files in the operational database is
+        what took the cluster down on 19 August. If leadership wants visible process progress first,
+        swap it with Sprint 3 and run it later.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ SPRINTS ============ -->
+  <section class="block">
+    <div class="section-head">
+      <span class="eyebrow">The work</span>
+      <h2>Sprint by sprint</h2>
+    </div>
+
+    <div class="sprints">
+
+      <div class="sprint">
+        <div class="side"><span class="no">01</span><span class="wk">WEEKS 1–2</span></div>
+        <div class="body">
+          <div class="head"><h3>Safety net</h3><span class="chip low">Low risk</span></div>
+          <p class="goal"><strong>Goal:</strong> be able to change <code>flow.py</code> without guessing what broke.</p>
+          <ul>
+            <li><code>backend/tests/</code> already holds 17 test files. Nothing runs them — <code>.github/workflows/</code> has only deploy and scheduled jobs. Add a CI workflow running pytest on every push and PR</li>
+            <li>Fix or quarantine what currently fails, with a note per quarantine</li>
+            <li>Move the by-hand verification scripts into the repo — they already cover 144 rules across permissions, attachments, stage transitions and unit heads</li>
+            <li><strong>Pin current stage behaviour</strong>, including the stage-5 split, so Sprint 3 has a baseline to diff against</li>
+          </ul>
+          <div class="kv">
+            <div><b>Done when</b><span>CI is green on <code>main</code>, and a deliberate break in <code>STAGES</code> turns it red.</span></div>
+            <div><b>Review</b><span>The Actions tab, not the browser.</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sprint">
+        <div class="side"><span class="no">02</span><span class="wk">WEEKS 3–4</span></div>
+        <div class="body">
+          <div class="head"><h3>Files out of the database</h3><span class="chip med">Medium risk</span></div>
+          <p class="goal"><strong>Goal:</strong> stop storing binaries in the operational database.</p>
+          <ul>
+            <li><code>task_attachments</code> writes raw bytes straight into the Mongo document. <code>resume_files</code> does the same at scale — 65,278 files, ~21 GB</li>
+            <li>Add a blob-storage service (Azure Blob, same subscription) behind one interface</li>
+            <li>Write new files to blob; <strong>read from either</strong> during migration</li>
+            <li>Backfill in throttled, checkpointed chunks, overnight — the discipline the CV migration learned the hard way</li>
+            <li>Leave profile photos as data URLs. They are small, and the authenticated-<code>&lt;img src&gt;</code> constraint is real</li>
+          </ul>
+          <div class="kv">
+            <div><b>Done when</b><span>New uploads land in blob, old ones still open, collection size drops as the backfill runs.</span></div>
+            <div><b>Review</b><span>Upload an attachment to a task card, open it, delete it. Then open an old CV.</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sprint">
+        <div class="side"><span class="no">03</span><span class="wk">WEEKS 5–6</span></div>
+        <div class="body">
+          <div class="head"><h3>The seventeen-step model</h3><span class="chip high">High risk</span></div>
+          <p class="goal"><strong>Goal:</strong> the pipeline is seventeen steps, and the fifteen live projects survive it.</p>
+          <ul>
+            <li>Rewrite <code>STAGES</code> in <code>backend/routers/flow.py</code> and <code>frontend/src/pages/flow/stages.js</code> — these two must stay in sync</li>
+            <li>Extend <code>LEGACY_STAGE_MAP</code> so every current stage lands somewhere sensible</li>
+            <li><strong>Retire the stage-5 split.</strong> Today a project forks into two sibling records; the new flow is one. Write the merge, rehearse it against a copy of production, keep the sibling ids for traceability</li>
+            <li>Rework the transition validators and the <code>payload</code> whitelist for the new gates</li>
+            <li>Update <code>_send_stage_email</code> for seventeen steps and their new owners</li>
+          </ul>
+          <div class="kv">
+            <div><b>Done when</b><span>All 15 live projects render with no orphans, and Sprint 1's baseline passes in rewritten form.</span></div>
+            <div><b>Review</b><span><code>/flow</code> — the board and each project detail page. Move one forward and back.</span></div>
+            <div><b>Risk</b><span>A data migration against live work. Snapshot the database first and rehearse the merge.</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sprint">
+        <div class="side"><span class="no">04</span><span class="wk">WEEKS 7–8</span></div>
+        <div class="body">
+          <div class="head"><h3>The board, and seventeen columns</h3><span class="chip low">Low risk</span></div>
+          <p class="goal"><strong>Goal:</strong> seventeen steps a human can actually read.</p>
+          <ul>
+            <li>Ten columns already fill a screen. Seventeen equal columns behind a horizontal scroll is a spreadsheet, not a pipeline</li>
+            <li>Group the board by the five phases; collapse completed ones, keep the active one open</li>
+            <li><strong>Show the validation gate on the board.</strong> Pre-validation and post-validation work should not look identical</li>
+            <li>Update <code>FlowProjectDetail.jsx</code> and <code>StructuredStageModal.jsx</code> for the new gates</li>
+            <li>Honour the house rules: pale-wash icon badges, dialogs naming their own <code>bg-white</code>, inputs carrying <code>bg-white text-gray-900</code></li>
+          </ul>
+          <div class="kv">
+            <div><b>Done when</b><span>A manager sees where every project is without scrolling sideways.</span></div>
+            <div><b>Review</b><span><code>/flow</code> on a narrow window as well as a wide one.</span></div>
+            <div><b>Risk</b><span>Low technically, high on opinion. Show a mockup before building it.</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sprint">
+        <div class="side"><span class="no">05</span><span class="wk">WEEKS 9–10</span></div>
+        <div class="body">
+          <div class="head"><h3>Roles and ownership</h3><span class="chip med">Medium risk</span></div>
+          <p class="goal"><strong>Goal:</strong> the TSD owns the project from step 03 to step 17, and the system knows it.</p>
+          <ul>
+            <li>Introduce the TSD as the owning role, absorbing today's <code>delivery_owner_id</code></li>
+            <li>Add Solution Architect, Product Designer and QA Lead — <strong>modelled, not gated</strong></li>
+            <li>Retire the dead flags. <code>is_delivery_coordinator</code> is held by nobody, <code>is_engineer</code> by one person; both gates are already gone from the code and the flags now only mislead</li>
+            <li>Build the step-06 architect request: the ask, optional Senior Partner approval, assignment, brief delivered</li>
+            <li>Manager grants come from <strong>two</strong> places — collapsing them once stripped every manager in the firm. Call <code>clear_user_cache()</code> on anything that moves ownership</li>
+          </ul>
+          <div class="kv">
+            <div><b>Done when</b><span>A project shows one accountable name at every step, and an architect request goes out and comes back.</span></div>
+            <div><b>Review</b><span><code>/flow/roles-admin</code>, then run a project from 01 to 06.</span></div>
+            <div><b>Risk</b><span>Permissions is where this codebase has been wrong most often.</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sprint">
+        <div class="side"><span class="no">06</span><span class="wk">WEEKS 11–12</span></div>
+        <div class="body">
+          <div class="head"><h3>Definition artefacts</h3><span class="chip low">Low risk</span></div>
+          <p class="goal"><strong>Goal:</strong> capture the brief properly, and turn it into a defined outcome.</p>
+          <ul>
+            <li><strong>Step 01 — intake form.</strong> Project template, desired outcome, call transcripts, supporting documents, client context. Reuses the attachment infrastructure, now on blob storage</li>
+            <li><strong>Step 05 — outcome brief.</strong> Problem statement, defined outcomes, success metrics, scope boundaries, assumptions, risks, constraints</li>
+            <li>Both are forms plus documents on a project. No new storage, no new services</li>
+          </ul>
+          <div class="kv">
+            <div><b>Done when</b><span>A project created from the new form carries everything a TSD needs without a single email.</span></div>
+            <div><b>Review</b><span>Create a project at <code>/flow/new-project</code>, then write its outcome brief.</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sprint">
+        <div class="side"><span class="no">07</span><span class="wk">WEEKS 13–14</span></div>
+        <div class="body">
+          <div class="head"><h3>Design artefacts</h3><span class="chip low">Low risk</span></div>
+          <p class="goal"><strong>Goal:</strong> build the phase that does not exist today.</p>
+          <ul>
+            <li><strong>Step 07 — scoping document.</strong> User needs, process flows, feature list, effort estimate, roadmap</li>
+            <li><strong>Step 08 — architecture record.</strong> Tech stack, integrations, data architecture, security and compliance review, high-level estimate</li>
+            <li>Both attach to the project, both owned by the Solution Architect</li>
+          </ul>
+          <div class="kv">
+            <div><b>Done when</b><span>A project carries a real scope and a real architecture, and the estimate is a number the system holds.</span></div>
+            <div><b>Review</b><span>Run a project through 06 → 07 → 08 with an architect account.</span></div>
+            <div><b>Risk</b><span>The highest-value sprint here and the least technically difficult. That is a good sign, not a suspicious one.</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sprint">
+        <div class="side"><span class="no">08</span><span class="wk">WEEKS 15–16</span></div>
+        <div class="body">
+          <div class="head"><h3>Demo, the loop, and the exit</h3><span class="chip med">Medium risk</span></div>
+          <p class="goal"><strong>Goal:</strong> iterate with the client, and be able to stop.</p>
+          <ul>
+            <li><strong>Step 09 — demo artefact.</strong> Wireframes, prototype link, walkthrough notes, and which version the client saw</li>
+            <li><strong>Step 10 — feedback and change log.</strong> Each round numbered; the 10 → 09 loop is a real transition, not a stage revert</li>
+            <li><strong>The pre-validation kill switch.</strong> The flow as drawn has no exit before step 11's <code>CLIENT VALIDATED</code> gate. Extend today's <code>mark_lost</code> into a proper stop at any pre-validation step, with a reason</li>
+            <li>Start recording pre-validation effort. Steps 01–10 are spent before the client has validated anything, and someone will eventually ask what that costs — whether or not a contract also sits at step 11</li>
+          </ul>
+          <div class="kv">
+            <div><b>Done when</b><span>A project can go round the demo loop three times with a legible history, or be stopped at step 07 with a reason.</span></div>
+            <div><b>Review</b><span><code>/flow/projects/{id}</code> — the history should read as a story.</span></div>
+            <div><b>Risk</b><span>The loop is the one place the state machine stops being linear.</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sprint">
+        <div class="side"><span class="no">09</span><span class="wk">WEEKS 17–18</span></div>
+        <div class="body">
+          <div class="head"><h3>Client validation and the POD</h3><span class="chip med">Medium risk</span></div>
+          <p class="goal"><strong>Goal:</strong> the client formally validates, scope freezes, and a named team forms.</p>
+          <ul>
+            <li><strong>Step 11, core version.</strong> The client confirms final direction, scope and acceptance criteria; the project is marked <code>CLIENT VALIDATED</code>. <strong>Scope freezes</strong> here regardless of how blocker 3 resolves</li>
+            <li><strong>Step 11, commercial extension — only if blocker 3 resolves that way.</strong> Commercial proposal, legal review, contract preparation. Today's stages 6, 7 and 8 already cover most of this, so it would be a consolidation, not a build. If the specification's reading wins instead, this half does not happen here and Legal/Finance stay outside the flow</li>
+            <li><strong>Step 12 — POD.</strong> The delivery team as an object: members, roles, resourcing, kickoff date, delivery plan. Not just a list of collaborators</li>
+          </ul>
+          <div class="kv">
+            <div><b>Done when</b><span>A validated project refuses a scope edit and offers a change request instead, and a POD is a thing you can open.</span></div>
+            <div><b>Review</b><span>Take a project through 11 into 12, then try to edit its scope.</span></div>
+            <div><b>Risk</b><span>Scope freeze is a new rule for this codebase, and this sprint cannot be scoped precisely until blocker 3 is answered.</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sprint">
+        <div class="side"><span class="no">10</span><span class="wk">WEEKS 19–20</span></div>
+        <div class="body">
+          <div class="head"><h3>QA, acceptance, handover, closure</h3><span class="chip low">Low risk</span></div>
+          <p class="goal"><strong>Goal:</strong> the project ends properly, and the ending feeds the next one.</p>
+          <ul>
+            <li><strong>Step 14 — QA.</strong> Test plan, execution results, defect tracking. Today this is a <code>build_status</code> reading <code>ready_for_qa</code>; it becomes an owned step</li>
+            <li><strong>Step 15 — acceptance.</strong> Criteria agreed back at step 11, who signed, when, against which build</li>
+            <li><strong>Step 16 — handover.</strong> Knowledge transfer, documentation, training, operational readiness</li>
+            <li><strong>Step 17 — closure.</strong> Closure report, lessons learned, archive, repository cleanup. <code>projects_archived</code> already exists and is reusable</li>
+          </ul>
+          <div class="kv">
+            <div><b>Done when</b><span>A project can be closed, and the closure report answers "did we do what we said we would."</span></div>
+            <div><b>Review</b><span>Run one project end to end, 01 to 17.</span></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="note good">
+      <p>
+        <strong>Step 13 has no sprint.</strong> Engineering / Build is already covered by the task
+        board — cards with labels, assignees, priorities, due dates, attachments and covers. It is the
+        one part of the delivery flow THCO already does well, and the plan leaves it alone.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ SPEC MVP MAPPING ============ -->
+  <section class="block">
+    <div class="section-head">
+      <span class="eyebrow">Checked against the specification</span>
+      <h2>Where these ten sprints sit in the spec's own five-tier plan</h2>
+    </div>
+
+    <div class="prose">
+      <p>
+        A 34-page master specification was supplied after the first draft of this plan. It lays out
+        its own five-tier MVP sequence and states the build rule behind it directly:
+        <strong>"Do not attempt to build every feature simultaneously. Establish the operating
+        architecture, build the control system, test it, then expand."</strong> These ten sprints are
+        an execution of that rule against THCO's actual codebase — not a competing plan.
+      </p>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th style="width:20%">Specification tier</th><th style="width:40%">What it covers</th><th>Where it sits here</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="k">MVP 1 — Project Control System</td>
+            <td>Auth, roles, clients, projects, TSD assignment, stages, gates, dashboard, tasks, milestones, documents, activity log, What Next?</td>
+            <td>Sprints 1–5. "What Next?" as a real recommendation engine is not built here.</td>
+          </tr>
+          <tr>
+            <td class="k">MVP 2 — Product + Architecture</td>
+            <td>Discovery, Product Brief, requirements, journeys, Architect request/selection, architecture, diagrams, versions, decisions</td>
+            <td>Sprints 6–7 cover the artefacts. Versioned diagrams and a structured decision log are not.</td>
+          </tr>
+          <tr>
+            <td class="k">MVP 3 — Demo Loop</td>
+            <td>Model tracking, design review, demo workspace, feedback, <strong>AI change analysis</strong>, validation gate</td>
+            <td>Sprint 8 covers the artefact, feedback log and loop mechanics. AI change analysis — automatically classifying feedback and running impact analysis — is not built and has no obvious owner yet.</td>
+          </tr>
+          <tr>
+            <td class="k">MVP 4 — Delivery Orchestration</td>
+            <td>TalentSD, People &amp; Operations, Legal, pod formation, engineering, QA, scope changes</td>
+            <td>Sprint 9 covers POD formation and scope freeze. TalentSD and People &amp; Operations as active participants, not just named roles, are not built.</td>
+          </tr>
+          <tr>
+            <td class="k">MVP 5 — Intelligence</td>
+            <td>Recommendations, risk, scope, dependency, resource intelligence, portfolio control tower, learning loop</td>
+            <td><strong>Entirely out of scope.</strong> The ten-agent AI layer, the Knowledge Graph, the Risk/Dependency engine and the Control Tower — see <span class="mono">delivery-os-flow.html</span> §07.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note alert">
+      <p>
+        <strong>The honest summary:</strong> these ten sprints deliver MVP 1 and MVP 2, most of MVP 3,
+        and the structural half of MVP 4. They do not touch MVP 5 — which is roughly half of what the
+        full specification describes by page count. Anyone asked "how far along is the Delivery OS
+        after these ten sprints" should hear that number, not "the process is done." The process is
+        done; the operating system the specification describes is not.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ DEFERRED ============ -->
+  <section class="block">
+    <div class="section-head">
+      <span class="eyebrow">Deferred track</span>
+      <h2>Not "no" — later, and why</h2>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th style="width:30%">Item</th><th>Reason</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="k">Data access layer</td><td>Worth doing on its own merits, and it turns the eventual Postgres move from a full rewrite into one layer. But it is 3–4 weeks producing nothing a user can see, and it should not sit between the firm and a working process. Slot it after Sprint 10.</td></tr>
+          <tr><td class="k">PostgreSQL migration</td><td>Already costed at 6–9 weeks for one engineer, doubling if feature work continues. A project, not a sprint.</td></tr>
+          <tr><td class="k">Client portal</td><td>The right next thing after the process lands — it unlocks steps 10 and 15 and it is the first thing clients ever see. It is also the first externally-exposed surface this system has had, which brings authentication, rate limiting and a security review with it.</td></tr>
+          <tr><td class="k">AI TSD assignment (step 02)</td><td>Cannot work yet. Ranking on expertise, capacity and delivery history needs data that does not exist — no skill or capacity records on any user, and 15 projects total. The seventeen steps are what generate that data.</td></tr>
+          <tr><td class="k">What-Next engine, knowledge graph, copilot</td><td>Same reason. They read structured history the process has not yet produced.</td></tr>
+          <tr><td class="k">OpenSearch, Redis, data warehouse</td><td>Mongo's <code>$text</code> index and the 45-second in-process identity cache are adequate at this size. Revisit when they demonstrably are not.</td></tr>
+          <tr><td class="k">Multi-AZ Kubernetes, WAF, IDS, Prometheus/ELK</td><td>Enterprise infrastructure for 30 users and 15 projects, against a system that currently scales to zero overnight to save money. Destinations, not next steps.</td></tr>
+          <tr><td class="k">SSO / MFA</td><td>Worth doing and cheap relative to the rest. Reasonable to pull forward if the security posture is questioned — it is not sequenced here only because nothing else depends on it.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ RISKS ============ -->
+  <section class="block">
+    <div class="section-head">
+      <span class="eyebrow">Standing risks</span>
+      <h2>True across the whole plan</h2>
+    </div>
+
+    <ul class="plain prose">
+      <li><strong><code>flow.py</code> is 89 KB and every route in it passes through <code>_get_user</code>.</strong> Sprints 3, 5, 8 and 9 all edit it. Sequence them; do not run them as parallel branches.</li>
+      <li><strong>Merge each sprint into <code>main</code> on its own.</strong> Do not accumulate ten sprints of change and integrate at the end.</li>
+      <li><strong>Every push to <code>main</code> deploys, and there is no staging environment.</strong> Each sprint's merge is a production release and needs the same care.</li>
+      <li><strong>The database is one burstable vCore.</strong> Sprint 2's backfill and Sprint 3's migration are both bulk writes. Overnight, throttled, checkpointed.</li>
+      <li><strong>Test scripts that appoint a unit head must restore it however they exit</strong> — via <code>atexit</code>, not the end of a function. This has already silently removed a real manager's rights once.</li>
+      <li><strong>Verify against the page, not only the API.</strong> A payload correct in isolation once crashed the calendar because its only consumer read different field names, and an API-level check called that verified.</li>
+    </ul>
+  </section>
+
+  <!-- ============ OPEN ============ -->
+  <section class="block">
+    <div class="section-head">
+      <span class="eyebrow">Out of scope</span>
+      <h2>What this plan does not answer</h2>
+    </div>
+    <ul class="plain prose">
+      <li>Whether the firm has the people to staff the process — the third blocking question, and the one most likely to be answered late.</li>
+      <li>Whether step 11 carries a contract at all — unresolved between the diagrams and the specification; Sprint 9 is written to accommodate either answer.</li>
+      <li>What pre-validation investment THCO is willing to make per deal. That is the commercial question underneath the entire flow, and no amount of software settles it.</li>
+      <li>Whether the ten business units survive a model organised by role and project rather than by unit. The diagrams have no unit concept at all. This plan leaves the units alone and assumes the question comes later.</li>
+    </ul>
+  </section>
+
+  <footer class="foot">
+    Prepared 20 August 2026, updated the same day against the 34-page Master Specification V2.0.
+    Estimates are engineering time for one engineer with no parallel feature work.<br>
+    Companion documents: <span class="mono">docs/delivery-os-comparison.html</span> (the proposal against what exists)
+    and <span class="mono">docs/delivery-os-flow.html</span> (the process explained, including what the
+    specification adds beyond the diagrams in its §07).<br>
+    Source of record: <span class="mono">docs/DELIVERY_OS_SPRINT_PLAN.md</span> — edit that, not this page.
+  </footer>
+
+</div>

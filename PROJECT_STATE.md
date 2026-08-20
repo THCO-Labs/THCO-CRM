@@ -407,6 +407,34 @@ Things that have already cost time. Do not rediscover them.
 
 ### Infrastructure
 
+**`$or` across indexed fields is the slowest way to ask Cosmos a question.**
+
+The mailbox import was taking ~20 seconds a document, and the identity lookup
+was nearly all of it — 1.8-3.1s typically, 50s and 110s on two documents in a
+run of ten. It returns a single record and still took that long, so it was never
+about how much data came back.
+
+Every field in that lookup is indexed, which is why `$or` looked right. Measured
+against production over five candidates:
+
+| | |
+|---|---|
+| `$or` over 3-4 indexed clauses | 23-73s, median **36.1s** |
+| the same clauses, one at a time | 0.5-7.9s, median **1.5s** |
+
+`find_match` now runs one indexed query per clause and unions the results. Same
+records considered, same 50-record cap, verified identical on four real
+candidates. Documents went from **19.8s to 3.06s**, and a bounded run from 10
+documents to 59.
+
+Two guesses preceded that and both were wrong: connection reuse (the streaming
+path already reuses one connection — connect 1.3s once, fetch 0.5-1.0s a
+message) and a missing projection (one dramatic sample that a repeat measurement
+across six candidates flatly contradicted). **Measure, repeat the measurement,
+and only then change something.** `services/connectors/runner.py` and
+`candidate_identity.py` now log timings when they are slow enough to matter,
+which is what settled it.
+
 **The outage of 19 August — read this before running anything heavy.**
 
 The CV migration ran for eighteen hours against the free tier and the cluster
@@ -545,6 +573,16 @@ the migration finished and the cluster moved off the free tier). Set
 load against the database. Running it by hand always works — "Run workflow"
 with `job=mailbox-import` ignores the pause.
 
+**It also runs every 20 minutes between 18:00 and 05:59 UTC** — 19:00 to 06:59
+in Lagos, so never during the working day. On 20 August there were **19,612
+messages carrying attachments** behind the cursor; a bounded run clears about 59
+documents, so once a day would have taken most of a year and this cadence takes
+about a week. A `concurrency` group prevents two runs sharing the cursor.
+
+None of this depends on anyone's machine being on: GitHub calls the app and the
+app does the work. That is the difference between this and the CV migration,
+which ran locally and died every night the laptop was switched off.
+
 **Every scheduled job must finish inside 240 seconds.** Container Apps ends any
 HTTP request at that point, and the caller then sees a 504 while the job carries
 on running server-side. `run_connector` therefore takes a `time_budget`
@@ -556,13 +594,13 @@ produced two runs a day, every day, from 10 August.
 
 ---
 
-## 10. Data (production, 19 August 2026)
+## 10. Data (production, 20 August 2026)
 
 | Collection | Rows | Note |
 |---|---|---|
 | `candidates` | 33,547 | Internal CV database |
 | `resume_versions` | 75,856 | Every CV ever received, never overwritten |
-| `resume_files` | 65,278 | Target 70,852 — see §11, 5,574 still outstanding |
+| `resume_files` | 76,786 | Every local file, plus ~5,900 from mailbox imports local never had |
 | `users` | 30 | |
 | `projects` | 15 | |
 | `contacts` | 4 | Still thin — data entry, not a development task |
@@ -591,11 +629,16 @@ operations.
   Not yet done.
 - **Bundles rejected before the splitter existed** are recorded and re-runnable
   but have not been re-run.
-- **The CV migration is complete** (20 August 2026). Production holds 76,690 CV
-  files: every file local had, plus ~5,860 it received from daily mailbox
+- **The CV migration is complete** (20 August 2026). Production holds 76,786 CV
+  files: every file local had, plus ~5,900 it received from daily mailbox
   imports that local never had. The two databases legitimately diverge, so
-  comparing their totals is meaningless — compare sets of `version_id`.
-  `ops/cv-migration-outstanding.json` is now history rather than a to-do list.
+  comparing their totals is meaningless — compare sets of `version_id`. Doing
+  exactly that is what made a working migration look like it had created 854
+  duplicates on 19 August; it had created none, and it was stopped for nothing.
+  A 25-file gap between the counter and `estimated_document_count()` was also a
+  phantom: a throttled pass over the 1,552 candidates around both insert
+  timeouts found nothing missing. `ops/cv-migration-outstanding.json` is history
+  rather than a to-do list.
 - **The ~81 skipped mailbox messages are queued for re-reading.** The gmail
   cursor was rewound from 4565 to 4484 on 20 August, so the next import
   re-reads UIDs 4485-4565. Re-reading is safe — an identical document is
@@ -609,6 +652,12 @@ operations.
 - **The app will not start if the database is unreachable**, because two
   startup handlers query it. That turns a database problem into a deployment
   problem. See §8.
+- **An import outcome with no bucket is treated as a failure.** `import_cv`
+  returns `split` for a merged deck broken into the people inside it, which the
+  streaming path had no counter for, so a success was filed under `failed`. More
+  importantly the same line let an *unrecognised* outcome take the success path
+  and carry the cursor with it. An unknown outcome, and a reported `failed`, now
+  both hold the cursor. `backend/tests/test_import_cursor.py` covers it.
 - **`import_failures` is new and nothing reads it yet.** Documents set aside
   after three attempts land there with their error; there is no screen for them.
 - **Collaborators cannot raise tickets**, since tickets live in Flow. A

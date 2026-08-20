@@ -233,13 +233,32 @@ async def find_match(db, incoming: Dict[str, Any]) -> Dict[str, Any]:
         return {"decision": "create", "score": 0.0, "candidate": None, "reasons": []}
 
     best, best_score, best_reasons = None, 0.0, []
-    # Timed because the mailbox import spends most of its life somewhere, and
-    # guessing where has been wrong twice. This is the one database read per
-    # document, so it is the first place to look.
+
+    # One query per clause rather than a single `$or` over all of them.
+    #
+    # Every field here is indexed, so `$or` ought to be the obvious way to ask.
+    # On Cosmos it is not: measured against production over five candidates,
+    # the `$or` took 23-73 seconds (median 36) while the same clauses asked one
+    # at a time took 0.5-7.9 seconds (median 1.5). Every sample agreed. That one
+    # query was most of the cost of importing a CV -- documents were taking
+    # around 20 seconds each, and two in a run of ten took 52 and 112 seconds.
+    #
+    # The set considered is unchanged: the union of everything matching any
+    # clause, still capped at 50 records so a common name cannot make this
+    # unbounded.
     _t0 = time.monotonic()
-    _examined = 0
-    async for existing in db.candidates.find({"$or": clauses}).limit(50):
-        _examined += 1
+    found: Dict[str, Any] = {}
+    for clause in clauses:
+        if len(found) >= 50:
+            break
+        async for existing in db.candidates.find(clause).limit(50):
+            key = existing.get("candidate_id") or str(existing.get("_id"))
+            if key not in found:
+                found[key] = existing
+            if len(found) >= 50:
+                break
+
+    for existing in found.values():
         # A pair a recruiter has already judged to be different people is not
         # raised again, however similar the records look.
         if incoming.get("candidate_id") in (existing.get("not_duplicates_of") or []):
@@ -251,7 +270,7 @@ async def find_match(db, incoming: Dict[str, Any]) -> Dict[str, Any]:
     _elapsed = time.monotonic() - _t0
     if _elapsed > 1.0:
         logger.info("identity lookup took %.1fs over %d clause(s), %d record(s) scored",
-                    _elapsed, len(clauses), _examined)
+                    _elapsed, len(clauses), len(found))
 
     # A name-only agreement is not identification. Two people called
     # "Chinedu Okeke" are not the same person, and merging them loses a real

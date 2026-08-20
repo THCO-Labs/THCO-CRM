@@ -143,7 +143,12 @@ async def run_connector(
     if since is None and use_cursor:
         since = await _load_cursor(db, connector.name)
 
-    counts = {"created": 0, "updated": 0, "rejected": 0, "failed": 0}
+    # "split" is a success: a merged recruiter deck broken into the people
+    # inside it. Without a bucket of its own it fell through to "failed" -- the
+    # first run after the 20 August restart reported failed=1 for a deck that
+    # had imported perfectly well. The queue path has always counted it
+    # properly; only this one was missing it.
+    counts = {"created": 0, "updated": 0, "rejected": 0, "failed": 0, "split": 0}
     log = []
     # The resume point only moves across documents that are actually finished
     # with. It used to move for every document the connector produced, before
@@ -177,7 +182,11 @@ async def run_connector(
                 db, document.content, document.filename, document.import_source()
             )
             action = outcome.get("action", "failed")
-            counts[action if action in counts else "failed"] += 1
+            # An action with no bucket is something this code has never seen.
+            # Counting it and walking on would carry the cursor past a document
+            # nobody can say was imported, so it is treated as a failure.
+            understood = action in counts
+            counts[action if understood else "failed"] += 1
             log.append({
                 "filename": document.filename,
                 "action": action,
@@ -188,7 +197,13 @@ async def run_connector(
                 "message_id": document.message_id,
             })
             consecutive_transient = 0
-            if not blocked and connector.cursor_is_newer(point, newest_seen):
+            if not understood:
+                logger.warning("Unrecognised import outcome %r for %s; holding "
+                               "the cursor behind it", action, document.filename)
+                blocked = True
+            elif action == "failed":
+                blocked = True
+            elif not blocked and connector.cursor_is_newer(point, newest_seen):
                 newest_seen = point
         except Exception as e:
             counts["failed"] += 1

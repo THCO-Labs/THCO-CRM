@@ -135,3 +135,49 @@ def test_transient_and_permanent_failures_are_told_apart():
     assert runner._is_transient(_busy())
     assert runner._is_transient(Exception("ExceededTimeLimit"))
     assert not runner._is_transient(ValueError("could not parse PDF"))
+
+
+def test_a_split_deck_counts_as_a_split_not_a_failure():
+    # A merged recruiter deck broken into the people inside it is a success.
+    # It had no bucket in the streaming path, so it landed under "failed" and
+    # the first run after the 20 August restart reported a failure that had
+    # imported perfectly well.
+    db, conn = _DB(), _Connector([10, 11])
+
+    async def split_everything(db_, content, filename, source):
+        return {"action": "split", "candidate_id": filename}
+
+    runner.import_cv = split_everything
+    result = asyncio.run(runner.run_connector(db, conn, since="9", time_budget=None))
+    assert result["split"] == 2
+    assert result["failed"] == 0
+    assert result["cursor"] == "11", "a split is finished with, so the cursor moves"
+
+
+def test_an_outcome_nobody_recognises_holds_the_cursor():
+    # If import_cv ever returns something this code has no bucket for, we
+    # cannot claim the document was imported -- so the cursor must not pass it.
+    db, conn = _DB(), _Connector([10, 11, 12])
+
+    async def odd_outcome(db_, content, filename, source):
+        if "11" in filename:
+            return {"action": "teleported"}
+        return {"action": "created", "candidate_id": filename}
+
+    runner.import_cv = odd_outcome
+    result = asyncio.run(runner.run_connector(db, conn, since="9", time_budget=None))
+    assert result["failed"] == 1
+    assert result["cursor"] == "10", "must stop behind the document it cannot vouch for"
+
+
+def test_a_reported_failure_holds_the_cursor_too():
+    db, conn = _DB(), _Connector([10, 11, 12])
+
+    async def fails_on_11(db_, content, filename, source):
+        if "11" in filename:
+            return {"action": "failed", "reason": "unreadable"}
+        return {"action": "created", "candidate_id": filename}
+
+    runner.import_cv = fails_on_11
+    result = asyncio.run(runner.run_connector(db, conn, since="9", time_budget=None))
+    assert result["cursor"] == "10"

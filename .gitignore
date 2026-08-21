@@ -211,3 +211,4 @@ backend/candidates_needing_manual_review.csv
 # scratch files from credential rotation — must never be committed
 *_newurl.tmp
 *.tmp
+docs/DELIVERY_OS_MIGRATION_PLAN.md

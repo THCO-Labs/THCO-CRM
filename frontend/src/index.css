@@ -1,5 +1,100 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&display=swap');
+/*
+ * The brand typeface (AtomFont-ZIP.zip), replacing the Google Fonts trio that
+ * played the same three roles: AtomSans for body text (was DM Sans),
+ * AtomRegularSerif for .font-display headings (was Fraunces), AtomMono for
+ * .font-mono/code (was Space Mono). Files live in src/fonts, bundled by
+ * webpack, rather than fetched from Google on every visit.
+ *
+ * Inter, loaded separately in public/index.html, is untouched: it belongs to
+ * the AFC Treasury client presentation decks, which keep their own identity
+ * the same way the ProcureAI and Pebbles decks do.
+ */
+@font-face {
+    font-family: 'AtomSans';
+    src: url('./fonts/AtomSans/AtomSans-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'AtomSans';
+    src: url('./fonts/AtomSans/AtomSans-Italic.ttf') format('truetype');
+    font-weight: 400;
+    font-style: italic;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'AtomSans';
+    src: url('./fonts/AtomSans/AtomSans-Bold.ttf') format('truetype');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'AtomSans';
+    src: url('./fonts/AtomSans/AtomSans-BoldItalic.ttf') format('truetype');
+    font-weight: 700;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'AtomRegularSerif';
+    src: url('./fonts/AtomRegularSerif/AtomRegularSerif-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'AtomRegularSerif';
+    src: url('./fonts/AtomRegularSerif/AtomRegularSerif-Italic.ttf') format('truetype');
+    font-weight: 400;
+    font-style: italic;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'AtomRegularSerif';
+    src: url('./fonts/AtomRegularSerif/AtomRegularSerif-Bold.ttf') format('truetype');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'AtomRegularSerif';
+    src: url('./fonts/AtomRegularSerif/AtomRegularSerif-BoldItalic.ttf') format('truetype');
+    font-weight: 700;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'AtomMono';
+    src: url('./fonts/AtomMono/AtomMono-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'AtomMono';
+    src: url('./fonts/AtomMono/AtomMono-Italic.ttf') format('truetype');
+    font-weight: 400;
+    font-style: italic;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'AtomMono';
+    src: url('./fonts/AtomMono/AtomMono-Bold.ttf') format('truetype');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'AtomMono';
+    src: url('./fonts/AtomMono/AtomMono-BoldItalic.ttf') format('truetype');
+    font-weight: 700;
+    font-style: italic;
+    font-display: swap;
+}
 
 @tailwind base;
 @tailwind components;
@@ -64,7 +159,7 @@ html {
 
 body {
     margin: 0;
-    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    font-family: 'AtomSans', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     background-color: #F7F6F3;
@@ -161,7 +256,7 @@ html.dark [data-testid="dashboard-guide"] .text-\[\#1B4332\] { color: #6FD3A8 !i
 
 /* ==== THCO luxury design system ==== */
 .font-display {
-    font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+    font-family: 'AtomRegularSerif', Georgia, 'Times New Roman', serif;
     font-optical-sizing: auto;
     letter-spacing: -0.01em;
 }
@@ -216,7 +311,7 @@ html.dark .lux-divider {
 }
 
 code, .font-mono {
-    font-family: 'Space Mono', source-code-pro, Menlo, Monaco, Consolas, monospace;
+    font-family: 'AtomMono', source-code-pro, Menlo, Monaco, Consolas, monospace;
 }
 
 @layer base {
@@ -246,7 +341,7 @@ code, .font-mono {
 
 /* THCO Section Labels */
 .thco-section-label {
-    font-family: 'Space Mono', monospace;
+    font-family: 'AtomMono', monospace;
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 2px;
@@ -412,7 +507,7 @@ code, .font-mono {
 .thco-table th {
     background-color: hsl(var(--thco-bg));
     color: hsl(var(--thco-text-muted));
-    font-family: 'Space Mono', monospace;
+    font-family: 'AtomMono', monospace;
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 1px;
@@ -467,7 +562,7 @@ code, .font-mono {
 /* THCO Logo Styling */
 .thco-logo-text {
     color: hsl(var(--thco-text-primary));
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'AtomSans', sans-serif;
     font-weight: 700;
     letter-spacing: -0.02em;
 }

@@ -1,0 +1,106 @@
+name: Mailbox backlog drain
+
+# Works the mailbox backlog down overnight, in one long job rather than many
+# short ones.
+#
+# The first attempt scheduled the import every twenty minutes. GitHub delivered
+# fifteen runs instead of thirty-six -- its cron is best-effort and throttles
+# frequent schedules, with gaps of 35-45 minutes and one of 86. Nothing can be
+# done about that from here, so this stops depending on it: one job starts and
+# then calls the import in a loop for hours, which is deterministic.
+#
+# Each call is still bounded server-side to MAILBOX_IMPORT_SECONDS, backs off
+# on a busy database, and resumes from the stored cursor, so a loop is no more
+# dangerous than a single run -- it is the same run, repeated.
+#
+# Two windows, because a GitHub job may not exceed six hours:
+#
+#     18:00-23:20 UTC   19:00-00:20 Lagos
+#     00:00-05:20 UTC   01:00-06:20 Lagos
+#
+# Both finish before the working day and before the 06:00 scheduled-jobs run.
+# The concurrency group is shared with that workflow: these runs move the same
+# cursor, and two of them at once would re-read each other's messages.
+
+on:
+  schedule:
+    - cron: '0 18 * * *'
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: 'How long to keep going (default 320)'
+        required: false
+        default: '320'
+
+concurrency:
+  group: scheduled-jobs
+  cancel-in-progress: false
+
+jobs:
+  drain:
+    runs-on: ubuntu-latest
+    # A little beyond the loop's own deadline, so the loop is what stops it.
+    timeout-minutes: 330
+    steps:
+      - name: Drain
+        env:
+          BASE: ${{ secrets.APP_BASE_URL }}
+          TOKEN: ${{ secrets.SCHEDULER_TOKEN }}
+          MINUTES: ${{ github.event.inputs.minutes || '320' }}
+        run: |
+          set -u
+          if [ -z "$BASE" ] || [ -z "$TOKEN" ]; then
+            echo "APP_BASE_URL or SCHEDULER_TOKEN is not set."
+            exit 1
+          fi
+
+          deadline=$(( $(date +%s) + MINUTES * 60 ))
+          runs=0; docs=0; empty=0; failures=0
+
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            runs=$((runs + 1))
+            code=$(curl -sS -o /tmp/out.json -w '%{http_code}' \
+              --max-time 230 \
+              -X POST "${BASE}/api/internal/run-scheduled-job?job=mailbox-import" \
+              -H "X-Scheduler-Token: ${TOKEN}" || echo "000")
+
+            if [ "$code" != "200" ]; then
+              failures=$((failures + 1))
+              echo "run ${runs}: HTTP ${code}"
+              [ -s /tmp/out.json ] && head -c 400 /tmp/out.json && echo
+              # Three consecutive problems means something a retry will not fix.
+              if [ "$failures" -ge 3 ]; then
+                echo "Stopping: ${failures} consecutive failures."
+                exit 1
+              fi
+              sleep 60
+              continue
+            fi
+
+            failures=0
+            this=$(jq '[.detail.created, .detail.updated, .detail.rejected,
+                        .detail.split, .detail.failed] | map(. // 0) | add' /tmp/out.json)
+            cursor=$(jq -r '.detail.cursor // "?"' /tmp/out.json)
+            secs=$(jq -r '.detail.seconds // 0' /tmp/out.json)
+            docs=$((docs + this))
+            echo "run ${runs}: ${this} document(s) in ${secs}s, cursor ${cursor} (total ${docs})"
+
+            # Nothing left to read. Two empty runs in a row rather than one, so
+            # a transient hiccup is not mistaken for an empty mailbox.
+            if [ "$this" -eq 0 ]; then
+              empty=$((empty + 1))
+              if [ "$empty" -ge 2 ]; then
+                echo "Mailbox is clear after ${runs} run(s), ${docs} document(s)."
+                exit 0
+              fi
+            else
+              empty=0
+            fi
+
+            # A breather between runs so the database is never under continuous
+            # write pressure, even overnight.
+            sleep 20
+          done
+
+          echo "Time is up: ${runs} run(s), ${docs} document(s) imported."

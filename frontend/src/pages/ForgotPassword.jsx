@@ -43,7 +43,7 @@ const ForgotPassword = () => {
           <span className="w-9 h-9 rounded-md bg-gradient-to-br from-[#C6A15B] to-[#8F7340] flex items-center justify-center">
             <span className="font-display text-[#0C0F13] text-base font-semibold">T</span>
           </span>
-          <p className="font-display text-gray-900 text-xl tracking-wide">THCO</p>
+          <p className="font-display text-gray-900 text-xl tracking-wide">Crowther</p>
         </div>
 
         <div className="lux-card p-9">

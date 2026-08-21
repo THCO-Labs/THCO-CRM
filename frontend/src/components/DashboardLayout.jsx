@@ -52,19 +52,18 @@ import { useTheme } from "../context/ThemeContext";
 import { hasUnitAccess, hasFullAccess, canManageUsers, canCreateProjects, isUnitHead } from "../context/UserContext";
 import FlowForgeFAB from "./FlowForgeFAB";
 
-const UNITS = [
-  { name: "Talent & Delivery", slug: "talent", icon: Users, path: "/talent" },
-  { name: "THCO HR", slug: "thco-hr", icon: UserCog, path: "/thco-hr" },
-  { name: "THCO Flow", slug: "flow", icon: FolderKanban, path: "/flow" },
-  { name: "IT & THCO Tools", slug: "it-tools", icon: Wrench, path: "/it-tools" },
-  { name: "Sales & Business Dev", slug: "sales", icon: TrendingUp, path: "/sales" },
-  { name: "Marketing & Brand", slug: "marketing", icon: Megaphone, path: "/marketing" },
-  { name: "Advisory & Consulting", slug: "advisory", icon: Briefcase, path: "/advisory" },
-  { name: "Technology & Build", slug: "technology", icon: Code, path: "/technology" },
-  { name: "Operations & Finance", slug: "operations", icon: Building2, path: "/operations" },
-  { name: "Academy & Learning", slug: "academy", icon: GraduationCap, path: "/academy" },
-  { name: "Client Delivery", slug: "client-delivery", icon: Truck, path: "/client-delivery" },
-];
+// The business units that used to own work.
+//
+// Units no longer open or own projects: a project arrives from a client
+// conversation, is owned by a named TSD, and is built by a pod drawn from
+// across the capability teams. Crowther OS is the product, not a unit inside
+// it, so it is promoted out of this list and the rest are retired from the
+// sidebar.
+//
+// The unit records themselves are untouched. People still belong to units and
+// the admin screens still manage them; what has gone is the claim that a unit
+// is somewhere you go to find work.
+const UNITS = [];
 
 // Map stored icon keys (admin-created units) to lucide components for the sidebar
 const DYN_ICON_MAP = {
@@ -261,22 +260,22 @@ const DashboardLayoutInner = ({ children, user }) => {
     if (path === "/tasks") return "Tasks";
     if (path === "/admin/approvals") return "Approval Queue";
     if (path === "/admin/users") return "Staff Management";
-    if (path.startsWith("/admin/assessments")) return "Candidate Assessments";
+    if (path.startsWith("/admin/assessments")) return "Talent Assessments";
     if (path.startsWith("/talent")) {
       if (path === "/talent") return "Talent & Delivery";
       if (path === "/talent/sourcing") return "AI Candidate Sourcing";
       if (path === "/talent/database-search") return "Database Search";
-      if (path === "/talent/candidates") return "Candidate Database";
+      if (path === "/talent/candidates") return "Talent Database";
       if (path === "/talent/candidates/upload") return "Upload CVs";
       if (path === "/talent/sourcing/external") return "External Sourcing";
-      if (path === "/talent/find") return "Find Candidates";
+      if (path === "/talent/find") return "Find Talent";
       if (path === "/talent/network") return "Talent Network";
       if (path === "/talent/duplicates") return "Duplicate Review";
     }
-    if (path === "/thco-hr") return "THCO HR";
+    if (path === "/thco-hr") return "Crowther HR";
     if (path === "/project-management") return "Project Management";
-    if (path.startsWith("/flow")) return "THCO Flow";
-    if (path === "/it-tools") return "IT & THCO Tools";
+    if (path.startsWith("/flow")) return "Crowther OS";
+    if (path === "/it-tools") return "IT & Crowther Tools";
     const unit = UNITS.find((u) => path.startsWith(u.path));
     return unit?.name || "Dashboard";
   };
@@ -308,8 +307,17 @@ const DashboardLayoutInner = ({ children, user }) => {
   // record). Those records describe the same units this file already lists
   // by hand, so anything already in UNITS is dropped here -- otherwise every
   // built-in unit renders twice, once from each source.
+  // Units are no longer places you go to find work, so none of them belong in
+  // the sidebar. Emptying UNITS alone would not do it: the same units also
+  // arrive from the API, and with nothing to compare against they would simply
+  // reappear under their own heading.
+  //
+  // The records are untouched. People still belong to units, and the admin
+  // screens still manage them.
   const builtInSlugs = new Set(UNITS.map((u) => u.slug));
-  const dynamicNavUnits = dynamicUnits
+  const dynamicNavUnits = [];
+  // eslint-disable-next-line no-unused-vars
+  const _retiredUnitNav = dynamicUnits
     .filter((u) => !builtInSlugs.has(u.slug) && hasUnitAccess(user, u.slug))
     .map((u) => ({
       slug: u.slug,
@@ -352,13 +360,13 @@ const DashboardLayoutInner = ({ children, user }) => {
     // the search bar is not hidden.
     ...(hasUnitAccess(user, "flow")
       ? [
-          { label: "Flow · Pipeline Board", path: "/flow/board", group: "THCO Flow" },
-          { label: "Flow · Projects", path: "/flow/projects", group: "THCO Flow" },
-          { label: "Flow · Contacts", path: "/flow/contacts", group: "THCO Flow" },
-          { label: "Flow · Calendar", path: "/flow/calendar", group: "THCO Flow" },
-          { label: "Flow · Prospects", path: "/flow/prospects", group: "THCO Flow" },
-          { label: "Flow · Tickets", path: "/flow/tickets", group: "THCO Flow" },
-          { label: "Flow · Messages", path: "/flow/messages", group: "THCO Flow" },
+          { label: "Pipeline Board", path: "/flow/board", group: "Crowther OS" },
+          { label: "Projects", path: "/flow/projects", group: "Crowther OS" },
+          { label: "Contacts", path: "/flow/contacts", group: "Crowther OS" },
+          { label: "Calendar", path: "/flow/calendar", group: "Crowther OS" },
+          { label: "Prospects", path: "/flow/prospects", group: "Crowther OS" },
+          { label: "Tickets", path: "/flow/tickets", group: "Crowther OS" },
+          { label: "Messages", path: "/flow/messages", group: "Crowther OS" },
         ]
       : []),
     ...(hasUnitAccess(user, "talent")
@@ -366,9 +374,9 @@ const DashboardLayoutInner = ({ children, user }) => {
           { label: "AI Candidate Sourcing", path: "/talent/sourcing", group: "Talent Tools" },
           { label: "Database Search", path: "/talent/database-search", group: "Talent Tools" },
           { label: "Talent Projects", path: "/talent/projects", group: "Talent Tools" },
-          { label: "Candidate Database", path: "/talent/candidates", group: "Talent Tools" },
+          { label: "Talent Database", path: "/talent/candidates", group: "Talent Tools" },
           { label: "Upload CVs", path: "/talent/candidates/upload", group: "Talent Tools" },
-          { label: "Find Candidates", path: "/talent/find", group: "Talent Tools" },
+          { label: "Find Talent", path: "/talent/find", group: "Talent Tools" },
           { label: "External Sourcing", path: "/talent/sourcing/external", group: "Talent Tools" },
           { label: "Talent Network", path: "/talent/network", group: "Talent Tools" },
           { label: "Duplicate Review", path: "/talent/duplicates", group: "Talent Tools" },
@@ -376,7 +384,7 @@ const DashboardLayoutInner = ({ children, user }) => {
       : []),
     ...(canManageUsers(user) ? [{ label: "Staff Management", path: "/admin/users", group: "Admin" }] : []),
     ...(user?.role === "super_admin" || user?.is_hr
-      ? [{ label: "Candidate Assessments", path: "/admin/assessments", group: "Admin" }]
+      ? [{ label: "Talent Assessments", path: "/admin/assessments", group: "Admin" }]
       : []),
     ...(user?.role === "super_admin"
       ? [
@@ -435,7 +443,7 @@ const DashboardLayoutInner = ({ children, user }) => {
             </span>
             {!collapsed && (
               <span className="min-w-0">
-                <span className="block font-display text-white text-[15px] leading-tight tracking-wide">THCO</span>
+                <span className="block font-display text-white text-[15px] leading-tight tracking-wide">Crowther</span>
                 <span className="block text-[8px] uppercase tracking-[0.35em] text-[#6B7280]">Control Room</span>
               </span>
             )}
@@ -476,6 +484,15 @@ const DashboardLayoutInner = ({ children, user }) => {
         {/* Navigation */}
         <nav className="relative z-10 flex-1 py-5 px-3 overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#2a2f38_transparent]">
           <NavItem to="/dashboard" icon={LayoutDashboard} label="Dashboard" active={isActive("/dashboard")} collapsed={collapsed} testId="nav-dashboard" />
+          {/* Crowther OS is the delivery pipeline and the reason most people
+              are here, so it sits in the main navigation rather than under a
+              "Business Units" heading it is not a member of. Who may enter is
+              still decided by the API. */}
+          {hasUnitAccess(user, "flow") && (
+            <div className="mt-1">
+              <NavItem to="/flow" icon={FolderKanban} label="Crowther OS" active={isActive("/flow")} collapsed={collapsed} testId="nav-crowther-os" />
+            </div>
+          )}
           {/* Proposals carry commercial terms and client pricing, so they are
               administrative. The API enforces this too -- hiding a menu is not
               access control. */}
@@ -666,7 +683,7 @@ const DashboardLayoutInner = ({ children, user }) => {
 
             {/* Page Title */}
             <div className="min-w-0">
-              <p className="text-[9px] font-semibold uppercase tracking-[0.3em] text-[#A9834E] leading-none mb-1">THCO</p>
+              <p className="text-[9px] font-semibold uppercase tracking-[0.3em] text-[#A9834E] leading-none mb-1">Crowther</p>
               <h1 className="font-display text-[17px] text-gray-900 leading-none">{getPageTitle()}</h1>
             </div>
           </div>

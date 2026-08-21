@@ -116,7 +116,7 @@ const DatabaseSearchTool = () => {
         <IconBadge icon={Database} gradient="from-blue-500" size={48} />
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Database Search</h1>
-          <p className="text-gray-500">Search our internal candidate database using AI-powered resume analysis</p>
+          <p className="text-gray-500">Search our internal talent database using AI-powered resume analysis</p>
         </div>
       </div>
 

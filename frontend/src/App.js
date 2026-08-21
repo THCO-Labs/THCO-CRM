@@ -41,7 +41,7 @@ const THCOHRPage = lazy(() => import("./pages/THCOHRPage"));
 const ProjectManagement = lazy(() => import("./pages/ProjectManagement"));
 const ITAndTools = lazy(() => import("./pages/ITAndTools"));
 
-// THCO Flow — Project Management System (12-stage pipeline)
+// Crowther OS — Project Management System (12-stage pipeline)
 const FlowDashboard = lazy(() => import("./pages/flow/FlowDashboard"));
 const FlowBoard = lazy(() => import("./pages/flow/FlowBoard"));
 const FlowProjects = lazy(() => import("./pages/flow/FlowProjects"));
@@ -130,51 +130,6 @@ import DashboardLayout from "./components/DashboardLayout";
 import { authAPI } from "./lib/api";
 import { UserProvider, hasUnitAccess, canManageUsers, canEnterUnits } from "./context/UserContext";
 
-// Auth Callback Component - handles OAuth redirect
-const AuthCallback = () => {
-  const navigate = useNavigate();
-  const hasProcessed = useRef(false);
-
-  useEffect(() => {
-    // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
-    if (hasProcessed.current) return;
-    hasProcessed.current = true;
-
-    const processAuth = async () => {
-      const hash = window.location.hash;
-      const sessionIdMatch = hash.match(/session_id=([^&]+)/);
-      
-      if (sessionIdMatch) {
-        const sessionId = sessionIdMatch[1];
-        try {
-          const response = await authAPI.exchangeSession(sessionId);
-          if (response.user_id) {
-            navigate("/dashboard", { state: { user: response }, replace: true });
-          } else {
-            navigate("/login", { replace: true });
-          }
-        } catch (error) {
-          console.error("Auth callback error:", error);
-          navigate("/login", { replace: true });
-        }
-      } else {
-        navigate("/login", { replace: true });
-      }
-    };
-
-    processAuth();
-  }, [navigate]);
-
-  return (
-    <div className="min-h-screen bg-[#0D0F1A] flex items-center justify-center">
-      <div className="text-center">
-        <div className="w-12 h-12 border-4 border-[#1FB58A] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-        <p className="text-[#8B8AA0]">Authenticating...</p>
-      </div>
-    </div>
-  );
-};
-
 // Elegant access-restricted screen (rendered inside the layout shell)
 const AccessRestricted = () => (
   <div className="min-h-[60vh] flex items-center justify-center" data-testid="access-restricted">
@@ -209,7 +164,7 @@ const ProtectedRoute = ({ children, unit, access }) => {
   const location = useLocation();
 
   useEffect(() => {
-    // If user data passed from AuthCallback, use it
+    // If user data was passed through navigation state, use it
     if (location.state?.user) {
       setUser(location.state.user);
       setIsAuthenticated(true);
@@ -263,7 +218,7 @@ const ProtectedRoute = ({ children, unit, access }) => {
     return (
       <div className="min-h-screen bg-[#0C0F13] flex items-center justify-center px-6">
         <div className="text-center max-w-sm">
-          <p className="text-[11px] uppercase tracking-[0.3em] text-[#8a8f98] mb-3">THCO</p>
+          <p className="text-[11px] uppercase tracking-[0.3em] text-[#8a8f98] mb-3">Crowther</p>
           <p className="text-white text-lg mb-2">The server is not responding</p>
           <p className="text-[#8a8f98] text-sm mb-6">
             You are still signed in. This is usually a busy database and it
@@ -285,7 +240,7 @@ const ProtectedRoute = ({ children, unit, access }) => {
       <div className="min-h-screen bg-[#0C0F13] flex items-center justify-center">
         <div className="text-center">
           <div className="w-10 h-10 border-2 border-[#C6A15B] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-[11px] uppercase tracking-[0.3em] text-[#8a8f98]">THCO &middot; Loading</p>
+          <p className="text-[11px] uppercase tracking-[0.3em] text-[#8a8f98]">Crowther &middot; Loading</p>
         </div>
       </div>
     );
@@ -322,13 +277,6 @@ const RouteLoading = () => (
 
 // App Router Component
 const AppRouter = () => {
-  const location = useLocation();
-
-  // Check URL fragment for session_id (OAuth callback) - must be synchronous
-  if (location.hash?.includes('session_id=')) {
-    return <AuthCallback />;
-  }
-
   return (
     <Suspense fallback={<RouteLoading />}>
     <Routes>
@@ -604,7 +552,7 @@ const AppRouter = () => {
         </ProtectedRoute>
       } />
 
-      {/* THCO Flow — Project Management System (12-stage pipeline) */}
+      {/* Crowther OS — Project Management System (12-stage pipeline) */}
       <Route path="/flow" element={<ProtectedRoute unit="flow"><FlowDashboard /></ProtectedRoute>} />
       <Route path="/flow/board" element={<ProtectedRoute unit="flow"><FlowBoard /></ProtectedRoute>} />
       <Route path="/flow/projects" element={<ProtectedRoute unit="flow"><FlowProjects /></ProtectedRoute>} />

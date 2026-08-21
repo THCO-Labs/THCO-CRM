@@ -48,7 +48,7 @@ import BuildHistory from "../components/BuildHistory";
 import DeployedTools from "../components/flowforge/DeployedTools";
 
 import { FLOWFORGE_ENABLED } from "../config/features";
-// The 4 Intake Paths from THCO Operating Cycle
+// The 4 Intake Paths from Crowther Operating Cycle
 const INTAKE_PATHS = [
   {
     id: "outbound",

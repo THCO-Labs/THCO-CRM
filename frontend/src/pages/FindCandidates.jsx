@@ -124,13 +124,13 @@ const FindCandidates = () => {
           <BreadcrumbSeparator className="text-gray-300" />
           <BreadcrumbItem><BreadcrumbLink asChild><Link to="/talent" className="text-gray-500 hover:text-gray-900">Talent</Link></BreadcrumbLink></BreadcrumbItem>
           <BreadcrumbSeparator className="text-gray-300" />
-          <BreadcrumbItem><BreadcrumbPage className="text-gray-900 font-medium">Find Candidates</BreadcrumbPage></BreadcrumbItem>
+          <BreadcrumbItem><BreadcrumbPage className="text-gray-900 font-medium">Find Talent</BreadcrumbPage></BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Find Candidates</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Find Talent</h1>
           <p className="text-gray-500 mt-1">Search internal database + Talent Intelligence Network</p>
         </div>
         <div className="flex gap-2">
@@ -193,7 +193,7 @@ const FindCandidates = () => {
               {searching ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Searching...</>
               ) : (
-                <><Wand2 className="w-4 h-4 mr-2" />Find Candidates</>
+                <><Wand2 className="w-4 h-4 mr-2" />Find Talent</>
               )}
             </Button>
           </div>

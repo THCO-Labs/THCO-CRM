@@ -11,9 +11,9 @@ import { hasFullAccess } from "../context/UserContext";
 
 const UNIT_LABELS = {
   talent: "Talent & Delivery",
-  "thco-hr": "THCO HR",
-  flow: "THCO Flow",
-  "it-tools": "IT & THCO Tools",
+  "thco-hr": "Crowther HR",
+  flow: "Crowther OS",
+  "it-tools": "IT & Crowther Tools",
   sales: "Sales & Business Dev",
   marketing: "Marketing & Brand",
   advisory: "Advisory & Consulting",

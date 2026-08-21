@@ -85,7 +85,7 @@ const Register = () => {
             <span className="font-display text-[#0C0F13] text-base font-semibold">T</span>
           </span>
           <div>
-            <p className="font-display text-white text-lg leading-none tracking-wide">THCO</p>
+            <p className="font-display text-white text-lg leading-none tracking-wide">Crowther</p>
             <p className="text-[8px] uppercase tracking-[0.4em] text-[#6B7280] mt-1">Control Room</p>
           </div>
         </div>
@@ -102,7 +102,7 @@ const Register = () => {
         </div>
 
         <div className="relative z-10 flex items-center justify-between text-[10px] uppercase tracking-[0.25em] text-[#5C626D]">
-          <span>THCO &copy; {new Date().getFullYear()}</span>
+          <span>Crowther &copy; {new Date().getFullYear()}</span>
           <span>Eleven Units · One Room</span>
         </div>
       </div>
@@ -114,13 +114,13 @@ const Register = () => {
             <span className="w-9 h-9 rounded-md bg-gradient-to-br from-[#C6A15B] to-[#8F7340] flex items-center justify-center">
               <span className="font-display text-[#0C0F13] text-base font-semibold">T</span>
             </span>
-            <p className="font-display text-gray-900 text-xl tracking-wide">THCO</p>
+            <p className="font-display text-gray-900 text-xl tracking-wide">Crowther</p>
           </div>
 
           <div className="mb-8">
             <p className="lux-eyebrow mb-3">Get Started</p>
             <h2 className="font-display text-[32px] text-gray-900 leading-tight mb-2">Create your account</h2>
-            <p className="text-gray-500 text-sm">Join the THCO internal portal.</p>
+            <p className="text-gray-500 text-sm">Join the Crowther internal portal.</p>
           </div>
 
           {googleEnabled && (

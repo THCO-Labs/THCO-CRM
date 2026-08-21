@@ -310,9 +310,9 @@ const ApprovalQueue = () => {
     { value: "operations", label: "Operations & Finance" },
     { value: "academy", label: "Academy & Learning" },
     { value: "client-delivery", label: "Client Delivery" },
-    { value: "thco-hr", label: "THCO HR" },
+    { value: "thco-hr", label: "Crowther HR" },
     { value: "project-management", label: "Project Management" },
-    { value: "it-tools", label: "IT & THCO Tools" },
+    { value: "it-tools", label: "IT & Crowther Tools" },
   ];
 
   return (

@@ -178,14 +178,14 @@ const CandidateDatabase = () => {
           </BreadcrumbItem>
           <BreadcrumbSeparator className="text-gray-300" />
           <BreadcrumbItem>
-            <BreadcrumbPage className="text-gray-900 font-medium">Candidate Database</BreadcrumbPage>
+            <BreadcrumbPage className="text-gray-900 font-medium">Talent Database</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Candidate Database</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Talent Database</h1>
           <p className="text-gray-500 mt-1">
             {total.toLocaleString()} candidates indexed
           </p>

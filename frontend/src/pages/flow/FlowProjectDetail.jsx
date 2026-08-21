@@ -2,21 +2,25 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import FlowShell from "./FlowShell";
-import { flowAPI, authAPI, unitsAPI } from "../../lib/api";
+import { flowAPI, authAPI } from "../../lib/api";
 import CollaboratorPicker from "../../components/flow/CollaboratorPicker";
 import StructuredStageModal from "../../components/flow/StructuredStageModal";
 import { Button } from "../../components/ui/button";
 import {
   Loader2, ArrowLeft, ChevronRight, Building2, Globe, User, ArrowRight,
-  History, GitBranch, MessageCircle, X, Hammer, FileText, CheckCircle2, Pencil
+  GitBranch, MessageCircle, X, Hammer, FileText, CheckCircle2, Pencil
 } from "lucide-react";
-import { STAGES, BUILD_STATUS_LABELS } from "./stages";
+import { STAGES, PHASES, PHASE_ORDER, BUILD_STATUS_LABELS, LAST_STAGE, stageSummary } from "./stages";
+import HealthControl from "../../components/flow/HealthControl";
+import ProjectWorkspace from "../../components/flow/ProjectWorkspace";
+import LifecycleLine from "../../components/flow/LifecycleLine";
 
 export default function FlowProjectDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [project, setProject] = useState(null);
+  const [gate, setGate] = useState(null);
   const [me, setMe] = useState(null);
   const [loading, setLoading] = useState(true);
   const [transitioning, setTransitioning] = useState(false);
@@ -74,6 +78,9 @@ export default function FlowProjectDetail() {
     try {
       const [p, u] = await Promise.all([flowAPI.getProject(id), authAPI.getMe()]);
       setProject(p); setMe(u);
+      // The lifecycle line and the next-step panel both want this, so it is
+      // fetched once here rather than twice below.
+      flowAPI.getGate(p.id).then(setGate).catch(() => setGate(null));
     } catch { toast.error("Project not found"); navigate("/flow/projects"); }
     finally { setLoading(false); }
   };
@@ -88,40 +95,51 @@ export default function FlowProjectDetail() {
 
   // Who works on this project. A unit head (or an administrator) adds and
   // removes people at any time; everybody else sees the list read-only.
+  // The pod is the TSD's to staff, with the architect alongside because they
+  // decide what the build needs. Heading a unit no longer comes into it: a
+  // project does not belong to a unit any more.
   const canManageTeam =
     me &&
     (["super_admin", "mini_admin"].includes(me.role) ||
       me.is_hr ||
-      (project?.unit_slug && (me.headed_units || []).includes(project.unit_slug)));
+      me.user_id === project?.tsd_id ||
+      me.user_id === project?.architect_id);
 
   const isAdmin =
     me && (["super_admin", "mini_admin"].includes(me.role) || me.is_hr);
 
-  // The unit's people, for both the manager picker and the team editor.
+  // Everybody active, for both the TSD picker and the pod editor. A pod is
+  // drawn from across the capability teams, so this is not scoped to a unit.
   useEffect(() => {
-    if (!canManageTeam || !project?.unit_slug || staff.length) return;
+    if (!canManageTeam || staff.length) return;
     (async () => {
       try {
-        const data = await unitsAPI.listStaff(project.unit_slug);
+        const data = await flowAPI.staff();
         setStaff(data?.staff || []);
       } catch {
         /* the picker simply stays empty */
       }
     })();
-  }, [canManageTeam, project?.unit_slug, staff.length]);
+  }, [canManageTeam, staff.length]);
 
   const changeManager = async (userId) => {
     setSavingManager(true);
     try {
       const res = await flowAPI.setProjectManager(id, userId);
       toast.success(
-        res.project_manager_name
-          ? `${res.project_manager_name} now manages this project`
-          : "Handed back to the unit's manager"
+        res.tsd_name
+          ? `${res.tsd_name} is now the TSD for this project`
+          : "TSD cleared"
       );
+      // Write it straight into the project on screen so the header, the card
+      // and the toast agree immediately, then refetch for everything else the
+      // change touches, such as the gate on stage 2.
+      setProject((prev) => (prev
+        ? { ...prev, tsd_id: res.tsd_id || null, tsd_name: res.tsd_name || null }
+        : prev));
       load();
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Could not change the project manager");
+      toast.error(e.response?.data?.detail || "Could not change the TSD");
     } finally {
       setSavingManager(false);
     }
@@ -158,29 +176,28 @@ export default function FlowProjectDetail() {
     }
   };
 
-  const handleAdvance = (target) => {
-    // Stages requiring structured input → open modal
-    if (target === 2 || target === 5) {
-      setShowStageModal({ targetStage: target });
-      return;
-    }
-    const note = window.prompt(`Move to Stage ${target} (${STAGES[target].label}). Add a note (optional):`) || "";
-    runTransition(target, note, {});
-  };
+  // Every move opens the dialog, because the dialog is where the gate is
+  // shown: what this stage still needs, what the system can already see is
+  // done, and what is a judgement somebody has to make. A prompt box could ask
+  // for a note but could not answer "why not".
+  const handleAdvance = (target) => setShowStageModal({ targetStage: target });
 
-  const runTransition = async (target, note, payload) => {
+  const runTransition = async (target, note, payload, force = false) => {
     setTransitioning(true);
     try {
-      const result = await flowAPI.transitionStage(id, target, note, payload);
-      if (result.split_done) {
-        toast.success("Stage 5 complete — split into Proposal + Build tracks");
-      } else {
-        toast.success(`Moved to Stage ${target}: ${STAGES[target].label}`);
-      }
+      await flowAPI.transitionStage(id, target, note, payload, force);
+      toast.success(`Moved to ${STAGES[target].label}`);
       setShowStageModal(null);
       load();
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Transition failed");
+      // An unmet gate comes back with the list of what is missing, which is
+      // more use than "transition failed".
+      const detail = e.response?.data?.detail;
+      if (detail?.blocking) {
+        toast.error(`Not yet: ${detail.blocking.join(", ")}`);
+      } else {
+        toast.error(typeof detail === "string" ? detail : "Could not move the project");
+      }
     } finally { setTransitioning(false); }
   };
 
@@ -188,12 +205,17 @@ export default function FlowProjectDetail() {
   if (!project) return null;
 
   const stage = project.stage;
-  const track = project.track || "main";
   const isLost = project.status === "lost";
-  const isMain = track === "main";
-  const isProposal = track === "proposal";
-  const isBuild = track === "build";
-  const canAdvance = !isLost && !transitioning && stage < 10;
+  // The split-track model is retired: one project, one record, one lifecycle.
+  // These three asked which sibling record you were looking at; what the page
+  // needs now is simply how far the project has got.
+  const isBuild = stage >= 13;
+  const isMain = !isBuild;
+  const canAdvance = !isLost && !transitioning && stage < LAST_STAGE;
+  // Whoever owns the client owns the project state, so the controls that
+  // change it are theirs.
+  const isProjectTsd = me?.user_id && me.user_id === project.tsd_id;
+  const canRunProject = isProjectTsd || me?.role === "super_admin" || me?.role === "mini_admin";
 
   return (
     <FlowShell
@@ -209,15 +231,17 @@ export default function FlowProjectDetail() {
           <div>
             <div className="flex items-center gap-2 mb-1">
               <p className="text-[11px] font-mono text-gray-400">{project.project_id_display}</p>
-              <TrackBadge track={track} />
+              <span className="text-[11px] text-gray-500">{stageSummary(stage)}</span>
+              <HealthControl project={project} canEdit={canRunProject} onChanged={load} />
             </div>
             <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
             <div className="flex items-center gap-4 mt-2 text-sm text-gray-500 flex-wrap">
               <span className="flex items-center gap-1"><Building2 className="w-3.5 h-3.5" />{project.client_name_snapshot}</span>
               {project.website && <a href={project.website} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[#1B4332] hover:underline"><Globe className="w-3.5 h-3.5" />{project.website}</a>}
-              {project.delivery_owner_name && <span className="flex items-center gap-1"><User className="w-3.5 h-3.5" />Owner: {project.delivery_owner_name}</span>}
-              {project.pricing_owner_name && <span className="flex items-center gap-1"><FileText className="w-3.5 h-3.5" />Ops: {project.pricing_owner_name}</span>}
-              {project.assigned_engineer_name && <span className="flex items-center gap-1"><Hammer className="w-3.5 h-3.5" />Eng: {project.assigned_engineer_name}</span>}
+              {project.tsd_name
+                ? <span className="flex items-center gap-1"><User className="w-3.5 h-3.5" />TSD: {project.tsd_name}</span>
+                : <span className="flex items-center gap-1 text-amber-700"><User className="w-3.5 h-3.5" />No TSD assigned</span>}
+              {project.architect_name && <span className="flex items-center gap-1"><Hammer className="w-3.5 h-3.5" />Architect: {project.architect_name}</span>}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -239,6 +263,24 @@ export default function FlowProjectDetail() {
           </div>
         </div>
 
+        {/* The lifecycle, directly under the project name and its people.
+            One line: six phases, a marker per stage inside them, and the
+            advance control beside it. Everything about the current stage --
+            what happens next, what it involves, what is blocking -- appears on
+            hovering a marker and goes away again, so the page is not carrying
+            seventeen stages of explanation nobody asked for. */}
+        <div className="mt-5">
+          <LifecycleLine
+            project={project}
+            gate={gate}
+            onAdvance={handleAdvance}
+            canAdvance={!isLost && !transitioning && stage < LAST_STAGE && gate?.can_move}
+            me={me}
+            onChanged={load}
+          />
+        </div>
+        </div>
+
         {/* Who runs this project. A unit's manager runs everything in it,
             which is the right default and the wrong fit when one project
             belongs to somebody else -- so an administrator can hand a single
@@ -247,21 +289,24 @@ export default function FlowProjectDetail() {
           <div className="mb-5 p-4 bg-[#F7F6F3] border border-[#EAE7E0] rounded-xl" data-testid="project-manager">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-gray-900">Project manager</h3>
+                <h3 className="text-sm font-semibold text-gray-900">TSD</h3>
                 <p className="text-[11px] text-gray-500 mt-0.5">
-                  {project.project_manager_name
-                    ? `${project.project_manager_name} runs this project.`
-                    : "Managed by whoever runs this project's unit."}
+                  {project.tsd_name
+                    ? `${project.tsd_name} runs this project.`
+                    : "Nobody owns this project yet."}
                 </p>
               </div>
               <select
-                value={project.project_manager_id || ""}
+                value={project.tsd_id || ""}
                 disabled={savingManager}
                 onChange={(e) => changeManager(e.target.value || null)}
-                className="shrink-0 max-w-[210px] text-[12px] border border-[#EAE7E0] rounded-lg px-2.5 py-1.5 bg-white outline-none focus:border-[#C6A15B] disabled:opacity-50"
+                className="shrink-0 max-w-[210px] text-[12px] border border-[#EAE7E0] rounded-lg px-2.5 py-1.5 bg-white text-gray-900 outline-none focus:border-[#C6A15B] disabled:opacity-50"
                 data-testid="project-manager-select"
               >
-                <option value="">— the unit's manager —</option>
+                {/* Resting value is "nobody", not the first name in the list.
+                    Defaulting to a name showed an owner nobody had chosen
+                    while the header still said none was assigned. */}
+                <option value="">— not assigned —</option>
                 {staff.map((p) => (
                   <option key={p.user_id} value={p.user_id}>{p.name}</option>
                 ))}
@@ -270,108 +315,6 @@ export default function FlowProjectDetail() {
           </div>
         )}
 
-        {/* Who is on this project. Staff no longer open their own work, so
-            this list is how somebody comes to have any -- and it has to be
-            changeable at any time, as people move between projects. */}
-        <div className="mb-5 p-4 bg-[#F7F6F3] border border-[#EAE7E0] rounded-xl" data-testid="project-team">
-          <div className="flex items-center justify-between gap-3 mb-2">
-            <h3 className="text-sm font-semibold text-gray-900">Project team</h3>
-            {canManageTeam && !teamOpen && (
-              <Button variant="outline" size="sm" onClick={openTeam} data-testid="manage-team-btn">
-                <User className="w-3.5 h-3.5 mr-1.5" />
-                Add or remove staff
-              </Button>
-            )}
-          </div>
-
-          {!teamOpen && (
-            <div className="flex flex-wrap gap-1.5">
-              {(project.collaborators || []).length === 0 ? (
-                <p className="text-xs text-gray-400">
-                  Nobody is on this project yet
-                  {canManageTeam ? " — add staff and they'll be notified." : "."}
-                </p>
-              ) : (
-                project.collaborators.map((c) => (
-                  <span
-                    key={c.user_id}
-                    className="px-2.5 py-1 rounded-full bg-white border border-[#EAE7E0] text-[12px] text-gray-700"
-                  >
-                    {c.name}
-                  </span>
-                ))
-              )}
-            </div>
-          )}
-
-          {teamOpen && (
-            <div data-testid="team-editor">
-              <p className="text-xs text-gray-500 mb-3">
-                Tick everyone who works on this project. Newly added people get an email and a
-                notification; anyone unticked is removed and loses access to it.
-              </p>
-              <div className="mb-3">
-                <CollaboratorPicker
-                  unitSlug={project.unit_slug}
-                  value={teamIds}
-                  onChange={setTeamIds}
-                  disabled={savingTeam}
-                />
-              </div>
-
-              {/* Two managers on one project is ordinary here. A co-manager
-                  staffs the project and runs its boards; an engineer on the
-                  same project does the work without those rights. */}
-              {teamIds.length > 0 && (
-                <div className="mb-3 pt-3 border-t border-[#EAE7E0]">
-                  <p className="text-xs text-gray-500 mb-2">
-                    Who co-manages this project? Everyone else on it is a collaborator.
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {teamIds.map((uid) => {
-                      const person = staff.find((p) => p.user_id === uid);
-                      const name =
-                        person?.name ||
-                        (project.collaborators || []).find((c) => c.user_id === uid)?.name ||
-                        uid;
-                      const on = managerIds.includes(uid);
-                      return (
-                        <button
-                          key={uid}
-                          type="button"
-                          disabled={savingTeam}
-                          onClick={() => toggleManager(uid)}
-                          className={`px-2.5 py-1 rounded-full border text-[11px] transition-all disabled:opacity-50 ${
-                            on
-                              ? "border-[#1B4332] bg-[#1B4332]/10 text-[#1B4332] font-medium"
-                              : "border-[#EAE7E0] text-gray-500 hover:border-gray-300"
-                          }`}
-                          title={on ? `${name} co-manages this project` : `Make ${name} a co-manager`}
-                          data-testid={`comanager-${uid}`}
-                        >
-                          {on ? "★ " : ""}{name}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              <div className="flex justify-end gap-2">
-                <Button variant="ghost" size="sm" onClick={() => setTeamOpen(false)} className="text-gray-500">
-                  Cancel
-                </Button>
-                <Button size="sm" onClick={saveTeam} disabled={savingTeam} data-testid="save-team-btn">
-                  {savingTeam ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : null}
-                  Save team
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Correcting details. Stage and ownership are not here on purpose --
-            those move through the pipeline actions below, which record who
-            changed them. */}
         {editing && (
           <div ref={editRef} className="mb-5 p-5 bg-[#F7F6F3] border border-[#EAE7E0] rounded-xl" data-testid="edit-project-form">
             <div className="flex items-center justify-between mb-4">
@@ -427,127 +370,37 @@ export default function FlowProjectDetail() {
         {project.description && <p className="text-sm text-gray-600 my-4 leading-relaxed">{project.description}</p>}
 
         {/* Sibling banner */}
-        {project.sibling_project_id && (
-          <Link
-            to={`/flow/projects/${project.sibling_project_id}`}
-            className="flex items-center gap-2 mt-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 hover:bg-amber-100 transition"
-            data-testid="sibling-link"
-          >
-            <GitBranch className="w-4 h-4" />
-            <span>Sister record: <strong>{isBuild ? "Proposal track" : isProposal ? "Build track" : "Main"}</strong> — open</span>
-            <ChevronRight className="w-3 h-3 ml-auto" />
-          </Link>
-        )}
+        {/* The split-track sibling link lived here. One project is now one
+            record for its whole life, so there is no sibling to cross to. */}
 
-        {/* Stage progression — show only stages in this project's track + main */}
-        <div className="mt-6 pt-6 border-t border-gray-100">
-          <p className="text-xs uppercase text-gray-400 mb-3 font-semibold tracking-widest">Stage progression</p>
-          <div className="flex items-center gap-1 flex-wrap">
-            {Object.entries(STAGES).filter(([k, s]) => {
-              const sk = parseInt(k);
-              if (isMain) return sk <= 5;
-              if (isProposal) return sk >= 6 && sk <= 8;
-              if (isBuild) return sk >= 9 && sk <= 10;
-              return true;
-            }).map(([k, s]) => {
-              const sk = parseInt(k);
-              const done = sk < stage;
-              const cur = sk === stage;
-              return (
-                <div key={k} className="flex items-center">
-                  <button
-                    disabled={transitioning || isLost || cur || sk < stage}
-                    onClick={() => handleAdvance(sk)}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition ${
-                      cur ? "bg-[#1B4332] text-white" :
-                      done ? "bg-green-100 text-green-800" :
-                      "bg-gray-50 text-gray-500 hover:bg-gray-100"
-                    } ${transitioning || isLost || sk < stage ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-                    data-testid={`stage-btn-${sk}`}
-                    title={s.label}
-                  >
-                    <span className="font-mono">{sk}</span>
-                    <span className="hidden md:inline">{s.label}</span>
-                  </button>
-                  {sk < Math.max(...Object.keys(STAGES).map(Number).filter(x => {
-                    if (isMain) return x <= 5;
-                    if (isProposal) return x >= 6 && x <= 8;
-                    if (isBuild) return x >= 9 && x <= 10;
-                    return true;
-                  })) && <ChevronRight className="w-3 h-3 text-gray-300 mx-0.5" />}
-                </div>
-              );
-            })}
-          </div>
-          {canAdvance && stage < 10 && (
-            <Button onClick={() => handleAdvance(stage + 1)} disabled={transitioning} className="mt-4 bg-[#1B4332] hover:bg-[#1B4332]/90 text-white" data-testid="advance-btn">
-              {transitioning ? "Moving..." : <>Advance to Stage {stage + 1} <ArrowRight className="w-4 h-4 ml-1" /></>}
-            </Button>
-          )}
-        </div>
+      {/* THE WORKSPACE
+          Four tabs and six drawers over one project. What a project produces
+          as it moves lives here: requirements, the Product Brief, the uploaded
+          architecture, demo rounds, client feedback, documents and history.
+
+          The architect is handed no briefing package. They read this, the same
+          as everyone else, from the moment they are named. */}
+      <div className="mt-4">
+        <ProjectWorkspace projectId={project.id} project={project} onChanged={load} />
       </div>
 
-      {/* BUILD-TRACK PANEL */}
+      {/* BUILD STATUS - the board carries the work; this is the summary line */}
       {isBuild && <BuildPanel project={project} onChange={load} />}
-
-      {/* PROPOSAL-TRACK PANEL */}
-      {isProposal && <ProposalPanel project={project} stage={stage} />}
-
-      {/* BIRTHDAY TICKER — only renders if there's a birthday in next 14 days for any contact on this client */}
-      <BirthdayTicker projectId={project.id} contactId={project.id} />
-
-      {/* CLIENT PROFILE — contacts + birthdays scoped to this project's client */}
-      <ClientProfileSection projectId={project.id} clientName={project.client_name_snapshot} />
-
-      {/* STAGE HISTORY */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-6 mt-4">
-        <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2"><History className="w-4 h-4" />Stage history</h3>
-        {(project.stage_history || []).length === 0 ? (
-          <p className="text-sm text-gray-400">No transitions yet.</p>
-        ) : (
-          <ol className="space-y-2">
-            {project.stage_history.map((h, i) => (
-              <li key={i} className="flex items-center gap-3 text-sm" data-testid={`history-${i}`}>
-                <span className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded">Stage {h.stage}</span>
-                <span className="text-gray-700">{h.by_name}</span>
-                <span className="text-xs text-gray-400">{new Date(h.at).toLocaleString()}</span>
-                {h.note && <span className="text-gray-500 italic">— {h.note}</span>}
-              </li>
-            ))}
-          </ol>
-        )}
-      </div>
 
       {showStageModal && (
         <StructuredStageModal
           targetStage={showStageModal.targetStage}
           project={project}
           me={me}
-          onClose={() => setShowStageModal(null)}
+          onCancel={() => setShowStageModal(null)}
           onSubmit={runTransition}
-          transitioning={transitioning}
+          saving={transitioning}
         />
       )}
     </FlowShell>
   );
 }
 
-const TrackBadge = ({ track }) => {
-  const cfg = {
-    main:     { label: "Main",     color: "bg-gray-200 text-gray-700" },
-    proposal: { label: "Proposal", color: "bg-indigo-200 text-indigo-800" },
-    build:    { label: "Build",    color: "bg-emerald-200 text-emerald-800" },
-  }[track] || { label: track, color: "bg-gray-200 text-gray-700" };
-  return <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${cfg.color}`}>{cfg.label.toUpperCase()}</span>;
-};
-
-// ---------------------------------------------------------------------------
-// STRUCTURED STAGE MODAL — Stage 2 (assign Delivery Owner) + Stage 5 (assign Ops + Engineer)
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// BUILD PANEL — status indicator + comment thread + EOD reminder (shown on build-track projects)
-// ---------------------------------------------------------------------------
 const BuildPanel = ({ project, onChange }) => {
   const [status, setStatus] = useState(project.build_status || "planning");
   const [comment, setComment] = useState("");
@@ -630,25 +483,6 @@ const BuildPanel = ({ project, onChange }) => {
 // ---------------------------------------------------------------------------
 // PROPOSAL PANEL — shown on proposal-track projects
 // ---------------------------------------------------------------------------
-const ProposalPanel = ({ project, stage }) => {
-  return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-6 mt-4" data-testid="proposal-panel">
-      <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2"><FileText className="w-4 h-4" />Proposal workspace</h3>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-        <StatusPill icon={FileText} label="Drafted" done={stage >= 6} />
-        <StatusPill icon={CheckCircle2} label="Exec Approved" done={stage >= 7} />
-        <StatusPill icon={ArrowRight} label="Sent to Client" done={stage >= 8} />
-      </div>
-
-      <div className="mt-4 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
-        🚧 LLM proposal generation + e-signature are <strong>Phase B</strong> features.
-        For now, attach proposal documents externally and advance the stage manually.
-      </div>
-    </div>
-  );
-};
-
 const StatusPill = ({ icon: Icon, label, done }) => (
   <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${done ? "bg-emerald-50 border-emerald-200 text-emerald-800" : "bg-gray-50 border-gray-200 text-gray-400"}`}>
     <Icon className="w-4 h-4" />

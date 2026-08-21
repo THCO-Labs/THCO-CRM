@@ -76,7 +76,7 @@ const TOOLS = [
     gradient: "from-purple-500 to-indigo-600"
   },
   {
-    name: "Find Candidates (Both DBs)",
+    name: "Find Talent (Both DBs)",
     slug: "find",
     icon: Wand2,
     path: "/talent/find",

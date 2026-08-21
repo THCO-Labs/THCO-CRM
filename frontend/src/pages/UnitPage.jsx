@@ -117,7 +117,7 @@ const UnitPage = () => {
         </div>
       )}
 
-      {/* THCO Flow */}
+      {/* Crowther OS */}
       {sections.flow && (
         <Link to="/flow" className="lux-card lux-card-hover p-6 flex items-center justify-between group">
           <div className="flex items-center gap-4">
@@ -125,7 +125,7 @@ const UnitPage = () => {
               <FolderKanban className="w-5 h-5 text-[#1B4332]" />
             </div>
             <div>
-              <p className="font-medium text-gray-900">THCO Flow</p>
+              <p className="font-medium text-gray-900">Crowther OS</p>
               <p className="text-[13px] text-gray-500">The 12-stage client pipeline for this unit's work</p>
             </div>
           </div>

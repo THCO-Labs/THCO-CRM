@@ -38,7 +38,7 @@ const UNITS = [
     lead: "Amalina",
   },
   {
-    name: "THCO HR",
+    name: "Crowther HR",
     slug: "thco-hr",
     icon: UserCog,
     path: "/thco-hr",
@@ -49,7 +49,7 @@ const UNITS = [
     lead: "Victoria",
   },
   {
-    name: "IT & THCO Tools",
+    name: "IT & Crowther Tools",
     slug: "it-tools",
     icon: Wrench,
     path: "/it-tools",
@@ -268,7 +268,7 @@ const Dashboard = () => {
   }
 
   // Deliberately the same permission that already guards the button inside
-  // THCO Flow -- this surfaces the action, it does not widen or narrow who
+  // Crowther OS -- this surfaces the action, it does not widen or narrow who
   // may take it.
   // Opening a project is a unit head's job, not every Flow user's.
   const canCreateProject = canCreateProjects(user);
@@ -288,7 +288,7 @@ const Dashboard = () => {
             </p>
           </div>
 
-          {/* Starting a project was only reachable from inside THCO Flow, so
+          {/* Starting a project was only reachable from inside Crowther OS, so
               anyone who did not already know where to look could not find it.
               It belongs on the page everyone lands on after signing in -- and
               it opens here rather than navigating into Flow, because losing

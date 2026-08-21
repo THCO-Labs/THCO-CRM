@@ -33,12 +33,12 @@ import { Input } from "../components/ui/input";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "../components/ui/breadcrumb";
 
 import { FLOWFORGE_ENABLED } from "../config/features";
-// AI Agents for THCO HR (from Agent Registry)
+// AI Agents for Crowther HR (from Agent Registry)
 const AI_AGENTS = [
   {
     id: 29,
     name: "#29 Internal HR & People Ops Agent",
-    description: "THCO team admin: leave requests, expense reports, policy lookups, offboarding checklists",
+    description: "Crowther team admin: leave requests, expense reports, policy lookups, offboarding checklists",
     icon: Heart,
     priority: "low",
     trigger: "Employee request / HR event",
@@ -58,7 +58,7 @@ const TOOLS = [
     name: "Employee Directory",
     slug: "employee-directory",
     icon: Users,
-    description: "View and manage all THCO team members, roles, and departments",
+    description: "View and manage all Crowther team members, roles, and departments",
     gradient: "from-emerald-500 to-emerald-600",
     // Genuinely built: the card scrolls to the directory further down this
     // page. The other three have nothing behind them yet and say so.
@@ -182,7 +182,7 @@ const THCOHRPage = () => {
           </BreadcrumbItem>
           <BreadcrumbSeparator className="text-gray-300" />
           <BreadcrumbItem>
-            <BreadcrumbPage className="text-gray-900 font-medium">THCO HR</BreadcrumbPage>
+            <BreadcrumbPage className="text-gray-900 font-medium">Crowther HR</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
@@ -194,7 +194,7 @@ const THCOHRPage = () => {
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="lux-eyebrow mb-3">Business Unit</p>
-            <h1 className="font-display text-4xl text-gray-900 leading-tight">THCO HR</h1>
+            <h1 className="font-display text-4xl text-gray-900 leading-tight">Crowther HR</h1>
             <p className="text-sm text-gray-500 mt-2 max-w-xl">
               Internal HR, employee records, people operations, performance and incentives.
             </p>
@@ -471,7 +471,7 @@ const THCOHRPage = () => {
                   {heads && (
                     <span
                       className="shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#EAF8F3] text-[#12795C] border border-[#BFE7DA]"
-                      title={`Project manager for ${units.join(", ")}`}
+                      title={`TSD for ${units.join(", ")}`}
                     >
                       PM
                     </span>

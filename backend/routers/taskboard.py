@@ -7,13 +7,17 @@ and cards live in two collections so a card move never rewrites a whole
 board document, and the project workspace stays a single round-trip.
 
 Projects are NOT duplicated — this module reuses the existing `projects`
-collection (the THCO Flow project pipeline). We only annotate those
+collection (the Crowther OS delivery pipeline). We only annotate those
 projects with board/task counts for the Projects workspace grid.
 
-Permissions: only a Project Coordinator (user with is_delivery_coordinator,
-or a super_admin) can mutate boards/cards/labels. Reads are open to any
-authenticated user. This matches the app's existing coordinator concept
-used in flow.py (Stage 1→2 gate).
+Permissions: the board is the technical build, so its shape belongs to the
+project's Solution Architect, with the TSD and administrators alongside
+(`permissions.can_manage_boards`). Anybody on the project may move their own
+cards -- that is the point of being on it.
+
+This used to admit anyone holding `is_delivery_coordinator`. That flag is
+retired: the coordinator's job was choosing who runs a project, which is now
+stage 2 of the lifecycle rather than a standing privilege.
 
   GET    /api/tasks/projects/summary       Flow projects + board/task counts
   GET    /api/tasks/boards?project_id=     project-scoped boards (cards embedded)
@@ -276,10 +280,10 @@ async def _announce_assignees(card: dict, before: list, after: list,
 
     for a in added:
         await db.projects.update_one(
-            {"id": project["id"], "collaborator_ids": {"$ne": a["user_id"]}},
+            {"id": project["id"], "pod_member_ids": {"$ne": a["user_id"]}},
             {"$addToSet": {
-                "collaborator_ids": a["user_id"],
-                "collaborators": {"user_id": a["user_id"], "name": a.get("name"),
+                "pod_member_ids": a["user_id"],
+                "pod": {"user_id": a["user_id"], "name": a.get("name"),
                                   "email": a.get("email")},
             }},
         )
@@ -343,7 +347,7 @@ async def _next_label_color() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Projects — reuse the existing `projects` collection (THCO Flow), annotated
+# Projects — reuse the existing `projects` collection (Crowther OS), annotated
 # ---------------------------------------------------------------------------
 @router.get("/projects/summary")
 async def projects_summary(request: Request):
@@ -368,18 +372,30 @@ async def projects_summary(request: Request):
     ]):
         task_counts[c["_id"]] = c["count"]
 
-    # Unit heads, so each card can name who runs the unit its project sits in.
-    unit_heads = {
-        u["slug"]: u.get("head_name")
-        async for u in db.units.find({}, {"_id": 0, "slug": 1, "head_name": 1})
-    }
+    # Cards sitting in a column that means finished. The board is free-form, so
+    # this matches on the column's name rather than on a status field it does
+    # not have.
+    done_counts = {}
+    done_boards = await db.boards.find(
+        {"title": {"$regex": r"^(done|complete[d]?)$", "$options": "i"}},
+        {"_id": 0, "board_id": 1, "project_id": 1},
+    ).to_list(500)
+    done_board_ids = [b["board_id"] for b in done_boards]
+    if done_board_ids:
+        by_board = {b["board_id"]: b["project_id"] for b in done_boards}
+        async for c in db.cards.aggregate([
+            {"$match": {"board_id": {"$in": done_board_ids}}},
+            {"$group": {"_id": "$board_id", "count": {"$sum": 1}}},
+        ]):
+            pid_for_board = by_board.get(c["_id"])
+            if pid_for_board:
+                done_counts[pid_for_board] = done_counts.get(pid_for_board, 0) + c["count"]
 
-    # Stage label map (mirrors flow.py STAGES) for a human-readable status
-    stage_labels = {
-        1: "New Client", 2: "Coordinator Picked", 3: "Meeting Scheduled",
-        4: "Package Building", 5: "Send Package", 6: "Proposal",
-        7: "Exec Approval", 8: "Proposal Sent", 9: "In Build", 10: "Completed",
-    }
+    # Stage labels come from the lifecycle itself. This used to be a copy kept
+    # by hand, which is exactly the kind of thing that goes quietly wrong: it
+    # still described the old ten-stage sales pipeline, so a project at stage 4
+    # was labelled "Package Building" long after that stage stopped existing.
+    from services.delivery_stages import stage_label
 
     out = []
     for p in projects:
@@ -392,15 +408,23 @@ async def projects_summary(request: Request):
             "project_id_display": p.get("project_id_display"),
             "client_name": p.get("client_name_snapshot"),
             "stage": stage,
-            "stage_label": "Lost" if is_lost else stage_labels.get(stage, "Unknown"),
+            "stage_label": "Lost" if is_lost else stage_label(stage),
             "status": p.get("status"),
             "track": p.get("track"),
-            # progress = how far along the 10-stage pipeline this project is
-            "progress": 0 if is_lost else min(100, round(stage / 10 * 100)),
-            # display "coordinator" = the project's delivery owner if assigned,
-            # otherwise whoever created it
-            "coordinator_name": p.get("delivery_owner_name") or p.get("created_by_name"),
-            "coordinator_id": p.get("delivery_owner_id") or p.get("created_by"),
+            # On a task board, progress means how much of the work is done, so
+            # it counts cards rather than stages. It used to divide the stage by
+            # ten, which after the move to seventeen stages meant everything
+            # past stage 10 read "100%" -- next to "0 boards, 0 tasks", which is
+            # the opposite of true. Where there are no cards there is no number,
+            # because a bar at 0% and a bar that means nothing look identical.
+            "progress": None if not task_counts.get(pid) else round(
+                done_counts.get(pid, 0) / task_counts[pid] * 100),
+            "tasks_done": done_counts.get(pid, 0),
+            # Who runs this project. `delivery_owner_name` is retired, and
+            # reading it meant the card silently credited whoever created the
+            # project instead.
+            "coordinator_name": p.get("tsd_name") or p.get("created_by_name"),
+            "coordinator_id": p.get("tsd_id") or p.get("created_by"),
             "engineer_name": p.get("assigned_engineer_name"),
             "engineer_id": p.get("assigned_engineer_id"),
             "created_by_name": p.get("created_by_name"),
@@ -419,19 +443,21 @@ async def projects_summary(request: Request):
             "is_demo": bool(p.get("is_demo")),
             # The board UI decides from these whether this viewer shapes the
             # board, works inside it, or only reads it.
-            "unit_slug": p.get("unit_slug"),
-            "collaborator_ids": p.get("collaborator_ids") or [],
+            "pod_member_ids": p.get("pod_member_ids") or [],
             # Who is on the project, and who runs the unit it belongs to.
             # Everybody on a project can see the rest of the team -- knowing
             # who you are working alongside is part of being on it.
-            "collaborators": [
+            "pod": [
                 {"user_id": c.get("user_id"), "name": c.get("name")}
-                for c in (p.get("collaborators") or [])
+                for c in (p.get("pod") or [])
             ],
-            # This project's own manager if one is named, otherwise whoever
-            # runs its unit. A project handed to somebody specific should say
-            # so rather than crediting the unit's manager.
-            "unit_head_name": p.get("project_manager_name") or unit_heads.get(p.get("unit_slug")),
+            # Who runs this project. The TSD owns it; the older
+            # project_manager_name is still read for rows the migration has
+            # not reached. `unit_head_name` is kept as the key the board UI
+            # already renders, so the label survives while what fills it
+            # changes -- a project no longer belongs to a unit.
+            "unit_head_name": p.get("tsd_name") or p.get("project_manager_name"),
+            "tsd_name": p.get("tsd_name"),
             "project_manager_name": p.get("project_manager_name"),
             # Who may shape this board, sent so the UI reaches the same verdict
             # the server does. Managing a project means you started it or you
@@ -844,7 +870,7 @@ async def reorder(data: ReorderRequest, request: Request):
     # Every board named in the payload -- both those being reordered and those
     # cards are being dropped into -- must be one this caller may touch, or a
     # single request could rearrange another team's board. Moving a card is
-    # part of working the board, so collaborators may do it.
+    # part of working the board, so pod may do it.
     for board_id in {*data.board_order, *(i.board_id for i in data.cards)}:
         b = await db.task_boards.find_one({"board_id": board_id}, {"_id": 0, "project_id": 1})
         if not b:

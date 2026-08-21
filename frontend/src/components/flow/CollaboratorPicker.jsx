@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, Check, X, Loader2, ChevronDown, Users } from "lucide-react";
-import { unitsAPI } from "../../lib/api";
+import { flowAPI } from "../../lib/api";
 
 /** Two letters for the avatar, from the name where there is one. */
 function initials(name, email) {
@@ -13,15 +13,17 @@ function initials(name, email) {
 /**
  * Pick the staff who work on a project.
  *
- * Drawn from the people assigned to the project's unit rather than the whole
- * directory: a unit head is staffing their own team, and typing a name by hand
- * invites the one mistake — a typo — that would silently leave somebody off.
+ * Drawn from everybody active rather than from one unit. A pod deliberately
+ * mixes people from across the capability teams, so scoping the list to a
+ * single unit made forming a correct pod impossible rather than merely
+ * inconvenient. Typing a name by hand invites the one mistake -- a typo --
+ * that would silently leave somebody off, so it stays a picker.
  *
  * Rendered as a dropdown that opens on demand: the trigger shows who is already
  * selected, and the searchable list only appears once it is expanded, so the
  * project form stays compact instead of carrying a permanently open staff list.
  */
-export default function CollaboratorPicker({ unitSlug, value = [], onChange, disabled }) {
+export default function CollaboratorPicker({ value = [], onChange, disabled }) {
   const [staff, setStaff] = useState([]);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -32,16 +34,12 @@ export default function CollaboratorPicker({ unitSlug, value = [], onChange, dis
   const searchRef = useRef(null);
 
   useEffect(() => {
-    if (!unitSlug) {
-      setStaff([]);
-      return;
-    }
     let live = true;
     (async () => {
       setLoading(true);
       setError("");
       try {
-        const res = await unitsAPI.listStaff(unitSlug);
+        const res = await flowAPI.staff();
         if (live) { setStaff(res?.staff || []); setData(res); }
       } catch (e) {
         if (live) setError(e.response?.data?.detail || "Could not load this unit's staff");
@@ -50,7 +48,7 @@ export default function CollaboratorPicker({ unitSlug, value = [], onChange, dis
       }
     })();
     return () => { live = false; };
-  }, [unitSlug]);
+  }, []);
 
   // Close when the user clicks anywhere outside the picker.
   useEffect(() => {
@@ -107,10 +105,6 @@ export default function CollaboratorPicker({ unitSlug, value = [], onChange, dis
     document.addEventListener("keydown", onKey, true);
     return () => document.removeEventListener("keydown", onKey, true);
   }, [open]);
-
-  if (!unitSlug) {
-    return <p className="text-xs text-gray-400">Choose a unit first to see who you can add.</p>;
-  }
 
   return (
     <div ref={ref} className="relative" data-testid="collaborator-picker">

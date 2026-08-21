@@ -45,7 +45,7 @@ def _base(title: str, body_html: str, cta_url: str = "", cta_text: str = "") -> 
   </td></tr>
   <tr><td style="background:#fafafa;padding:16px 32px;border-top:1px solid #eee;">
     <p style="margin:0;font-size:11px;color:#999;font-family:Inter,sans-serif;">
-      Sent by THCO Tools &mdash; tools@thcohq.com
+      Sent by Crowther Tools &mdash; tools@thcohq.com
     </p>
   </td></tr>
 </table>

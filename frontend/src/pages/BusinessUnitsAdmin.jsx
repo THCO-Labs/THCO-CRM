@@ -35,7 +35,7 @@ const SECTION_META = [
   { key: "overview", label: "Overview stats", icon: LayoutDashboard },
   { key: "tools", label: "Tools available", icon: Wrench },
   { key: "team", label: "Team", icon: Users },
-  { key: "flow", label: "THCO Flow pipeline", icon: FolderKanban },
+  { key: "flow", label: "Crowther OS pipeline", icon: FolderKanban },
   { key: "feedback", label: "Feedback & IT Support", icon: MessageSquare },
 ];
 
@@ -357,7 +357,7 @@ const BusinessUnitsAdmin = () => {
           <DialogHeader>
             <DialogTitle>Invite Members — {inviteUnit?.name}</DialogTitle>
             <DialogDescription>
-              Enter member emails (one per line or comma-separated). Accounts are created with access to this unit + THCO Flow, and login details are emailed to them.
+              Enter member emails (one per line or comma-separated). Accounts are created with access to this unit + Crowther OS, and login details are emailed to them.
             </DialogDescription>
           </DialogHeader>
 

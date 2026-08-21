@@ -54,7 +54,7 @@ const Login = () => {
   // Google sign-in is only offered once a real OAuth client is configured.
   // This previously redirected to auth.emergentagent.com -- a leftover from the
   // scaffolding tool -- which sent staff to a third-party sign-in page instead
-  // of THCO's own. Showing no button is better than showing a broken one.
+  // of Crowther's own. Showing no button is better than showing a broken one.
   //
   // To enable: create an OAuth 2.0 Web client in the thco-crm Google Cloud
   // project, set REACT_APP_GOOGLE_CLIENT_ID, and implement the backend
@@ -105,7 +105,7 @@ const Login = () => {
             <span className="font-display text-[#0C0F13] text-base font-semibold">T</span>
           </span>
           <div>
-            <p className="font-display text-white text-lg leading-none tracking-wide">THCO</p>
+            <p className="font-display text-white text-lg leading-none tracking-wide">Crowther</p>
             <p className="text-[8px] uppercase tracking-[0.4em] text-[#6B7280] mt-1">Control Room</p>
           </div>
         </div>
@@ -118,13 +118,13 @@ const Login = () => {
             <em className="lux-gold-text not-italic">Amplified.</em>
           </h1>
           <p className="text-[#9AA0AB] text-[15px] leading-relaxed max-w-sm">
-            One login for every business unit — clients, pipelines, talent, presentations, and the tools that run THCO.
+            One login for every business unit — clients, pipelines, talent, presentations, and the tools that run Crowther.
           </p>
         </div>
 
         {/* Footer line */}
         <div className="relative z-10 flex items-center justify-between text-[10px] uppercase tracking-[0.25em] text-[#5C626D]">
-          <span>THCO &copy; {new Date().getFullYear()}</span>
+          <span>Crowther &copy; {new Date().getFullYear()}</span>
           <span>Eleven Units · One Room</span>
         </div>
       </div>
@@ -137,7 +137,7 @@ const Login = () => {
             <span className="w-9 h-9 rounded-md bg-gradient-to-br from-[#C6A15B] to-[#8F7340] flex items-center justify-center">
               <span className="font-display text-[#0C0F13] text-base font-semibold">T</span>
             </span>
-            <p className="font-display text-gray-900 text-xl tracking-wide">THCO</p>
+            <p className="font-display text-gray-900 text-xl tracking-wide">Crowther</p>
           </div>
 
           <div className="mb-9">

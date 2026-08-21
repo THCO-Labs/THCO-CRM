@@ -34,7 +34,7 @@ const QUESTIONS = [
   { id: "q28", text: 'A project outside your experience, 4 weeks — first 48 hours?' },
   { id: "q29", text: "Are you a 9-to-5 person, or do you lose track of time?" },
   { id: "q30", text: "Describe the best place to work for you." },
-  { id: "q31", text: "If THCO became Africa's most important tech firm, what role do you play?" },
+  { id: "q31", text: "If Crowther became Africa's most important tech firm, what role do you play?" },
   { id: "q32", text: "Is there anything about you that we should know but didn't ask?" },
   { id: "q33", text: "When you are old and retired, what do you want to look back and say you did with your life?" },
   { id: "q34", text: "Why that one? What would it feel like to actually achieve it?" },

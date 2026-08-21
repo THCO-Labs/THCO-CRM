@@ -23,7 +23,7 @@ const UNITS = [
     gradient: "bg-gradient-to-br from-[#B855E8] to-[#DA67E4]",
   },
   { 
-    name: "THCO HR", 
+    name: "Crowther HR", 
     slug: "thco-hr", 
     icon: UserCog, 
     gradient: "bg-gradient-to-br from-[#8B5CF6] to-[#A78BFA]",
@@ -35,7 +35,7 @@ const UNITS = [
     gradient: "bg-gradient-to-br from-[#14B8A6] to-[#2DD4BF]",
   },
   { 
-    name: "IT & THCO Tools", 
+    name: "IT & Crowther Tools", 
     slug: "it-tools", 
     icon: Wrench, 
     gradient: "bg-gradient-to-br from-[#F97316] to-[#FB923C]",

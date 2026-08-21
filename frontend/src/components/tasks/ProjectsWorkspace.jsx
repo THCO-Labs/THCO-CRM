@@ -88,7 +88,7 @@ export default function ProjectsWorkspace({ onSelect, autoSelectId }) {
         </div>
         <h3 className="font-display text-xl text-gray-900 mb-2">No projects yet</h3>
         <p className="text-sm text-gray-500 max-w-sm">
-          Projects from your pipeline will appear here. Create one in THCO Flow to start organizing its tasks.
+          Projects from your pipeline will appear here. Create one in Crowther OS to start organizing its tasks.
         </p>
       </div>
     );
@@ -160,7 +160,7 @@ export default function ProjectsWorkspace({ onSelect, autoSelectId }) {
                 <User className="w-3 h-3" />
                 <span className="truncate">
                   {p.unit_head_name || p.coordinator_name}
-                  {p.unit_head_name && <span className="text-gray-400"> · project manager</span>}
+                  {p.unit_head_name && <span className="text-gray-400"> · TSD</span>}
                 </span>
               </div>
             )}

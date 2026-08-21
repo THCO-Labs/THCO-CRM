@@ -123,7 +123,7 @@ const RECENT_CONTENT = [
   },
   {
     id: 2,
-    title: "THCO's 5 Pillars of Digital Transformation",
+    title: "Crowther's 5 Pillars of Digital Transformation",
     type: "linkedin",
     status: "scheduled",
     date: "2026-02-18",

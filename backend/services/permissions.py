@@ -28,7 +28,7 @@ that a fact the database enforces: reassigning is a single write, and a
 person cannot be left as a stale head of a unit somebody else now runs.
 
 A head opens projects for their own unit and adds staff to them as
-collaborators. Ordinary staff no longer open projects at all -- they see
+pod. Ordinary staff no longer open projects at all -- they see
 the ones they were added to.
 """
 
@@ -68,7 +68,7 @@ def has_unit_access(user: Dict[str, Any], slug: str) -> bool:
     moved through its stages. Those are a project manager's decisions, so the
     pipeline is theirs and the administrators'.
 
-    Being on a project does not open it. A collaborator's work is the task
+    Being on a project does not open it. A pod member's work is the task
     board their manager sets up: they see their tasks, move them, and take them
     to done. The pipeline around that -- which stage the client is at, what the
     project is worth, who else is being considered -- is not theirs to see, and
@@ -79,8 +79,47 @@ def has_unit_access(user: Dict[str, Any], slug: str) -> bool:
     if is_admin(user):
         return True
     if slug == "flow":
-        return is_unit_head(user)
+        return can_enter_pipeline(user)
     return slug in ((user or {}).get("accessible_units") or [])
+
+
+# The functions whose job is the pipeline itself. Everyone else works on the
+# board, which is a different router and unaffected by this.
+#
+# Engineers and designers are deliberately absent. An engineer who has been
+# made architect-capable is present, because they need to reach the projects
+# they are named architect on -- row scoping then limits them to those.
+PIPELINE_FUNCTIONS = {
+    "senior_partner",   # selects architects, watches exceptions
+    "commercial",       # opens projects at intake
+    "tsd",              # owns and moves projects
+    "talent_sd",        # works talent requirements raised on projects
+    "people_ops",       # onboards contract staff onto pods
+    "legal",            # reads the commercial slice to draft contracts
+    "finance",          # reads the commercial slice
+}
+
+
+def can_enter_pipeline(user: Dict[str, Any]) -> bool:
+    """Whether this person may open Crowther OS at all.
+
+    Being on a project still does not open it. The pipeline carries stages,
+    value and who else is in the running, which is not a pod member's
+    business; their work is the task board their architect sets up.
+
+    What changed is that the pipeline is no longer only for unit heads. A TSD
+    owns projects without necessarily heading a unit, and locking them out of
+    the thing they own made the role impossible to hold.
+    """
+    if is_admin(user):
+        return True
+    if is_unit_head(user):
+        return True
+    u = user or {}
+    if u.get("function_role") in PIPELINE_FUNCTIONS:
+        return True
+    # An architect-capable engineer reaches the projects they architect.
+    return bool(u.get("can_architect"))
 
 
 def headed_units(user: Dict[str, Any]) -> List[str]:
@@ -96,25 +135,38 @@ def is_unit_head(user: Dict[str, Any]) -> bool:
     return bool(headed_units(user))
 
 
+def can_open_project(user: Dict[str, Any]) -> bool:
+    """Alias for `can_create_projects`, read at the call site as the action."""
+    return can_create_projects(user)
+
+
 def can_create_projects(user: Dict[str, Any]) -> bool:
     """Whether this person may open a project at all.
 
-    Used to decide whether to offer the action; the unit-specific check
-    below is what actually authorises a given create.
+    The client intake form is the formal entry point to the lifecycle, and it
+    is filled in by whoever had the client conversation. That is usually
+    commercial, sometimes a TSD, sometimes the Senior Partner.
+
+    Restricting this to unit heads was right when a project belonged to a unit.
+    It is wrong now: it would mean the person who spoke to the client cannot
+    record what was said, which is the one thing the intake form exists for.
+
+    Heading a unit still counts, and only for as long as the migration takes.
+    Those people are mapped to `tsd`; until that has run everywhere, locking
+    them out of work they already run would be a worse bug than the one this
+    replaces.
     """
-    return is_admin(user) or is_unit_head(user)
+    return (
+        is_admin(user)
+        or has_function(user, COMMERCIAL, TSD, SENIOR_PARTNER)
+        or is_unit_head(user)
+    )
 
 
-def can_create_project_in_unit(user: Dict[str, Any], slug: str) -> bool:
-    """Whether this person may open a project under a particular unit.
-
-    Administrators may open one anywhere. A head is confined to the unit
-    they head: the head of Technology & Build does not open work under
-    Marketing.
-    """
-    if is_admin(user):
-        return True
-    return bool(slug) and slug in headed_units(user)
+# `can_create_project_in_unit` was removed with the unit field on a project.
+# There is no unit to check a create against: a project arrives from a client
+# conversation, is owned by a named TSD, and is built by a pod drawn from
+# across the capability teams rather than from one unit's staff.
 
 
 def can_manage_project(user: Dict[str, Any], project: Dict[str, Any]) -> bool:
@@ -144,7 +196,12 @@ def can_manage_project(user: Dict[str, Any], project: Dict[str, Any]) -> bool:
     # unit does not make a colleague's project yours to rename, restaff or
     # delete, any more than it makes it yours to read.
     return (
-        uid == p.get("created_by")
+        # The TSD owns the project, so they run it.
+        uid == p.get("tsd_id")
+        # The architect owns its technical direction and its board.
+        or uid == p.get("architect_id")
+        or uid == p.get("created_by")
+        # Retired, still read for rows the migration has not reached.
         or uid == p.get("project_manager_id")
         or uid in (p.get("project_manager_ids") or [])
     )
@@ -153,18 +210,27 @@ def can_manage_project(user: Dict[str, Any], project: Dict[str, Any]) -> bool:
 def can_manage_boards(user: Dict[str, Any], project: Dict[str, Any]) -> bool:
     """Whether this person may change a project board's structure.
 
-    Adding, renaming and deleting boards is the head's job -- they decide
-    how their unit's work is laid out. Administrators and HR keep it too,
-    as does the delivery coordinator role that ran boards before units had
-    heads.
+    The board is the technical build, so its shape is a technical decision and
+    belongs to the project's Solution Architect. The TSD keeps it too, because
+    they own the project and should not need to find the architect to fix a
+    column, and administrators keep everything.
+
+    This used to also admit anyone holding `is_delivery_coordinator`. That flag
+    is retired: the coordinator's job was choosing who runs a project, which is
+    now a pipeline stage rather than a standing privilege.
     """
-    return can_manage_project(user, project) or bool((user or {}).get("is_delivery_coordinator"))
+    return (
+        is_admin(user)
+        or is_project_tsd(user, project)
+        or is_project_architect(user, project)
+        or can_manage_project(user, project)
+    )
 
 
 def can_use_board(user: Dict[str, Any], project: Dict[str, Any]) -> bool:
     """Whether this person may work inside a project's board.
 
-    Everybody on the project, collaborators included. The board is where
+    Everybody on the project, pod included. The board is where
     staff post progress on the work they were given, so being able to add
     and move cards is the point of being on the project at all -- it is
     only the shape of the board they do not decide.
@@ -172,14 +238,30 @@ def can_use_board(user: Dict[str, Any], project: Dict[str, Any]) -> bool:
     if can_manage_boards(user, project):
         return True
     uid = (user or {}).get("user_id")
-    return bool(uid) and uid in ((project or {}).get("collaborator_ids") or [])
+    if not uid:
+        return False
+    p = project or {}
+    return uid in (p.get("pod_member_ids") or []) or uid in (p.get("collaborator_ids") or [])
 
 
 def can_view_all_projects(user: Dict[str, Any]) -> bool:
-    """Admins and delivery oversight roles see the whole portfolio."""
+    """Who may find any project, as opposed to only their own.
+
+    Administrators and the Senior Partner, because oversight is the job.
+
+    Legal and Finance too, but note what this does and does not grant. It lets
+    them locate a project; it does not decide what they then see of it. That is
+    `sees_commercial_slice_only`, which hands them a different object rather
+    than the whole record with fields hidden. Without this they could reach the
+    pipeline and find nothing in it, which is how the role ended up unusable
+    the first time.
+    """
     u = user or {}
     return (
         is_admin(u)
+        or u.get("function_role") == SENIOR_PARTNER
+        or u.get("function_role") in COMMERCIAL_FUNCTIONS
+        # Retired flags, still honoured until the migration has run everywhere.
         or bool(u.get("is_executive_approver"))
         or bool(u.get("is_delivery_coordinator"))
         or bool(u.get("is_delivery_owner"))
@@ -268,8 +350,19 @@ def project_scope_filter(user: Dict[str, Any]) -> Dict[str, Any]:
         {"created_by": {"$in": identities}},
         {"delivery_coordinator_id": uid},
         {"executive_approver_id": uid},
-        # Staff added to a project by its manager.
+        # The pod: everybody working on this project.
+        {"pod_member_ids": uid},
+        # The name it had before the two were consolidated. Read while the
+        # migration works through, so nobody loses a project they are on.
         {"collaborator_ids": uid},
+        # Crowther OS ownership. The TSD owns the project, the Solution
+        # Architect owns its technical direction, and the pod is who is
+        # building it. Each is a way of being on a project, so each is a way
+        # of being able to find it.
+        {"tsd_id": uid},
+        {"architect_id": uid},
+        {"designer_id": uid},
+        {"pod_member_ids": uid},
     ]
 
     # Managing a unit is what lets somebody open a project in it. It is not a
@@ -296,3 +389,147 @@ def redact_candidate(candidate: Dict[str, Any], user: Dict[str, Any]) -> Dict[st
         redacted.pop(field, None)
     redacted["_redacted"] = True
     return redacted
+
+
+# ── Function roles (Crowther OS) ──────────────────────────────────────
+"""
+Two independent axes, and they must stay independent.
+
+`role` (super_admin / mini_admin / team_member) is an ACCESS LEVEL: how much of
+the system a person may reach at all.
+
+`function_role` is a JOB: what this person does on a delivery project. One
+person can be a mini_admin and a talent_sd; the two answer different questions
+and collapsing them would mean promoting somebody to see their own work.
+
+Solution Architect is deliberately not a function_role of its own. It is a hat
+worn on one project: an engineer carries `can_architect`, and the project names
+one of them in `architect_id`. Otherwise a person who architects project A and
+writes code on project B would need two accounts.
+"""
+
+SENIOR_PARTNER = "senior_partner"
+COMMERCIAL = "commercial"
+TSD = "tsd"
+ENGINEER = "engineer"
+PRODUCT_DESIGNER = "product_designer"
+QA = "qa"
+TALENT_SD = "talent_sd"
+PEOPLE_OPS = "people_ops"
+LEGAL = "legal"
+FINANCE = "finance"
+
+FUNCTION_ROLES = [
+    SENIOR_PARTNER, COMMERCIAL, TSD, ENGINEER, PRODUCT_DESIGNER,
+    QA, TALENT_SD, PEOPLE_OPS, LEGAL, FINANCE,
+]
+
+# The functions whose work is commercial rather than technical. They read a
+# narrow slice of a project (brief, requirements, scope) and none of its
+# technical detail.
+COMMERCIAL_FUNCTIONS = {LEGAL, FINANCE}
+
+
+def function_role(user: Dict[str, Any]) -> str:
+    return (user or {}).get("function_role") or ""
+
+
+def has_function(user: Dict[str, Any], *roles: str) -> bool:
+    return function_role(user) in roles
+
+
+def is_senior_partner(user: Dict[str, Any]) -> bool:
+    return has_function(user, SENIOR_PARTNER)
+
+
+def is_tsd(user: Dict[str, Any]) -> bool:
+    return has_function(user, TSD)
+
+
+def can_architect(user: Dict[str, Any]) -> bool:
+    """Whether this person may be selected as a Solution Architect.
+
+    Architects come from the engineering team, so this is a flag on an
+    engineer rather than a role that replaces being one.
+    """
+    return bool((user or {}).get("can_architect"))
+
+
+def require_function(user: Dict[str, Any], *roles: str, detail: str = "") -> None:
+    require(
+        is_admin(user) or has_function(user, *roles),
+        detail or f"This action belongs to: {', '.join(roles)}",
+    )
+
+
+# ── Project-level roles ───────────────────────────────────────────────
+
+def is_project_tsd(user: Dict[str, Any], project: Dict[str, Any]) -> bool:
+    uid = (user or {}).get("user_id")
+    return bool(uid) and uid == (project or {}).get("tsd_id")
+
+
+def is_project_architect(user: Dict[str, Any], project: Dict[str, Any]) -> bool:
+    uid = (user or {}).get("user_id")
+    return bool(uid) and uid == (project or {}).get("architect_id")
+
+
+def can_move_stage(user: Dict[str, Any], project: Dict[str, Any]) -> bool:
+    """Who may move a project through the pipeline.
+
+    The TSD owns the client and the project state, so the TSD moves it. This
+    is narrower than the old rule, which let anyone who could edit a project
+    also advance it.
+    """
+    return is_admin(user) or is_project_tsd(user, project)
+
+
+def can_force_gate(user: Dict[str, Any], project: Dict[str, Any]) -> bool:
+    """Who may advance past an unmet gate condition.
+
+    The TSD alone. Every use is recorded and the Senior Partner is alerted,
+    because a forced gate is the system being overruled rather than used.
+    """
+    return is_admin(user) or is_project_tsd(user, project)
+
+
+def can_set_health(user: Dict[str, Any], project: Dict[str, Any]) -> bool:
+    return is_admin(user) or is_project_tsd(user, project)
+
+
+def can_select_architect(user: Dict[str, Any]) -> bool:
+    """Only the Senior Partner names the technical owner of a project.
+
+    Stage 6 blocks until they act. That is deliberate, and it is the one place
+    the Senior Partner sits on the critical path.
+    """
+    return is_admin(user) or is_senior_partner(user)
+
+
+def can_upload_architecture(user: Dict[str, Any], project: Dict[str, Any]) -> bool:
+    """The named architect of this project, and nobody else.
+
+    Not every architect-capable engineer: the architecture of a project
+    belongs to the person accountable for it.
+    """
+    return is_admin(user) or is_project_architect(user, project)
+
+
+def can_raise_talent_requirement(user: Dict[str, Any], project: Dict[str, Any]) -> bool:
+    return is_admin(user) or is_project_architect(user, project)
+
+
+def can_confirm_talent_requirement(user: Dict[str, Any], project: Dict[str, Any]) -> bool:
+    return is_admin(user) or is_project_tsd(user, project)
+
+
+def sees_commercial_slice_only(user: Dict[str, Any]) -> bool:
+    """Legal and Finance write contracts, not software.
+
+    They get the brief, the requirements, the scope and the commercial fields.
+    Not the architecture, the board, QA, or raw client transcripts. This is
+    enforced by returning a different object, never by hiding fields in CSS.
+    """
+    if is_admin(user):
+        return False
+    return function_role(user) in COMMERCIAL_FUNCTIONS

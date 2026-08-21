@@ -83,7 +83,7 @@ def _project_email_html(person_name: str, project: Dict[str, Any], actor_name: s
       <p style="color:#9AA0AB;margin:0 0 18px">Hello, <strong style="color:#fff">{person_name}</strong></p>
       <p style="color:#E8E6F0">
         <strong style="color:#fff">{actor_name}</strong> has added you to a project.
-        You are now a collaborator and it will appear on your dashboard.
+        You are now a pod member and it will appear on your dashboard.
       </p>
       <div style="background:#161B22;border:1px solid #2a2f38;border-radius:10px;padding:16px;margin:16px 0">
         <p style="margin:4px 0;color:#9AA0AB">Project<br><strong style="color:#fff">{name}</strong></p>
@@ -123,7 +123,7 @@ def _project_removal_email_html(person_name: str, project: Dict[str, Any], actor
 async def notify_added_to_project(
     db,
     project: Dict[str, Any],
-    collaborators: List[Dict[str, Any]],
+    pod: List[Dict[str, Any]],
     actor: Dict[str, Any],
 ) -> Dict[str, int]:
     """Tell each newly placed person, in-app and by email.
@@ -139,7 +139,7 @@ async def notify_added_to_project(
     in_app = 0
     emailed = 0
 
-    for person in collaborators:
+    for person in pod:
         uid = person.get("user_id")
         if not uid or uid == actor_id:
             continue
@@ -149,7 +149,7 @@ async def notify_added_to_project(
             user_id=uid,
             kind=ADDED_TO_PROJECT,
             title=f"You were added to {project_name}",
-            body=f"{actor_name} added you as a collaborator.",
+            body=f"{actor_name} added you as a pod member.",
             link=f"/flow/projects/{project.get('id')}",
             actor_id=actor_id or "",
             actor_name=actor_name,

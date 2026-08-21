@@ -30,7 +30,7 @@ export const FlowShell = ({ children, title, action }) => {
             <span className="text-[#C9A84C] font-bold text-sm tracking-wider">F</span>
           </div>
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">THCO Flow</h1>
+            <h1 className="text-xl font-semibold text-gray-900">Crowther OS</h1>
             <p className="text-xs text-gray-500">Project management — deal to delivery</p>
           </div>
         </div>

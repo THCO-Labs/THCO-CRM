@@ -137,7 +137,7 @@ export default function FlowDashboard() {
 }
 
 // ---------------------------------------------------------------------------
-// EMAIL HEALTH widget — shows Resend send activity for THCO Flow
+// EMAIL HEALTH widget — shows Resend send activity for Crowther OS
 // ---------------------------------------------------------------------------
 const EmailHealthCard = () => {
   const [data, setData] = useState(null);

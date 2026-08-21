@@ -78,7 +78,7 @@ const PRIORITY_COLORS = {
   low: "bg-gray-100 text-gray-600 border-gray-200"
 };
 
-// Sample project data based on THCO Operating Cycle
+// Sample project data based on Crowther Operating Cycle
 const SAMPLE_PROJECTS = [
   {
     id: "proj_001",
@@ -223,7 +223,7 @@ const ProjectManagement = () => {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Project Management</h1>
-          <p className="text-gray-500 mt-1">Track projects through the THCO Operating Cycle</p>
+          <p className="text-gray-500 mt-1">Track projects through the Crowther Operating Cycle</p>
         </div>
         <div className="flex gap-3">
           {/* FlowForge needs Supabase and n8n, neither configured here, so this

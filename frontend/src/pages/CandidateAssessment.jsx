@@ -58,7 +58,7 @@ const QUESTIONS = [
   { id: "q28", type: "textarea", text: 'If I gave you a project you\'d never built before — something completely outside your experience — and told you "figure it out, you have 4 weeks," what would your first 48 hours look like?' },
   { id: "q29", type: "textarea", text: "Be honest: are you a 9-to-5 person, or are you the kind of person who loses track of time because you're deep in a problem?" },
   { id: "q30", type: "textarea", text: "Describe the best place to work for you. Not a company name — describe the environment, the people, the energy." },
-  { id: "q31", type: "textarea", text: "If THCO became the most important technology and professional services firm in Africa in 5 years, what role do you see yourself playing in that story?" },
+  { id: "q31", type: "textarea", text: "If Crowther became the most important technology and professional services firm in Africa in 5 years, what role do you see yourself playing in that story?" },
   { id: "q32", type: "textarea", text: "Is there anything about you — your background, your values, the way you think — that you think we should know, but that we didn't ask about?" },
   { id: "q33", type: "radio", text: "When you are old and retired, what do you want to look back and say you did with your life? Pick one.", options: [
     "Built a billion-dollar empire and made the Forbes list",
@@ -144,7 +144,7 @@ const PageOne = ({ onStart }) => {
       <div className="w-full max-w-md">
         <div className="mb-10 text-center">
           <h1 className="text-2xl sm:text-3xl font-semibold text-gray-900 tracking-tight">Candidate Assessment</h1>
-          <p className="text-gray-500 mt-2 text-sm">THCO Engineering</p>
+          <p className="text-gray-500 mt-2 text-sm">Crowther Engineering</p>
         </div>
 
         <div className="bg-white rounded-xl border border-gray-200 p-6 sm:p-8 space-y-5">

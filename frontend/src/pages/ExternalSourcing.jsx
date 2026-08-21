@@ -233,7 +233,7 @@ const ExternalSourcing = () => {
               {searching ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Searching Google...</>
               ) : (
-                <><Wand2 className="w-4 h-4 mr-2" />Find Candidates</>
+                <><Wand2 className="w-4 h-4 mr-2" />Find Talent</>
               )}
             </Button>
           </form>

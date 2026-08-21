@@ -38,9 +38,9 @@ import WorkflowDesignPreview from "../components/flowforge/WorkflowDesignPreview
 // Unit name mapping
 const UNIT_NAMES = {
   talent: "Talent & Delivery",
-  "thco-hr": "THCO HR",
+  "thco-hr": "Crowther HR",
   "project-management": "Project Management",
-  "it-tools": "IT & THCO Tools",
+  "it-tools": "IT & Crowther Tools",
   sales: "Sales & Business Development",
   marketing: "Marketing & Brand",
   advisory: "Advisory & Consulting",

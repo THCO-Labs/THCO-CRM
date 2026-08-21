@@ -95,7 +95,7 @@ export default function FlowProjects() {
           {canCreate ? (
             <Link to="/flow/projects/new"><Button className="bg-[#1B4332] text-white">Create first project</Button></Link>
           ) : (
-            <p className="text-xs text-gray-400">Your unit's project manager opens projects and adds you to them.</p>
+            <p className="text-xs text-gray-400">Your unit's TSD opens projects and adds you to them.</p>
           )}
         </div>
       ) : (
@@ -121,7 +121,7 @@ export default function FlowProjects() {
                       {p.stage}: {p.stage_label}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-gray-600">{p.delivery_owner_name || <span className="text-gray-400 italic">unassigned</span>}</td>
+                  <td className="px-4 py-3 text-gray-600">{p.tsd_name || <span className="text-gray-400 italic">unassigned</span>}</td>
                   <td className="px-4 py-3 text-[11px] font-mono text-gray-400">{p.project_id_display}</td>
                   {/* Editing and removing were only reachable from the project
                       page, which most people never opened. */}

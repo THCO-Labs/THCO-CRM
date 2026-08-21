@@ -344,13 +344,13 @@ export default function SagicorProgressDashboard() {
       >
         <div className="max-w-[1400px] mx-auto px-4 md:px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            {/* THCO Logo Placeholder */}
+            {/* Crowther Logo Placeholder */}
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-md flex items-center justify-center" style={{ background: C.gold }}>
                 <span className="text-xs font-bold" style={{ color: C.deepNavy }}>T</span>
               </div>
               <div>
-                <div className="text-white font-bold text-sm tracking-wide">THCO GLOBAL</div>
+                <div className="text-white font-bold text-sm tracking-wide">Crowther GLOBAL</div>
                 <div className="text-xs" style={{ color: C.gold }}>Sagicor Assessment</div>
               </div>
             </div>
@@ -727,9 +727,9 @@ export default function SagicorProgressDashboard() {
           style={{ borderTop: `1px solid ${C.lightGray}` }}
           data-testid="dashboard-footer"
         >
-          <p className="text-xs font-semibold" style={{ color: C.navy }}>THCO Global LLC | Sagicor Technology Capability Assessment | Confidential</p>
+          <p className="text-xs font-semibold" style={{ color: C.navy }}>Crowther Global LLC | Sagicor Technology Capability Assessment | Confidential</p>
           <p className="text-xs" style={{ color: C.medGray }}>Last Updated: February 26, 2026</p>
-          <p className="text-xs" style={{ color: C.medGray }}>For questions, contact Ayo, Managing Partner, THCO Global LLC</p>
+          <p className="text-xs" style={{ color: C.medGray }}>For questions, contact Ayo, Managing Partner, Crowther Global LLC</p>
         </motion.footer>
       </div>
     </div>

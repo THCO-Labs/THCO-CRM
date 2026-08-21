@@ -115,7 +115,7 @@ class UserResponse(BaseModel):
     # Units this person heads. Resolved from the units collection on load, so
     # the frontend can offer "New Project" only where it will actually work.
     headed_units: List[str] = []
-    # Whether they are on any project. Gates THCO Flow in the sidebar.
+    # Whether they are on any project. Gates Crowther OS in the sidebar.
     has_projects: bool = False
     is_invoicing_owner: Optional[bool] = False
     is_prospect_owner: Optional[bool] = False
@@ -141,6 +141,12 @@ class UserUpdate(BaseModel):
     device_lock_enabled: Optional[bool] = None
     allowed_device_fingerprint: Optional[str] = None
     headed_units: Optional[List[str]] = None
+    # What this person does on a delivery project, as distinct from how much of
+    # the system they may reach. `role` stays the access level; this is the job.
+    function_role: Optional[str] = None
+    # Architects come from the engineering team, so being selectable as one is
+    # a flag on an engineer rather than a role that replaces being one.
+    can_architect: Optional[bool] = None
 
 class LoginRecordResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -902,140 +908,22 @@ async def login(credentials: UserLogin, request: Request, response: Response):
         "session_token": session_token
     }
 
-@api_router.post("/auth/session")
-async def exchange_session(request: Request, response: Response):
-    """Exchange Emergent OAuth session_id for user session"""
-    session_id = request.headers.get("X-Session-ID")
-    if not session_id:
-        raise HTTPException(status_code=400, detail="Session ID required")
-    
-    # Call Emergent auth service
-    async with httpx.AsyncClient() as http_client:
-        try:
-            auth_response = await http_client.get(
-                "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
-                headers={"X-Session-ID": session_id}
-            )
-            if auth_response.status_code != 200:
-                raise HTTPException(status_code=401, detail="Invalid session")
-            
-            auth_data = auth_response.json()
-        except Exception as e:
-            logger.error(f"OAuth session exchange failed: {e}")
-            raise HTTPException(status_code=401, detail="Authentication failed")
-    
-    email = auth_data.get("email")
-    name = auth_data.get("name", "")
-    picture = auth_data.get("picture", "")
-    
-    # Check if user exists
-    user = await db.users.find_one({"email": email}, {"_id": 0})
-    
-    if user:
-        # Check device lock for existing user
-        device_allowed, block_reason = await check_device_lock(user, request)
-        if not device_allowed:
-            await record_login_attempt(
-                user_id=user["user_id"],
-                user_name=user["name"],
-                user_email=user["email"],
-                request=request,
-                login_method="google_oauth",
-                success=False,
-                failure_reason=block_reason
-            )
-            raise HTTPException(status_code=403, detail=block_reason)
-        
-        # Update existing user
-        await db.users.update_one(
-            {"email": email},
-            {"$set": {"name": name, "picture": picture}}
-        )
-        user_id = user["user_id"]
-        role = user["role"]
-        accessible_units = user.get("accessible_units", [])
-        status = user["status"]
-        
-        if status == "disabled":
-            await record_login_attempt(
-                user_id=user["user_id"],
-                user_name=user["name"],
-                user_email=user["email"],
-                request=request,
-                login_method="google_oauth",
-                success=False,
-                failure_reason="Account disabled"
-            )
-            raise HTTPException(status_code=403, detail="Account disabled")
-    else:
-        # Check if first user
-        user_count = await db.users.count_documents({})
-        role = "super_admin" if user_count == 0 else "team_member"
-        all_units = ["talent", "thco-hr", "flow", "it-tools", "sales", "marketing", "advisory", "technology", "operations", "academy", "client-delivery"]
-        accessible_units = all_units if role == "super_admin" else []
-        
-        user_id = f"user_{uuid.uuid4().hex[:12]}"
-        user_doc = {
-            "user_id": user_id,
-            "email": email,
-            "password_hash": "",
-            "name": name,
-            "role": role,
-            "accessible_units": accessible_units,
-            "status": "active",
-            "picture": picture,
-            "device_lock_enabled": False,
-            "allowed_device_fingerprint": None,
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        await db.users.insert_one(user_doc)
-        status = "active"
-        await log_activity(user_id, name, "User registered via Google OAuth", details=f"Role: {role}")
-    
-    # Record successful login
-    login_record = await record_login_attempt(
-        user_id=user_id,
-        user_name=name,
-        user_email=email,
-        request=request,
-        login_method="google_oauth",
-        success=True
-    )
-    
-    # Create session
-    session_token = f"session_{uuid.uuid4().hex}"
-    session_doc = {
-        "user_id": user_id,
-        "session_token": session_token,
-        "device_fingerprint": login_record["device_fingerprint"],
-        "ip_address": login_record["ip_address"],
-        "expires_at": (datetime.now(timezone.utc) + timedelta(days=SESSION_EXPIRY_DAYS)).isoformat(),
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    await db.user_sessions.insert_one(session_doc)
-    
-    response.set_cookie(
-        key="session_token",
-        value=session_token,
-        httponly=True,
-        secure=True,
-        samesite="none",
-        path="/",
-        max_age=SESSION_EXPIRY_DAYS * 24 * 60 * 60
-    )
-    
-    await log_activity(user_id, name, "User logged in via Google OAuth", details=f"IP: {login_record['ip_address']}, Device: {login_record['device_type']}")
-    
-    return {
-        "user_id": user_id,
-        "email": email,
-        "name": name,
-        "role": role,
-        "accessible_units": accessible_units,
-        "status": status,
-        "picture": picture,
-        "session_token": session_token
-    }
+# The Emergent OAuth session exchange lived here.
+#
+# It took an X-Session-ID header, asked demobackend.emergentagent.com whose
+# session it was, and trusted the email it got back -- creating a new active
+# account for any address that service vouched for. It was unauthenticated,
+# and it delegated account creation to a third-party demo backend nobody
+# here controls.
+#
+# The UI stopped offering it some time ago (Login.jsx removed the button and
+# there is no callback page), so it was unreachable but still live. Removed
+# on 20 August 2026 along with its caller in App.js and authAPI.exchangeSession.
+#
+# Google sign-in, when it is wanted, is the real OAuth client described in
+# the comment in frontend/src/pages/Login.jsx: an OAuth 2.0 web client in the
+# thco-crm Google Cloud project, REACT_APP_GOOGLE_CLIENT_ID, and a
+# /api/auth/google/callback exchange that verifies the token itself.
 
 @api_router.get("/auth/me")
 async def get_me(request: Request):
@@ -1064,6 +952,14 @@ async def get_me(request: Request):
         "is_invoicing_owner": user.get("is_invoicing_owner", False),
         "is_prospect_owner": user.get("is_prospect_owner", False),
         "is_it": user.get("is_it", False),
+        # What this person does on a delivery project, as opposed to how much
+        # of the system they may reach. The two are separate on purpose: a
+        # mini_admin can be a talent_sd, and promoting somebody to see their
+        # own work would be the wrong fix.
+        "function_role": user.get("function_role"),
+        # Architects come from engineering, so this is a flag on an engineer
+        # rather than a role that replaces being one.
+        "can_architect": user.get("can_architect", False),
         # Resolved per request in get_current_user. The sidebar uses these to
         # decide whether to offer THCO Flow and the New Project action.
         "headed_units": user.get("headed_units", []),
@@ -1353,8 +1249,19 @@ async def create_user(user_data: dict, request: Request):
         "is_hr": bool(user_data.get("is_hr", False)),
         "is_engineer": bool(user_data.get("is_engineer", False)),
         "is_fulfillment": bool(user_data.get("is_fulfillment", False)),
+        # What this person does on a delivery project. Separate from `role`,
+        # which is how much of the system they may reach. Unset is a real
+        # state: they see only what they are put on until somebody decides.
+        "function_role": (user_data.get("function_role") or None),
+        "can_architect": bool(user_data.get("can_architect", False)),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
+
+    if new_user["function_role"] and new_user["function_role"] not in permissions.FUNCTION_ROLES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown function role. One of: {', '.join(permissions.FUNCTION_ROLES)}",
+        )
     
     await db.users.insert_one(new_user)
 
@@ -1393,7 +1300,7 @@ async def create_user(user_data: dict, request: Request):
         login_link = f"{os.environ.get('FRONTEND_URL', 'http://localhost:3000')}/login"
         html = f"""
         <div style="font-family:Inter,Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;background:#0C0F13;border-radius:12px;color:#E8E6F0">
-          <div style="font-size:22px;font-weight:700;color:#C6A15B;margin-bottom:4px">THCO Control Room</div>
+          <div style="font-size:22px;font-weight:700;color:#C6A15B;margin-bottom:4px">Crowther Control Room</div>
           <p style="color:#9AA0AB;margin:0 0 18px">Welcome, <strong style="color:#fff">{user_data['name']}</strong></p>
           <p style="color:#E8E6F0">Your account has been created. Use the details below to sign in and start operating:</p>
           <div style="background:#161B22;border:1px solid #2a2f38;border-radius:10px;padding:16px;margin:16px 0">
@@ -1406,7 +1313,7 @@ async def create_user(user_data: dict, request: Request):
         """
         await send_email(
             to=[user_data["email"]],
-            subject="Your THCO Control Room login details",
+            subject="Your Crowther Control Room login details",
             html=html,
         )
         email_sent = True
@@ -1445,6 +1352,17 @@ async def update_user(user_id: str, updates: UserUpdate, request: Request):
     if current_user["user_id"] == user_id and updates.role and updates.role != "super_admin":
         raise HTTPException(status_code=403, detail="Cannot change your own role")
     
+    # A function role is a real grant: it decides who reaches the pipeline at
+    # all, and who may be named Solution Architect. A typo would store a value
+    # that silently grants nothing, so an unknown one is refused rather than
+    # written.
+    if updates.function_role:
+        if updates.function_role not in permissions.FUNCTION_ROLES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown function role. One of: {', '.join(permissions.FUNCTION_ROLES)}",
+            )
+
     update_dict = {k: v for k, v in updates.model_dump().items() if v is not None}
 
     # `headed_units` is the per-person manager grant and is stored as given.
@@ -1470,7 +1388,22 @@ async def update_user(user_id: str, updates: UserUpdate, request: Request):
     if update_dict:
         await db.users.update_one({"user_id": user_id}, {"$set": update_dict})
         update_dict.pop("password_hash", None)
-    
+
+        # The resolved identity is cached against the session token for 45
+        # seconds, so a change to what somebody may do is not felt until it
+        # clears. Every field below decides access, and `function_role` now
+        # decides whether they reach the pipeline at all -- so the cache is
+        # dropped rather than left to expire.
+        #
+        # The whole cache, not this person's entry: the cache is keyed by
+        # session token and one person may hold several, so guessing which to
+        # evict is how a stale grant survives.
+        if update_dict.keys() & {
+            "role", "status", "accessible_units", "headed_units",
+            "function_role", "can_architect", "is_hr", "is_engineer", "is_it",
+        }:
+            clear_user_cache()
+
     await log_activity(
         current_user["user_id"],
         current_user["name"],
@@ -1523,11 +1456,15 @@ async def delete_user(user_id: str, request: Request):
                       "updated_at": datetime.now(timezone.utc).isoformat()}},
         )
 
-    # Drop them from any project team, so a departed colleague does not linger
-    # on the board as a collaborator.
+    # Drop them from any pod, so a departed colleague does not linger on the
+    # board. The old field name is pulled too: this runs against rows the
+    # migration may not have reached, and leaving somebody on a project because
+    # their membership was written under the previous name is exactly the kind
+    # of thing nobody would notice.
     await db.projects.update_many(
-        {"collaborator_ids": user_id},
-        {"$pull": {"collaborator_ids": user_id, "collaborators": {"user_id": user_id}}},
+        {"$or": [{"pod_member_ids": user_id}, {"collaborator_ids": user_id}]},
+        {"$pull": {"pod_member_ids": user_id, "pod": {"user_id": user_id},
+                   "collaborator_ids": user_id, "collaborators": {"user_id": user_id}}},
     )
 
     await db.users.delete_one({"user_id": user_id})
@@ -3314,6 +3251,13 @@ from routers.flow import router as flow_router, set_db as set_flow_db
 set_flow_db(db)
 api_router.include_router(flow_router)
 
+# Include Crowther OS delivery artefacts (requirements, briefs, architecture,
+# demos, feedback, documents). The pipeline in flow.py moves a project; this is
+# what the stages produce and what the gates read.
+from routers.delivery import router as delivery_router, set_db as set_delivery_db
+set_delivery_db(db)
+api_router.include_router(delivery_router)
+
 # Include Business Units router (admin-created units + member invites)
 from routers.units import router as units_router, set_db as set_units_db
 set_units_db(db)
@@ -3437,7 +3381,7 @@ async def startup_scheduler():
 CANONICAL_UNITS = [
     ("talent", "Talent & Delivery"),
     ("thco-hr", "THCO HR"),
-    ("it-tools", "IT & THCO Tools"),
+    ("it-tools", "IT & Crowther Tools"),
     ("sales", "Sales & Business Dev"),
     ("marketing", "Marketing & Brand"),
     ("advisory", "Advisory & Consulting"),

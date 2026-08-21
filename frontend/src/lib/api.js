@@ -48,16 +48,6 @@ export const authAPI = {
     return response.data;
   },
   
-  exchangeSession: async (sessionId) => {
-    const response = await apiClient.post('/auth/session', {}, {
-      headers: { 'X-Session-ID': sessionId }
-    });
-    if (response.data?.session_token) {
-      localStorage.setItem('session_token', response.data.session_token);
-    }
-    return response.data;
-  },
-  
   getMe: async () => {
     const response = await apiClient.get('/auth/me');
     return response.data;
@@ -745,7 +735,7 @@ export const flowforgeAPI = {
   },
 };
 
-// THCO Flow API (12-stage Project Management System)
+// Crowther OS API (12-stage Project Management System)
 export const flowAPI = {
   // Projects
   listProjects: async (params = {}) => (await apiClient.get('/flow/projects', { params })).data,
@@ -773,8 +763,45 @@ export const flowAPI = {
   restoreProject: async (id) => (await apiClient.post(`/flow/projects/${id}/restore`)).data,
   listArchivedProjects: async () => (await apiClient.get('/flow/projects-archived')).data,
   userProjects: async (userId) => (await apiClient.get(`/flow/projects/user/${userId}`)).data,
-  transitionStage: async (id, target_stage, note = '', payload = {}) =>
-    (await apiClient.post(`/flow/projects/${id}/transition`, { target_stage, note, payload })).data,
+  // The lifecycle: stages, phases, gates and playbooks. Static between
+  // requests, so it is one call rather than four, and it is the source the
+  // browser should trust over its own copy in pages/flow/stages.js.
+  meta: async () => (await apiClient.get('/flow/meta')).data,
+
+  // What stands between this project and its next stage, plus the playbook
+  // for the stage it is on. This is what the next-step panel renders.
+  getGate: async (id) => (await apiClient.get(`/flow/projects/${id}/gate`)).data,
+
+  // `force` advances past an unmet gate. The TSD alone, a reason is required,
+  // and the Senior Partner is told every time.
+  transitionStage: async (id, target_stage, note = '', payload = {}, force = false) =>
+    (await apiClient.post(`/flow/projects/${id}/transition`, { target_stage, note, payload, force })).data,
+
+  // Health is the TSD's call, and anything other than GREEN needs a reason.
+  setHealth: async (id, health, reason = '') =>
+    (await apiClient.post(`/flow/projects/${id}/health`, { health, reason })).data,
+
+  // Stage 6. The TSD asks; the Senior Partner chooses; the stage waits.
+  requestArchitect: async (id) =>
+    (await apiClient.post(`/flow/projects/${id}/request-architect`)).data,
+  // Everybody who can be put on a project. This used to be the staff of the
+  // project's unit; a pod mixes people from across the capability teams, so
+  // narrowing it to one unit made forming a correct pod impossible.
+  staff: async () => (await apiClient.get('/flow/staff')).data,
+
+  // The pod is everybody working on a project. It used to be called the
+  // project team in one place and the pod in another; one name now.
+  setPod: async (id, userIds) =>
+    (await apiClient.put(`/flow/projects/${id}/pod`, { pod_member_ids: userIds })).data,
+
+  architectCandidates: async () =>
+    (await apiClient.get('/flow/architect-candidates')).data,
+  selectArchitect: async (id, user_id) =>
+    (await apiClient.post(`/flow/projects/${id}/select-architect`, { user_id })).data,
+
+  // People holding a delivery function, for the assignment dropdowns.
+  usersByFunction: async (functionRole) =>
+    (await apiClient.get(`/flow/users-by-function/${functionRole}`)).data,
   loseProject: async (id, reason) =>
     (await apiClient.post(`/flow/projects/${id}/lose`, null, { params: { reason } })).data,
   assignOwner: async (id, delivery_owner_id) =>
@@ -847,6 +874,135 @@ export const flowAPI = {
   // Dashboard
   getDashboard: async () => (await apiClient.get('/flow/dashboard')).data,
 };
+
+// ---------------------------------------------------------------------------
+// Crowther OS delivery artefacts
+// ---------------------------------------------------------------------------
+// What a project produces as it moves: requirements, the Product Brief, user
+// journeys, uploaded architecture, demo rounds, client feedback, documents.
+//
+// There is deliberately no "architect brief" call. The architect reads the
+// same project everyone else reads, from the moment they are named; a briefing
+// package would be a copy, and a copy goes stale as soon as the project moves.
+export const deliveryAPI = {
+  // One request for the whole project page. Four tabs and six drawers over one
+  // project is one round trip, not nine.
+  workspace: async (id) =>
+    (await apiClient.get(`/delivery/projects/${id}/workspace`)).data,
+
+  // Requirements: the unit of scope. A board card is the unit of execution.
+  requirements: async (id) =>
+    (await apiClient.get(`/delivery/projects/${id}/requirements`)).data,
+  addRequirement: async (id, body) =>
+    (await apiClient.post(`/delivery/projects/${id}/requirements`, body)).data,
+  updateRequirement: async (id, requirementId, body) =>
+    (await apiClient.patch(`/delivery/projects/${id}/requirements/${requirementId}`, body)).data,
+  deleteRequirement: async (id, requirementId) =>
+    (await apiClient.delete(`/delivery/projects/${id}/requirements/${requirementId}`)).data,
+
+  journeys: async (id) =>
+    (await apiClient.get(`/delivery/projects/${id}/journeys`)).data,
+  addJourney: async (id, body) =>
+    (await apiClient.post(`/delivery/projects/${id}/journeys`, body)).data,
+  updateJourney: async (id, journeyId, body) =>
+    (await apiClient.patch(`/delivery/projects/${id}/journeys/${journeyId}`, body)).data,
+  deleteJourney: async (id, journeyId) =>
+    (await apiClient.delete(`/delivery/projects/${id}/journeys/${journeyId}`)).data,
+
+  // Versioned, never overwritten. A brief that can be edited in place cannot
+  // answer "what did we agree in June".
+  productBriefs: async (id) =>
+    (await apiClient.get(`/delivery/projects/${id}/product-briefs`)).data,
+  addProductBrief: async (id, body) =>
+    (await apiClient.post(`/delivery/projects/${id}/product-briefs`, body)).data,
+
+  // Architecture is uploaded, not drawn. No canvas, no component graph.
+  architecture: async (id) =>
+    (await apiClient.get(`/delivery/projects/${id}/architecture`)).data,
+  uploadArchitecture: async (id, file, title = '', note = '') => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('title', title);
+    form.append('note', note);
+    const response = await apiClient.post(
+      `/delivery/projects/${id}/architecture`, form,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    );
+    return response.data;
+  },
+
+  // Demos are a collection, not a field. Several rounds before the client
+  // validates is normal, and the system should be able to say how many.
+  demos: async (id) => (await apiClient.get(`/delivery/projects/${id}/demos`)).data,
+  addDemo: async (id, body) =>
+    (await apiClient.post(`/delivery/projects/${id}/demos`, body)).data,
+  markDemoHeld: async (id, demoId) =>
+    (await apiClient.post(`/delivery/projects/${id}/demos/${demoId}/held`)).data,
+  setDemoOutcome: async (id, demoId, outcome, notes = '') =>
+    (await apiClient.post(`/delivery/projects/${id}/demos/${demoId}/outcome`, { outcome, notes })).data,
+  updateDemo: async (id, demoId, body) =>
+    (await apiClient.patch(`/delivery/projects/${id}/demos/${demoId}`, body)).data,
+
+  // Wireframes, a deck, a recording. Stored as project documents with
+  // doc_type "demo", so they also appear under Documents. A prototype built in
+  // an app builder is a link on the round instead; both satisfy the gate.
+  demoMaterials: async (id, demoId) =>
+    (await apiClient.get(`/delivery/projects/${id}/demos/${demoId}/materials`)).data,
+  uploadDemoMaterial: async (id, demoId, file) => {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await apiClient.post(
+      `/delivery/projects/${id}/demos/${demoId}/materials`, form,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    );
+    return response.data;
+  },
+
+  feedback: async (id) => (await apiClient.get(`/delivery/projects/${id}/feedback`)).data,
+  addFeedback: async (id, body) =>
+    (await apiClient.post(`/delivery/projects/${id}/feedback`, body)).data,
+
+  documents: async (id, docType) =>
+    (await apiClient.get(`/delivery/projects/${id}/documents`,
+      { params: docType ? { doc_type: docType } : {} })).data,
+  addTranscript: async (id, body) =>
+    (await apiClient.post(`/delivery/projects/${id}/transcripts`, body)).data,
+  uploadDocument: async (id, file, title = '', docType = 'other') => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('title', title);
+    form.append('doc_type', docType);
+    const response = await apiClient.post(
+      `/delivery/projects/${id}/documents`, form,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    );
+    return response.data;
+  },
+  deleteDocument: async (id, documentId) =>
+    (await apiClient.delete(`/delivery/projects/${id}/documents/${documentId}`)).data,
+
+  // An uploaded file cannot be reached with a plain <a href>. This client
+  // sends its session as a Bearer header from localStorage, and a browser
+  // navigation carries neither that header nor a cookie, so the request
+  // arrives unauthenticated. In development it is worse than a 401: the
+  // relative URL hits the dev server on :3000, finds no such route, and falls
+  // through to the single-page app, so clicking a document silently lands on
+  // the dashboard.
+  //
+  // Fetch it as a blob and hand the browser a local URL instead. The same
+  // reasoning already governs CVs, task attachments and thumbnails.
+  //
+  // The caller owns the returned URL and must revoke it when done, or the
+  // blob stays in memory for the life of the tab.
+  openFile: async (fileUrl) => {
+    // `file_url` comes back as /api/delivery/files/... and apiClient is
+    // already based at /api, so the prefix is stripped rather than doubled.
+    const path = fileUrl.replace(/^\/api/, '');
+    const response = await apiClient.get(path, { responseType: 'blob' });
+    return URL.createObjectURL(response.data);
+  },
+};
+
 
 // Task Board API (Trello-like boards + cards)
 export const tasksAPI = {

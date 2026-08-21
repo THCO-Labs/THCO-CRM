@@ -5,7 +5,7 @@ Lets a super admin:
   - create / list / update / delete business units (each with a configurable
     page: which sections show, and what members of the unit are responsible for)
   - invite members by email: creates (or updates) accounts, grants access to the
-    unit + THCO Flow, and emails each person their login credentials.
+    unit + Crowther OS, and emails each person their login credentials.
 
 Lifecycle of a unit member invite:
   admin supplies emails (+ optional shared password) -> accounts created with
@@ -368,7 +368,7 @@ async def invite_members(slug: str, data: InviteMember, request: Request):
                 html = _credentials_email_html(unit["name"], email, pw)
                 await send_email(
                     to=[email],
-                    subject=f"Your THCO Control Room access — {unit['name']}",
+                    subject=f"Your Crowther Control Room access — {unit['name']}",
                     html=html,
                 )
                 emails_sent.append(email)
@@ -398,14 +398,14 @@ def _credentials_email_html(unit_name: str, email: str, password: str) -> str:
     login_link = f"{os.environ.get('FRONTEND_URL', 'http://localhost:5178')}/login"
     return f"""
     <div style="font-family:Inter,Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;background:#0C0F13;border-radius:12px;color:#E8E6F0">
-      <div style="font-size:22px;font-weight:700;color:#C6A15B;margin-bottom:4px">THCO Control Room</div>
+      <div style="font-size:22px;font-weight:700;color:#C6A15B;margin-bottom:4px">Crowther Control Room</div>
       <p style="color:#9AA0AB;margin:0 0 18px">Welcome to <strong style="color:#fff">{unit_name}</strong></p>
       <p style="color:#E8E6F0">Your account has been created. Use the details below to sign in:</p>
       <div style="background:#161B22;border:1px solid #2a2f38;border-radius:10px;padding:16px;margin:16px 0">
         <p style="margin:4px 0;color:#9AA0AB">Email<br><strong style="color:#fff">{email}</strong></p>
         <p style="margin:12px 0 4px;color:#9AA0AB">Password<br><strong style="color:#fff">{password}</strong></p>
       </div>
-      <p style="color:#9AA0AB">Sign in at <a href="{login_link}" style="color:#1FB58A">the THCO Control Room</a> and open <strong style="color:#fff">{unit_name}</strong> from your dashboard.</p>
+      <p style="color:#9AA0AB">Sign in at <a href="{login_link}" style="color:#1FB58A">the Crowther Control Room</a> and open <strong style="color:#fff">{unit_name}</strong> from your dashboard.</p>
       <p style="color:#6B7280;font-size:12px;margin-top:6px">Or copy this link into your browser: {login_link}</p>
       <p style="color:#6B7280;font-size:12px;margin-top:18px">If you already had an account, your password is unchanged and the unit was added to your access.</p>
     </div>

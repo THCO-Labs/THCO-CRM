@@ -1,4 +1,4 @@
-"""THCO Flow — Project Management System.
+"""Crowther OS — the delivery pipeline.
 
 Extends the existing projects collection with the 12-stage state machine
 and adds collections for contacts, milestones, prospects, tickets, messages,
@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from services import permissions
+from services import delivery_stages
 from services.notifications import notify_added_to_project, notify_removed_from_project
 from datetime import datetime, timezone, timedelta
 import uuid
@@ -30,12 +31,12 @@ def set_db(database):
 async def _get_user(request: Request) -> dict:
     """Everything in this router goes through here, so the rule is stated once.
 
-    THCO Flow is the project pipeline, and it belongs to project managers and
+    Crowther OS is the delivery pipeline, and it belongs to the TSDs who own
     administrators. Hiding the menu entry was not enough on its own: every
     route below was reachable by any signed-in person who knew the address,
     and rows were merely scoped rather than refused.
 
-    A collaborator's work is the task board, which lives in its own router and
+    A pod member's work is the task board, which lives in its own router and
     is unaffected by this -- it admits anyone assigned to the project.
     """
     from server import get_current_user
@@ -43,40 +44,76 @@ async def _get_user(request: Request) -> dict:
     user = await get_current_user(request)
     permissions.require(
         permissions.has_unit_access(user, "flow"),
-        "THCO Flow is for project managers and administrators. Your work is on "
+        "Crowther OS is for TSDs and administrators. Your work is on "
         "the task board under Tasks.",
     )
     return user
 
 
 # ===========================================================================
-# THE 12 STAGES + ROLE MAP
+# THE DELIVERY LIFECYCLE
 # ===========================================================================
-STAGES = {
-    1:  {"key": "new_client",          "label": "New Client",              "role_next": "is_delivery_coordinator", "track": "main"},
-    2:  {"key": "coordinator_picked",  "label": "Coordinator Picked",      "role_next": "is_delivery_owner",    "track": "main"},
-    3:  {"key": "meeting_scheduled",   "label": "Meeting Scheduled",       "role_next": "is_delivery_owner",    "track": "main"},
-    4:  {"key": "package_building",    "label": "Package Building",        "role_next": "is_delivery_owner",    "track": "main"},
-    5:  {"key": "send_package",        "label": "Send Package",            "role_next": "is_operations_owner",  "track": "main"},
-    # SPLIT at 5 → two sibling records: proposal track (6-8) + build track (9-10)
-    6:  {"key": "proposal",            "label": "Proposal",                "role_next": "is_executive_approver","track": "proposal"},
-    7:  {"key": "exec_approval",       "label": "Executive Approval",      "role_next": "is_operations_owner",  "track": "proposal"},
-    8:  {"key": "proposal_sent",       "label": "Proposal Sent to Client", "role_next": None,                   "track": "proposal"},
-    9:  {"key": "in_build",            "label": "In Build (Engineering)",  "role_next": "is_delivery_owner",    "track": "build"},
-    10: {"key": "completed",           "label": "Completed",               "role_next": None,                   "track": "build"},
-}
+# The stages, their gates and their playbooks live in one module so that the
+# router, the migration and the browser cannot drift apart. Everything below
+# reads from there rather than holding its own copy.
+from services.delivery_stages import (  # noqa: E402
+    STAGES,
+    PHASES,
+    STAGE_GATES,
+    PLAYBOOKS,
+    CLOSURE_CHECKLIST,
+    LEGACY_STAGE_MAP,
+    FIRST_STAGE,
+    LAST_STAGE,
+    VALIDATION_STAGE,
+    BUILD_STAGE,
+    DEMO_ITERATION_MOVE,
+    stage_key,
+    stage_label,
+    stage_phase,
+    stage_owner,
+    is_valid_stage,
+)
+
 # Lost / declined sub-state
 LOST_STAGE_KEY = "lost"
 BUILD_STATUS_OPTIONS = ["planning", "building", "blocked", "ready_for_qa"]
 
-FLOW_ROLE_FLAGS = [
-    ("is_delivery_coordinator",   "Delivery Coordinator"),
-    ("is_delivery_owner",         "Delivery Owner (project lead)"),
-    ("is_operations_owner",       "Operations Owner (Proposals)"),
-    ("is_executive_approver",     "Executive Approver"),
-    ("is_engineer",               "Engineer"),
-    ("is_relationship_owner",     "Relationship Owner (touch plan)"),
-    ("is_prospect_owner",         "Prospect / Outbound Owner"),
+# The old boolean flags. Retained only so the migration can read them off
+# existing accounts; nothing in the running system should test these.
+LEGACY_ROLE_FLAGS = [
+    "is_delivery_coordinator",
+    "is_delivery_owner",
+    "is_operations_owner",
+    "is_executive_approver",
+    "is_engineer",
+    "is_relationship_owner",
+    "is_prospect_owner",
+]
+
+# What each old flag becomes. `is_delivery_coordinator` has no successor: its
+# job was choosing who runs a project, which is now stage 2 rather than a
+# standing privilege.
+LEGACY_FLAG_TO_FUNCTION = {
+    "is_executive_approver": permissions.SENIOR_PARTNER,
+    "is_delivery_owner": permissions.TSD,
+    "is_operations_owner": permissions.PEOPLE_OPS,
+    "is_engineer": permissions.ENGINEER,
+    "is_relationship_owner": permissions.COMMERCIAL,
+    "is_prospect_owner": permissions.COMMERCIAL,
+}
+
+FUNCTION_ROLE_LABELS = [
+    (permissions.SENIOR_PARTNER, "Senior Partner"),
+    (permissions.COMMERCIAL, "Commercial / Initiator"),
+    (permissions.TSD, "TSD (delivery owner)"),
+    (permissions.ENGINEER, "Engineer"),
+    (permissions.PRODUCT_DESIGNER, "Product Designer"),
+    (permissions.QA, "QA / Tester"),
+    (permissions.TALENT_SD, "TalentSD"),
+    (permissions.PEOPLE_OPS, "People & Operations"),
+    (permissions.LEGAL, "Legal"),
+    (permissions.FINANCE, "Finance"),
 ]
 
 
@@ -89,17 +126,19 @@ def _now() -> str:
 
 def _generate_project_id() -> str:
     year = datetime.now(timezone.utc).year
-    # Find current max number for the year
-    return f"THCO-{year}-{uuid.uuid4().hex[:6].upper()}"
+    # New references carry the new name. The ones already issued keep theirs:
+    # a reference number is quoted in emails and written down, so reissuing one
+    # somebody already holds is worse than a prefix that changed on a date.
+    return f"CROW-{year}-{uuid.uuid4().hex[:6].upper()}"
 
 
-async def _resolve_collaborators(user_ids: List[str]) -> List[Dict[str, Any]]:
+async def _resolve_pod(user_ids: List[str]) -> List[Dict[str, Any]]:
     """Turn submitted user ids into the name/email snapshots stored on a project.
 
     Unknown ids are dropped rather than rejected: a stale id from a removed
     account should not block a head from saving the rest of their team. The
     name is denormalised so the project still reads correctly later, while
-    collaborator_ids stays the field permission checks match on.
+    pod_member_ids stays the field permission checks match on.
     """
     wanted = [uid for uid in dict.fromkeys(user_ids or []) if uid]
     if not wanted:
@@ -129,9 +168,32 @@ async def _audit(entity_type: str, entity_id: str, action: str, user: dict, deta
     })
 
 
-async def _users_with_flag(flag: str) -> List[dict]:
-    cursor = db.users.find({flag: True, "status": "active"}, {"_id": 0, "user_id": 1, "email": 1, "name": 1})
+async def _users_with_function(*function_roles: str) -> List[dict]:
+    """Active accounts holding any of these function roles.
+
+    Recipients are resolved by what a person does, not by a boolean flag on
+    their account. The old flags are migrated onto `function_role` and are no
+    longer read here.
+    """
+    wanted = [r for r in function_roles if r]
+    if not wanted:
+        return []
+    cursor = db.users.find(
+        {"function_role": {"$in": wanted}, "status": "active"},
+        {"_id": 0, "user_id": 1, "email": 1, "name": 1, "function_role": 1},
+    )
     return await cursor.to_list(100)
+
+
+async def _users_by_id(*user_ids: str) -> List[dict]:
+    wanted = [uid for uid in user_ids if uid]
+    if not wanted:
+        return []
+    cursor = db.users.find(
+        {"user_id": {"$in": wanted}, "status": "active"},
+        {"_id": 0, "user_id": 1, "email": 1, "name": 1, "function_role": 1},
+    )
+    return await cursor.to_list(len(wanted))
 
 
 # ---------------------------------------------------------------------------
@@ -201,66 +263,154 @@ async def _can_manage_ticket(ticket: dict, user: dict) -> bool:
     return bool(project) and permissions.can_manage_project(user, project)
 
 
+async def _stage_recipients(stage: int, project: dict) -> List[dict]:
+    """Who hears that a project has arrived at this stage.
+
+    The person accountable for the stage comes first. Where that role is held
+    by a named person on this project -- the TSD, the architect -- it is that
+    person rather than everybody who happens to hold the role, because a
+    project's TSD is not every TSD in the firm.
+    """
+    cfg = STAGES.get(stage) or {}
+    owner = cfg.get("owner")
+    named = {
+        "tsd": project.get("tsd_id"),
+        "solution_architect": project.get("architect_id"),
+        "product_designer": project.get("designer_id"),
+    }
+
+    recipients: List[dict] = []
+    seen = set()
+
+    async def add(users):
+        for u in users:
+            if u.get("email") and u["email"] not in seen:
+                seen.add(u["email"])
+                recipients.append(u)
+
+    for role in [owner] + list(cfg.get("notify") or []):
+        if not role:
+            continue
+        named_id = named.get(role)
+        if named_id:
+            await add(await _users_by_id(named_id))
+        else:
+            await add(await _users_with_function(role))
+    return recipients
+
+
 async def _send_stage_email(stage: int, project: dict, actor: dict):
-    """Send Resend email to users matching the role for the NEXT stage's role_next."""
+    """Tell the people who now have work to do that they have work to do."""
     from services import send_email
     from services.email_templates import _base
 
     cfg = STAGES.get(stage)
-    if not cfg or not cfg.get("role_next"):
+    if not cfg:
         return
-    recipients = await _users_with_flag(cfg["role_next"])
+    recipients = await _stage_recipients(stage, project)
     if not recipients:
         return
 
+    book = PLAYBOOKS.get(stage) or {}
+    next_line = book.get("next", "")
+    activities = "".join(f"<li>{a}</li>" for a in (book.get("activities") or [])[:4])
+
     project_link = f"/flow/projects/{project['id']}"
-    subject = f"[THCO Flow] {cfg['label']} — {project.get('name', 'Project')}"
+    subject = f"[Crowther OS] {cfg['label']} - {project.get('name', 'Project')}"
     body_html = f"""
       <h2 style="margin:0 0 16px;color:#1B4332;font-size:20px;">Stage {stage}: {cfg['label']}</h2>
       <p>Project <strong>{project.get('name')}</strong> for client
       <strong>{project.get('client_name_snapshot') or 'Unknown'}</strong>
-      has advanced to <strong>{cfg['label']}</strong>.</p>
-      <p>Moved by: <strong>{actor.get('name')}</strong> at {_now()}.</p>
-      <p>You are receiving this because you hold the <code>{cfg['role_next']}</code> role.</p>
+      is now at <strong>{cfg['label']}</strong>.</p>
+      <p style="margin:16px 0;padding:12px;background:#F7F6F3;border-radius:6px;">
+        <strong>What happens next:</strong><br/>{next_line}
+      </p>
+      <ul style="color:#4C5B6B;font-size:14px;">{activities}</ul>
+      <p style="color:#8A8A8A;font-size:13px;">Moved by {actor.get('name')}.</p>
     """
     html = _base(subject, body_html, cta_url=project_link, cta_text="Open Project")
 
-    emails = [u["email"] for u in recipients]
     await send_email(
-        to=emails,
+        to=[u["email"] for u in recipients],
         subject=subject,
         html=html,
-        template_name=f"flow_stage_{stage}",
+        template_name=f"crowther_stage_{stage}",
         context={"stage": stage, "project_id": project["id"]},
     )
 
 
+async def _alert_senior_partner(project: dict, actor: dict, subject_line: str, body: str):
+    """Reach the Senior Partner by email and in-app at once.
+
+    Used for the two things they asked to be told about without being asked to
+    act: a forced gate, and a project going red.
+    """
+    from services import send_email
+    from services.email_templates import _base
+
+    partners = await _users_with_function(permissions.SENIOR_PARTNER)
+    if not partners:
+        return
+    link = f"/flow/projects/{project['id']}"
+    html = _base(subject_line, body, cta_url=link, cta_text="Open Project")
+    await send_email(
+        to=[u["email"] for u in partners],
+        subject=subject_line,
+        html=html,
+        template_name="crowther_partner_alert",
+        context={"project_id": project["id"]},
+    )
+    for p in partners:
+        await db.notifications.insert_one({
+            "notification_id": str(uuid.uuid4()),
+            "user_id": p["user_id"],
+            "title": subject_line,
+            "body": body,
+            "link": link,
+            "project_id": project["id"],
+            "read": False,
+            "created_at": _now(),
+        })
+
+
+# What Legal and Finance see of a project row. They write contracts, so they
+# get the identity of the work, where it has reached, and its commercial state.
+# Not the architect, not the pod, not the internal notes.
+COMMERCIAL_PROJECT_FIELDS = (
+    "id", "project_id_display", "name", "client_id", "client_name_snapshot",
+    "website", "description", "desired_outcome", "original_brief",
+    "stage", "stage_key", "stage_label", "phase", "status", "health",
+    "total_value", "currency", "commercial_status",
+    "created_at", "start_date", "end_date", "validated_at", "completed_at",
+    "scope_frozen", "tsd_name",
+)
+
+
+def _serialize_for(user: dict, project: dict) -> dict:
+    """Serialise a project for whoever is asking.
+
+    Legal and Finance get a smaller object, built by naming the fields they
+    are entitled to rather than by deleting the ones they are not. A denylist
+    grows a hole every time somebody adds a field.
+    """
+    full = _serialize_project(project)
+    if not permissions.sees_commercial_slice_only(user):
+        return full
+    return {k: full.get(k) for k in COMMERCIAL_PROJECT_FIELDS}
+
+
 def _serialize_project(p: dict) -> dict:
     p.pop("_id", None)
-    stage = p.get("stage", 1)
+    stage = p.get("stage") or FIRST_STAGE
     p["stage"] = stage
-    p["stage_label"] = STAGES.get(stage, {}).get("label", "Unknown")
-    p["stage_key"] = STAGES.get(stage, {}).get("key", "unknown")
-    p["track"] = p.get("track") or STAGES.get(stage, {}).get("track", "main")
+    p["stage_label"] = stage_label(stage)
+    p["stage_key"] = stage_key(stage)
+    p["phase"] = stage_phase(stage)
+    p["stage_owner"] = stage_owner(stage)
     return p
 
 
-# Legacy stage migration (old 12-stage → new 10-stage)
-LEGACY_STAGE_MAP = {
-    # old stage -> (new stage, track)
-    1: (1, "main"),   # prospect -> new_client
-    2: (2, "main"),   # qualified_assigned -> coordinator_picked
-    3: (3, "main"),   # discovery_scheduled -> meeting_scheduled
-    4: (4, "main"),   # package_building -> package_building
-    5: (5, "main"),   # package_sent -> send_package
-    6: (6, "proposal"),  # proposal_drafted -> Proposal
-    7: (7, "proposal"),  # proposal_approved -> Exec Approval
-    8: (8, "proposal"),  # proposal_sent -> Proposal Sent
-    9: (9, "build"),     # contract_drafting → REMOVED, fold to In Build
-    10: (9, "build"),    # contract_signed → REMOVED, fold to In Build
-    11: (9, "build"),    # in_delivery -> In Build
-    12: (10, "build"),   # completed -> completed
-}
+
 
 
 # ===========================================================================
@@ -275,43 +425,64 @@ class ProjectCreate(BaseModel):
     project_type: str = "new_client"  # new_client | existing_expansion
     source: Optional[str] = ""        # who brought the prospect in
     notes: Optional[str] = ""
-    # The unit this work belongs to. A head may only open projects under the
-    # unit they head, so this decides whether the create is allowed at all.
-    unit_slug: Optional[str] = None
     # Staff to place on the project from the outset. Each is notified.
-    collaborator_ids: List[str] = []
+    pod_member_ids: List[str] = []
     # A picture from the shared library. Claimed after the project exists,
     # because the claim needs something to belong to.
     thumbnail_id: Optional[str] = None
+
+    # --- Intake (SPEC section 7) -------------------------------------------
+    # The client project form is the formal entry point to the lifecycle, so
+    # everything the commercial side already knows is captured here rather
+    # than chased afterwards.
+    template: Optional[str] = None
+    desired_outcome: Optional[str] = ""
+    original_brief: Optional[str] = ""
+    # Conversations that have already happened, pasted in. Each carries the
+    # source and date it came from, because "what did the client actually say"
+    # is unanswerable without knowing which call it was said on.
+    transcripts: List["TranscriptIn"] = []
+    # A prospect this project grew out of, if it did.
+    prospect_id: Optional[str] = None
+    # Whoever opens the project may already know who will run it. Naming them
+    # here settles stage 2 on the spot, and the project opens at stage 3
+    # instead of waiting to be assigned to somebody already decided.
+    tsd_id: Optional[str] = None
+
+
+class TranscriptIn(BaseModel):
+    source_label: str          # "Initial call", "Discovery meeting"
+    source_date: Optional[str] = None
+    content: str
+
+
+ProjectCreate.model_rebuild()
 
 
 @router.post("/projects")
 async def create_project(data: ProjectCreate, request: Request):
     """Create a project at Stage 1 (Prospect).
 
-    Only a unit's head opens work under it. Staff no longer create their own
-    projects -- they are added to one as a collaborator and see it appear on
-    their dashboard.
+    Opening a project belongs to Commercial, a TSD or the Senior Partner.
+    Staff do not create their own -- they are added to one and see it appear
+    on their dashboard.
+
+    A project no longer belongs to a unit. Units opened and owned work under
+    the old model; delivery is owned by a named TSD now, and a pod is drawn
+    from across the capability teams rather than from one unit's staff.
     """
     user = await _get_user(request)
 
-    unit_slug = (data.unit_slug or "").strip() or None
-    if not permissions.is_admin(user):
-        if not permissions.is_unit_head(user):
-            raise HTTPException(
-                status_code=403,
-                detail="Only a project manager can open a project. Ask your unit's "
-                       "project manager to create it and add you to it.",
-            )
-        if not unit_slug:
-            raise HTTPException(status_code=400, detail="Choose the unit this project belongs to")
-        if not permissions.can_create_project_in_unit(user, unit_slug):
-            raise HTTPException(
-                status_code=403,
-                detail=f"You head {', '.join(permissions.headed_units(user))}, not {unit_slug}",
-            )
+    # Who opens a project is a function, not a unit. The commercial side does
+    # it at intake, and a TSD or the Senior Partner opens one directly when a
+    # prospect turns real. Units used to own this, and a project used to have
+    # to belong to one; neither is true now, so there is nothing to choose.
+    permissions.require(
+        permissions.can_open_project(user),
+        "Opening a project belongs to Commercial, a TSD or the Senior Partner.",
+    )
 
-    collaborators = await _resolve_collaborators(data.collaborator_ids)
+    pod = await _resolve_pod(data.pod_member_ids)
 
     project_id = str(uuid.uuid4())
     project_id_display = _generate_project_id()
@@ -326,15 +497,30 @@ async def create_project(data: ProjectCreate, request: Request):
         "project_type": data.project_type,
         "source": data.source or "",
         "notes": data.notes or "",
-        # 10-stage state machine (split tracks: main 1-5, proposal 6-8, build 9-10)
-        "stage": 1,
-        "status": "new_client",
-        "track": "main",
-        "parent_project_id": None,
-        "sibling_project_id": None,
-        "stage_history": [{"stage": 1, "at": _now(), "by": user.get("user_id"), "by_name": user.get("name")}],
+        # --- lifecycle ---------------------------------------------------
+        # One record, one lifecycle. The old split-track model (a proposal
+        # sibling and a build sibling from stage 5) is retired: commercial work
+        # is a status on the project, not a second copy of it.
+        "stage": FIRST_STAGE,
+        "stage_key": stage_key(FIRST_STAGE),
+        "phase": stage_phase(FIRST_STAGE),
+        "status": "active",
+        "stage_history": [{
+            "from_stage": None,
+            "to_stage": FIRST_STAGE,
+            "at": _now(),
+            "by": user.get("user_id"),
+            "by_name": user.get("name"),
+            "why": "Project created from the client intake form",
+            "gate_conditions": [],
+            "forced": False,
+        }],
+        # Scope churns freely during discovery; that is the job, not creep.
+        # It freezes when the client validates, and from then on a change to
+        # the requirement set is a scope change with a decision behind it.
+        "scope_frozen": False,
+        "scope_frozen_at": None,
         # ownership
-        "unit_slug": unit_slug,
         # Explicitly not demo. Written on every new project so the one-off
         # migration that labels the pre-unit-head projects can recognise those
         # by the absence of this field, and never touch anything created since.
@@ -342,14 +528,22 @@ async def create_project(data: ProjectCreate, request: Request):
         "created_by": user.get("user_id"),
         "created_by_name": user.get("name"),
         # staff placed on the project by its unit head
-        "collaborator_ids": [c["user_id"] for c in collaborators],
-        "collaborators": collaborators,
-        "delivery_owner_id": None,
-        "delivery_owner_name": None,
-        "pricing_owner_id": None,
-        "pricing_owner_name": None,
-        "assigned_engineer_id": None,
-        "assigned_engineer_name": None,
+        "pod_member_ids": [c["user_id"] for c in pod],
+        "pod": pod,
+        # --- people --------------------------------------------------------
+        # The TSD owns the client and the project. The Solution Architect owns
+        # the technical direction and the build board. Both are named on the
+        # project rather than inferred from who holds a role, because a firm
+        # has many TSDs and a project has one.
+        "tsd_id": None,
+        "tsd_name": None,
+        # Filled in below when the intake form named one.
+        "architect_id": None,
+        "architect_name": None,
+        "architect_requested_at": None,
+        "designer_id": None,
+        "designer_name": None,
+        "pod_member_ids": [],
         # docs / data
         "brief_document_url": None,
         "brief_document_name": None,
@@ -361,6 +555,31 @@ async def create_project(data: ProjectCreate, request: Request):
         "pricing_data": None,
         "proposal_url": None,
         "contract_url": None,
+        # --- definition ------------------------------------------------------
+        "template": data.template,
+        "desired_outcome": (data.desired_outcome or "")[:2000],
+        "original_brief": data.original_brief or "",
+        "created_from_prospect_id": data.prospect_id,
+        # --- workstream status (SPEC appendix A) -----------------------------
+        # One field per stream so the project can say where each is without
+        # anyone opening a tab. These are what the status strip renders.
+        "product_status": "not_started",
+        "architecture_status": "not_started",
+        "demo_status": "preparing",
+        "client_status": "not_engaged",
+        "talent_status": "none",
+        "qa_status": "not_started",
+        "commercial_status": "none",
+        # --- health ----------------------------------------------------------
+        "health": "GREEN",
+        "health_reason": "",
+        "health_set_by": None,
+        "health_set_at": None,
+        # --- closure ---------------------------------------------------------
+        "closure_checklist": [
+            {"label": item, "done": False, "done_by": None, "done_at": None}
+            for item in CLOSURE_CHECKLIST
+        ],
         # financials
         "total_value": None,
         "currency": "USD",
@@ -369,6 +588,7 @@ async def create_project(data: ProjectCreate, request: Request):
         "start_date": None,
         "end_date": None,
         "signed_at": None,
+        "validated_at": None,
         "completed_at": None,
         "lost_at": None,
         "lost_reason": None,
@@ -378,6 +598,34 @@ async def create_project(data: ProjectCreate, request: Request):
         # legacy compat
         "current_review_id": None,
     }
+    # A named TSD settles stage 2 before it is reached. The project opens at
+    # "TSD Receives Project" instead, because the assignment the stage exists
+    # to make has already been made.
+    if data.tsd_id:
+        chosen = await db.users.find_one(
+            {"user_id": data.tsd_id, "status": {"$ne": "disabled"}},
+            {"_id": 0, "user_id": 1, "name": 1},
+        )
+        if not chosen:
+            raise HTTPException(status_code=404, detail="That person does not have an active account")
+        project["tsd_id"] = chosen["user_id"]
+        project["tsd_name"] = chosen.get("name")
+        project["stage"] = 3
+        project["stage_key"] = stage_key(3)
+        project["phase"] = stage_phase(3)
+        project["stage_history"].append({
+            "from_stage": FIRST_STAGE,
+            "to_stage": 3,
+            "at": _now(),
+            "by": user.get("user_id"),
+            "by_name": user.get("name"),
+            "why": f"TSD named on the intake form: {chosen.get('name')}",
+            "gate_conditions": [],
+            "forced": False,
+        })
+        if chosen["user_id"] not in project["pod_member_ids"]:
+            project["pod_member_ids"].append(chosen["user_id"])
+
     await db.projects.insert_one(project)
     project.pop("_id", None)
 
@@ -397,11 +645,59 @@ async def create_project(data: ProjectCreate, request: Request):
         else:
             project["thumbnail_unavailable"] = True
 
-    await _audit("project", project_id, "created", user, {"stage": 1, "client": data.client_name})
-    await _send_stage_email(1, project, user)
+    # Transcripts pasted at intake become documents on the project straight
+    # away, so that everyone who joins later -- the TSD at stage 3, the
+    # architect at stage 6 -- reads the same source material rather than being
+    # handed a summary of it.
+    for t in (data.transcripts or []):
+        if not (t.content or "").strip():
+            continue
+        await db.documents.insert_one({
+            "document_id": str(uuid.uuid4()),
+            "project_id": project_id,
+            "title": t.source_label or "Transcript",
+            "doc_type": "transcript",
+            "content": t.content,
+            "source_label": t.source_label or "",
+            "source_date": t.source_date,
+            "file_url": None,
+            "version": 1,
+            "author_id": user.get("user_id"),
+            "author_name": user.get("name"),
+            "created_at": _now(),
+        })
 
-    if collaborators:
-        await notify_added_to_project(db, project, collaborators, user)
+    if (data.original_brief or "").strip():
+        await db.documents.insert_one({
+            "document_id": str(uuid.uuid4()),
+            "project_id": project_id,
+            "title": "Original brief",
+            "doc_type": "brief",
+            "content": data.original_brief,
+            "source_label": "Intake",
+            "source_date": None,
+            "file_url": None,
+            "version": 1,
+            "author_id": user.get("user_id"),
+            "author_name": user.get("name"),
+            "created_at": _now(),
+        })
+
+    # A project opened from a prospect closes that prospect, so the same piece
+    # of work is not sitting in two places looking like two.
+    if data.prospect_id:
+        await db.prospects.update_one(
+            {"prospect_id": data.prospect_id},
+            {"$set": {"status": "converted", "converted_project_id": project_id,
+                      "converted_at": _now()}},
+        )
+
+    await _audit("project", project_id, "created", user,
+                 {"stage": project["stage"], "client": data.client_name})
+    await _send_stage_email(project["stage"], project, user)
+
+    if pod:
+        await notify_added_to_project(db, project, pod, user)
 
     return _serialize_project(project)
 
@@ -434,58 +730,64 @@ async def list_projects(
         ]
     cursor = db.projects.find(query, {"_id": 0}).sort("created_at", -1)
     projects = await cursor.to_list(500)
-    return [_serialize_project(p) for p in projects]
+    return [_serialize_for(user, p) for p in projects]
 
 
 @router.get("/projects/board")
 async def board(request: Request):
-    """Kanban board — projects grouped by 10 new stages with track migration of legacy data."""
+    """The pipeline board, grouped into phases.
+
+    Seventeen columns is unusable, so projects are grouped by the six phases
+    of the lifecycle and each card carries its own stage. A caller wanting the
+    detail asks for one phase and gets its stages as columns instead.
+
+    Projects that never made it onto the new lifecycle are not silently
+    repaired here. That was the old behaviour and it meant a read could
+    quietly rewrite rows; the migration script does it once, deliberately,
+    with a backup behind it.
+    """
     user = await _get_user(request)
-    # The board read every project in the database. The list beside it was
-    # scoped, so a manager saw their own work in one view and everybody's in
-    # the other.
-    cursor = db.projects.find(permissions.project_scope_filter(user), {"_id": 0}).sort("created_at", -1)
+    cursor = db.projects.find(
+        {**permissions.project_scope_filter(user), "archived_by_migration": {"$ne": True}},
+        {"_id": 0},
+    ).sort("created_at", -1)
     projects = await cursor.to_list(1000)
-    board: Dict[int, List[dict]] = {i: [] for i in range(1, 11)}
+
+    by_phase: Dict[str, List[dict]] = {key: [] for key in PHASES}
+    by_stage: Dict[int, List[dict]] = {num: [] for num in STAGES}
+    unmigrated = []
+
     for p in projects:
         stage = p.get("stage")
-        track = p.get("track")
-        needs_save = False
-        if not stage:
-            # Backfill from old internal status string
-            legacy_status_map = {
-                "awaiting_delegation": 4, "delegated": 9, "under_review": 9,
-                "revision_requested": 6, "approved_for_build": 9, "in_build": 9, "completed": 10,
-                "prospect": 1, "new_client": 1,
-            }
-            stage = legacy_status_map.get(p.get("status"), 1)
-            needs_save = True
-
-        # If stage is still in the old 12-stage range, remap to new 10-stage
-        if stage in LEGACY_STAGE_MAP and stage > 10:
-            new_stage, new_track = LEGACY_STAGE_MAP[stage]
-            stage = new_stage
-            track = new_track
-            needs_save = True
-        elif stage in LEGACY_STAGE_MAP and not track:
-            track = LEGACY_STAGE_MAP[stage][1]
-            needs_save = True
-
-        if not track:
-            track = STAGES.get(stage, {}).get("track", "main")
-            needs_save = True
-
-        if needs_save:
-            await db.projects.update_one({"id": p["id"]}, {"$set": {"stage": stage, "track": track}})
-        p["stage"] = stage
-        p["track"] = track
-        if 1 <= stage <= 10:
-            board[stage].append(_serialize_project(p))
+        if not is_valid_stage(stage):
+            unmigrated.append({"id": p.get("id"), "name": p.get("name"), "stage": stage})
+            continue
+        serialised = _serialize_for(user, p)
+        by_stage[stage].append(serialised)
+        by_phase[stage_phase(stage)].append(serialised)
 
     return {
-        "stages": [{"stage": k, **v} for k, v in STAGES.items()],
-        "board": board,
+        "phases": [
+            {"key": key, **cfg, "count": len(by_phase[key])}
+            for key, cfg in sorted(PHASES.items(), key=lambda kv: kv[1]["order"])
+        ],
+        "stages": [{"stage": num, **cfg, "count": len(by_stage[num])} for num, cfg in STAGES.items()],
+        "by_phase": by_phase,
+        "by_stage": by_stage,
+        # Anything the migration has not reached yet, named rather than hidden.
+        "unmigrated": unmigrated,
     }
+
+
+@router.get("/meta")
+async def pipeline_meta(request: Request):
+    """Stages, phases, gates and playbooks in one payload.
+
+    The browser needs all of it to render the board and the next-step panel,
+    and it never changes between requests, so it is one call rather than four.
+    """
+    await _get_user(request)
+    return delivery_stages.meta()
 
 
 @router.get("/projects/{project_id}")
@@ -516,9 +818,15 @@ async def get_project(project_id: str, request: Request):
 
 
 class StageTransition(BaseModel):
-    target_stage: int = Field(..., ge=1, le=10)
+    target_stage: int = Field(..., ge=FIRST_STAGE, le=LAST_STAGE)
+    # Why the project moved. Required going backwards, and required to force a
+    # gate. It is written into the stage history, which is the only durable
+    # record of why a project is where it is.
     note: Optional[str] = None
-    payload: Optional[Dict[str, Any]] = None  # arbitrary stage data (pricing, package_url, etc.)
+    # Advance despite an unmet gate condition. The TSD alone, never silently:
+    # the Senior Partner is emailed and alerted every time.
+    force: bool = False
+    payload: Optional[Dict[str, Any]] = None  # arbitrary stage data (package_url, etc.)
 
 
 class ProjectEdit(BaseModel):
@@ -561,16 +869,19 @@ async def set_project_manager(project_id: str, data: ProjectManagerSet, request:
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    previous = project.get("project_manager_name")
+    previous = project.get("tsd_name") or project.get("project_manager_name")
 
     if not data.user_id:
         await db.projects.update_one(
             {"id": project_id},
-            {"$set": {"project_manager_id": None, "project_manager_name": None,
-                      "updated_at": _now()}},
+            {"$set": {"tsd_id": None, "tsd_name": None, "updated_at": _now()},
+             # The old field goes with it, so nothing is left claiming an owner
+             # the project no longer has.
+             "$unset": {"project_manager_id": "", "project_manager_name": ""}},
         )
-        await _audit("project", project_id, "manager_cleared", user, {"previous": previous})
-        return {"project_id": project_id, "project_manager_name": None, "previous": previous}
+        await _audit("project", project_id, "tsd_cleared", user, {"previous": previous})
+        return {"project_id": project_id, "tsd_id": None, "tsd_name": None,
+                "project_manager_name": None, "previous": previous}
 
     person = await db.users.find_one(
         {"user_id": data.user_id, "status": {"$ne": "disabled"}},
@@ -581,47 +892,55 @@ async def set_project_manager(project_id: str, data: ProjectManagerSet, request:
 
     await db.projects.update_one(
         {"id": project_id},
-        {"$set": {"project_manager_id": person["user_id"],
-                  "project_manager_name": person.get("name"),
-                  "updated_at": _now()}},
+        {"$set": {"tsd_id": person["user_id"],
+                  "tsd_name": person.get("name"),
+                  "updated_at": _now()},
+         "$unset": {"project_manager_id": "", "project_manager_name": ""}},
     )
     # Running a project you cannot see would be a dead end.
     await db.projects.update_one(
-        {"id": project_id, "collaborator_ids": {"$ne": person["user_id"]}},
-        {"$addToSet": {"collaborator_ids": person["user_id"],
-                       "collaborators": {"user_id": person["user_id"],
+        {"id": project_id, "pod_member_ids": {"$ne": person["user_id"]}},
+        {"$addToSet": {"pod_member_ids": person["user_id"],
+                       "pod": {"user_id": person["user_id"],
                                          "name": person.get("name"),
                                          "email": person.get("email")}}},
     )
-    await _audit("project", project_id, "manager_set", user,
-                 {"manager": person.get("name"), "previous": previous})
+    await _audit("project", project_id, "tsd_set", user,
+                 {"tsd": person.get("name"), "previous": previous})
 
     return {
         "project_id": project_id,
+        "tsd_id": person["user_id"],
+        "tsd_name": person.get("name"),
+        # Kept so older callers that read this key still work.
         "project_manager_id": person["user_id"],
         "project_manager_name": person.get("name"),
         "previous": previous,
     }
 
 
-class CollaboratorsSet(BaseModel):
+class PodSet(BaseModel):
     # The full intended team. Sent whole rather than as add/remove deltas so
     # two managers editing at once cannot interleave into a half-applied team.
-    collaborator_ids: List[str] = []
+    pod_member_ids: List[str] = []
     # Those among them who co-manage the project. Two managers on one project
     # is ordinary, and a co-manager can staff it and run its boards -- an
     # engineer on the same project cannot.
     manager_ids: List[str] = []
 
 
-@router.put("/projects/{project_id}/collaborators")
-async def set_collaborators(project_id: str, data: CollaboratorsSet, request: Request):
-    """Set the staff working on a project.
+@router.put("/projects/{project_id}/pod")
+async def set_pod(project_id: str, data: PodSet, request: Request):
+    """Set the pod: everyone working on this project.
 
-    Only the head of the project's unit (or whoever opened it, or an admin)
-    may change this -- being added to a project does not let you add others.
-    Newly added people are notified; people already on it are not notified
-    again, so re-saving the same team sends nothing.
+    A project had two ways of saying this, `collaborator_ids` and
+    `pod_member_ids`. Two names for one set is how they drift apart, and a
+    "project team" separate from "the pod" was a distinction nobody was making.
+    The pod won, because that is the word the delivery model uses.
+
+    The TSD and the architect staff it. Being on a pod does not let you add
+    others to it. People newly added are notified; people already on it are
+    not notified again, so re-saving the same pod sends nothing.
     """
     user = await _get_user(request)
 
@@ -634,9 +953,9 @@ async def set_collaborators(project_id: str, data: CollaboratorsSet, request: Re
         "Only this project's project manager can change who works on it",
     )
 
-    before = set(project.get("collaborator_ids") or [])
-    collaborators = await _resolve_collaborators(data.collaborator_ids)
-    after_ids = [c["user_id"] for c in collaborators]
+    before = set(project.get("pod_member_ids") or [])
+    pod = await _resolve_pod(data.pod_member_ids)
+    after_ids = [c["user_id"] for c in pod]
 
     # A co-manager has to be on the project to manage it, so anyone marked a
     # manager but left off the team is simply kept out of the manager list
@@ -645,16 +964,16 @@ async def set_collaborators(project_id: str, data: CollaboratorsSet, request: Re
 
     await db.projects.update_one(
         {"id": project_id},
-        {"$set": {"collaborator_ids": after_ids, "collaborators": collaborators,
+        {"$set": {"pod_member_ids": after_ids, "pod": pod,
                   "project_manager_ids": manager_ids,
                   "updated_at": _now()}},
     )
 
-    added = [c for c in collaborators if c["user_id"] not in before]
+    added = [c for c in pod if c["user_id"] not in before]
     if added:
         await notify_added_to_project(db, project, added, user)
 
-    removed = [c for c in (project.get("collaborators") or [])
+    removed = [c for c in (project.get("pod") or [])
                if c["user_id"] in (before - set(after_ids))]
     if removed:
         await notify_removed_from_project(db, project, removed, user)
@@ -665,7 +984,7 @@ async def set_collaborators(project_id: str, data: CollaboratorsSet, request: Re
 
     return {
         "project_id": project_id,
-        "collaborators": collaborators,
+        "pod": pod,
         "manager_ids": manager_ids,
         "added": len(added),
         "removed": len(before - set(after_ids)),
@@ -740,7 +1059,7 @@ async def projects_for_user(user_id: str, request: Request):
         raise HTTPException(status_code=403, detail="Only admins and HR may view another person's projects")
 
     created = await db.projects.find({"created_by": user_id}, {"_id": 0}).sort("created_at", -1).to_list(200)
-    collab = await db.projects.find({"collaborator_ids": user_id, "created_by": {"$ne": user_id}}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    collab = await db.projects.find({"pod_member_ids": user_id, "created_by": {"$ne": user_id}}, {"_id": 0}).sort("created_at", -1).to_list(200)
     return {"created": [_serialize_project(p) for p in created], "collaborating": [_serialize_project(p) for p in collab]}
 
 
@@ -824,165 +1143,459 @@ async def list_archived_projects(request: Request, limit: int = 50):
     return {"total": len(items), "projects": items}
 
 
-@router.post("/projects/{project_id}/transition")
-async def transition_stage(project_id: str, data: StageTransition, request: Request):
-    """Advance or revert a project to any stage. Records history + sends email."""
+async def _resolve_gate(project: dict) -> List[dict]:
+    """Which of this stage's gate conditions are already satisfied by data.
+
+    A condition with an `auto` key can be answered by looking; the rest are a
+    human judgement and stay a tick. This is the seam the intelligence layer
+    later widens: more conditions answer themselves, the shape stays the same,
+    and the panel does not move.
+    """
+    stage = project.get("stage") or FIRST_STAGE
+    pid = project["id"]
+    conditions = STAGE_GATES.get(stage, [])
+    if not conditions:
+        return []
+
+    needed = {c["auto"] for c in conditions if c.get("auto")}
+    resolved: Dict[str, bool] = {}
+
+    if "has_outcome" in needed:
+        resolved["has_outcome"] = bool((project.get("desired_outcome") or "").strip())
+    if "has_source" in needed:
+        resolved["has_source"] = await db.documents.count_documents({"project_id": pid}) > 0
+    if "has_tsd" in needed:
+        resolved["has_tsd"] = bool(project.get("tsd_id"))
+    if "has_architect" in needed:
+        resolved["has_architect"] = bool(project.get("architect_id"))
+    if "has_requirements" in needed:
+        resolved["has_requirements"] = await db.requirements.count_documents({"project_id": pid}) >= 3
+    if "has_product_brief" in needed:
+        resolved["has_product_brief"] = await db.product_briefs.count_documents({"project_id": pid}) > 0
+    if "has_journeys" in needed:
+        resolved["has_journeys"] = await db.user_journeys.count_documents({"project_id": pid}) > 0
+    if "has_architecture" in needed:
+        resolved["has_architecture"] = await db.architecture_documents.count_documents({"project_id": pid}) > 0
+    if "has_demo_materials" in needed:
+        # Either a link to a prototype, or a file attached to a round. Both are
+        # materials; only accepting a link left the gate unsatisfiable for
+        # anybody whose wireframes were a file.
+        linked = await db.demos.count_documents(
+            {"project_id": pid, "materials_url": {"$nin": [None, ""]}})
+        uploaded = await db.documents.count_documents(
+            {"project_id": pid, "doc_type": "demo"})
+        resolved["has_demo_materials"] = (linked + uploaded) > 0
+    if "demo_held" in needed:
+        resolved["demo_held"] = await db.demos.count_documents(
+            {"project_id": pid, "held_at": {"$ne": None}}) > 0
+    if "has_feedback" in needed:
+        resolved["has_feedback"] = await db.feedback_items.count_documents({"project_id": pid}) > 0
+    if "demo_validated" in needed:
+        resolved["demo_validated"] = await db.demos.count_documents(
+            {"project_id": pid, "outcome": "validated"}) > 0
+    if "has_pod" in needed:
+        resolved["has_pod"] = len(project.get("pod_member_ids") or []) > 0
+    if "has_milestones" in needed:
+        resolved["has_milestones"] = await db.milestones.count_documents({"project_id": pid}) > 0
+    if "board_build_clear" in needed or "board_qa_clear" in needed:
+        boards = await db.boards.find({"project_id": pid}, {"_id": 0, "board_id": 1, "title": 1}).to_list(50)
+        qa_ids = [b["board_id"] for b in boards if "qa" in (b.get("title") or "").lower()]
+        done_ids = [b["board_id"] for b in boards if (b.get("title") or "").lower() in ("done", "complete")]
+        open_ids = [b["board_id"] for b in boards
+                    if b["board_id"] not in qa_ids and b["board_id"] not in done_ids]
+        if "board_qa_clear" in needed:
+            resolved["board_qa_clear"] = (
+                await db.cards.count_documents({"board_id": {"$in": qa_ids}}) == 0
+                if qa_ids else False
+            )
+        if "board_build_clear" in needed:
+            resolved["board_build_clear"] = (
+                await db.cards.count_documents({"board_id": {"$in": open_ids}}) == 0
+                if boards else False
+            )
+    if "closure_complete" in needed:
+        checklist = project.get("closure_checklist") or []
+        resolved["closure_complete"] = bool(checklist) and all(i.get("done") for i in checklist)
+
+    out = []
+    for c in conditions:
+        key = c.get("auto")
+        out.append({
+            "label": c["label"],
+            "auto": key,
+            # None means nobody can tell from the data, so a person ticks it.
+            "satisfied": resolved.get(key) if key else None,
+        })
+    return out
+
+
+@router.get("/projects/{project_id}/gate")
+async def get_gate(project_id: str, request: Request):
+    """What stands between this project and its next stage."""
     user = await _get_user(request)
     project = await db.projects.find_one({"id": project_id}, {"_id": 0})
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    if data.target_stage not in STAGES:
+    if not permissions.can_view_all_projects(user):
+        mine = await db.projects.find_one(
+            {"id": project_id, **permissions.project_scope_filter(user)}, {"_id": 0, "id": 1})
+        if not mine:
+            raise HTTPException(status_code=403, detail="You can only open projects you work on")
+
+    stage = project.get("stage") or FIRST_STAGE
+    conditions = await _resolve_gate(project)
+    blocking = [c["label"] for c in conditions if c["satisfied"] is False]
+    return {
+        "stage": stage,
+        "stage_label": stage_label(stage),
+        "next_stage": stage + 1 if stage < LAST_STAGE else None,
+        "next_stage_label": stage_label(stage + 1) if stage < LAST_STAGE else None,
+        "conditions": conditions,
+        "blocking": blocking,
+        "can_advance": not blocking and stage < LAST_STAGE,
+        "playbook": PLAYBOOKS.get(stage, {}),
+        "owner_function": stage_owner(stage),
+        "can_move": permissions.can_move_stage(user, project),
+    }
+
+
+@router.post("/projects/{project_id}/transition")
+async def transition_stage(project_id: str, data: StageTransition, request: Request):
+    """Move a project to another stage.
+
+    Three rules, and they are the spine of the pipeline:
+
+      forward   one stage at a time, and only when the gate conditions that
+                can be checked are satisfied. Forcing past them is possible,
+                recorded, and tells the Senior Partner.
+      backward  allowed, but a reason is required, except iterating on a demo,
+                which is the designed behaviour rather than a correction.
+      who       the TSD, because they own the client and the project state.
+    """
+    user = await _get_user(request)
+    project = await db.projects.find_one({"id": project_id}, {"_id": 0})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    target = data.target_stage
+    if not is_valid_stage(target):
         raise HTTPException(status_code=400, detail="Invalid stage")
 
-    # Nothing checked who may move a project through the pipeline. Whoever runs
-    # the project does -- the same rule as editing or restaffing it.
     permissions.require(
-        permissions.can_manage_project(user, project),
-        "Only this project's manager can move it through the pipeline",
+        permissions.can_move_stage(user, project),
+        "Only this project's TSD moves it through the pipeline",
     )
 
+    current = project.get("stage") or FIRST_STAGE
+    if target == current:
+        raise HTTPException(status_code=400, detail="Project is already at that stage")
+
+    forward = target > current
+    is_demo_iteration = (current, target) == DEMO_ITERATION_MOVE
+
+    if forward and target != current + 1:
+        raise HTTPException(
+            status_code=400,
+            detail=f"A project advances one stage at a time. {stage_label(current)} is followed "
+                   f"by {stage_label(current + 1)}.",
+        )
+
+    # Going back is how a project is corrected, and the record of why is the
+    # point. Returning for a further demo round is exempt: the demo loop is the
+    # design, and demanding a written excuse for using it teaches people to
+    # write nothing.
+    if not forward and not is_demo_iteration and not (data.note or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Moving a project backwards needs a reason. It is kept in the stage history.",
+        )
+
+    # Whatever this move carries is applied to the project in memory first, so
+    # the gate is resolved against what the project will be rather than what it
+    # was. Naming the TSD as part of the move to stage 3 is exactly this case:
+    # checked against the stored record, "TSD selected" could never pass.
+    payload = data.payload or {}
+    resolved_payload: Dict[str, Any] = {}
+    if payload.get("tsd_id"):
+        chosen = await db.users.find_one(
+            {"user_id": payload["tsd_id"], "status": "active"},
+            {"_id": 0, "user_id": 1, "name": 1},
+        )
+        if not chosen:
+            raise HTTPException(status_code=404, detail="That person was not found")
+        resolved_payload["tsd_id"] = chosen["user_id"]
+        resolved_payload["tsd_name"] = chosen["name"]
+
+    if target == 3 and not project.get("tsd_id") and not resolved_payload.get("tsd_id"):
+        raise HTTPException(
+            status_code=400,
+            detail="Name the TSD before the project moves to them.",
+        )
+
+    gate_view = {**project, **resolved_payload}
+
+    forced = False
+    blocking: List[str] = []
+    conditions: List[dict] = []
+    if forward:
+        conditions = await _resolve_gate(gate_view)
+        blocking = [c["label"] for c in conditions if c["satisfied"] is False]
+        if blocking:
+            if not data.force:
+                raise HTTPException(
+                    status_code=400,
+                    detail={"error": "Gate conditions are not met", "blocking": blocking},
+                )
+            permissions.require(
+                permissions.can_force_gate(user, project),
+                "Only this project's TSD may advance past an unmet gate",
+            )
+            if not (data.note or "").strip():
+                raise HTTPException(
+                    status_code=400,
+                    detail="Forcing a gate needs a reason. The Senior Partner is told.",
+                )
+            forced = True
+
     now = _now()
-    history = project.get("stage_history", [])
+    updates: Dict[str, Any] = {
+        "stage": target,
+        "stage_key": stage_key(target),
+        "phase": stage_phase(target),
+        "status": project.get("status") if project.get("status") in ("lost", "on_hold") else "active",
+    }
+
+    # Client validation is the gate the whole system turns on. Passing it
+    # freezes scope: from here a change to the requirement set is a scope
+    # change with a decision behind it, not an edit.
+    if target > VALIDATION_STAGE and not project.get("scope_frozen"):
+        updates["scope_frozen"] = True
+        updates["scope_frozen_at"] = now
+        updates["validated_at"] = project.get("validated_at") or now
+        updates["client_status"] = "validated"
+
+    if target == BUILD_STAGE and not project.get("start_date"):
+        updates["start_date"] = now
+    if target == LAST_STAGE:
+        updates["completed_at"] = now
+
+    history = list(project.get("stage_history") or [])
     history.append({
-        "stage": data.target_stage,
-        "from_stage": project.get("stage"),
+        "from_stage": current,
+        "to_stage": target,
         "at": now,
         "by": user.get("user_id"),
         "by_name": user.get("name"),
-        "note": data.note or "",
+        "why": (data.note or "").strip() or ("Advanced" if forward else "Moved back"),
+        "gate_conditions": [
+            {"label": c["label"], "satisfied": c["satisfied"]} for c in conditions
+        ],
+        "forced": forced,
     })
+    updates["stage_history"] = history
 
-    target = data.target_stage
-    payload = data.payload or {}
-    updates: Dict[str, Any] = {
-        "stage": target,
-        "status": STAGES[target]["key"],
-        "track": STAGES[target]["track"],
-        "stage_history": history,
-    }
+    # The owner named above, now that the move is going ahead.
+    updates.update(resolved_payload)
 
-    # ------- STRUCTURED VALIDATORS at gate stages -------
-    # Stage 2 names the person who will own delivery. It used to be reserved
-    # for whoever carried is_delivery_coordinator; nobody does, so the stage
-    # could not be reached at all. The manager check above is the gate now --
-    # the requirement that survives is naming somebody, not holding a flag.
-    if target == 2:
-        owner_id = payload.get("delivery_owner_id")
-        if not owner_id:
-            raise HTTPException(status_code=400, detail="delivery_owner_id is required to advance to Stage 2")
-        owner = await db.users.find_one({"user_id": owner_id}, {"_id": 0, "name": 1})
-        if not owner:
-            raise HTTPException(status_code=404, detail="Delivery Owner user not found")
-        updates["delivery_owner_id"] = owner_id
-        updates["delivery_owner_name"] = owner["name"]
-
-    # Gate 4→5: Delivery Owner sets operations_owner; Delivery Coordinator sets engineer.
-    # Project must end Stage 5 with BOTH operations_owner_id and assigned_engineer_id set.
-    if target == 5:
-        operations_owner_id = payload.get("operations_owner_id") or payload.get("pricing_owner_id") or project.get("pricing_owner_id")
-        engineer_id     = payload.get("engineer_id")      or project.get("assigned_engineer_id")
-        # who is allowed to set what
-        ops_in = payload.get("operations_owner_id") or payload.get("pricing_owner_id")
-        if ops_in:
-            ops = await db.users.find_one({"user_id": ops_in}, {"_id": 0, "name": 1})
-            if not ops:
-                raise HTTPException(status_code=404, detail="Operations Owner user not found")
-            updates["pricing_owner_id"] = ops_in  # column kept for back-compat
-            updates["pricing_owner_name"] = ops["name"]
-            operations_owner_id = ops_in
-        if "engineer_id" in payload and payload["engineer_id"]:
-            # Requiring the chosen person to carry is_engineer made the stage
-            # impossible: one person in the company holds it.
-            eng = await db.users.find_one({"user_id": payload["engineer_id"]}, {"_id": 0, "name": 1})
-            if not eng:
-                raise HTTPException(status_code=404, detail="Engineer user not found")
-            updates["assigned_engineer_id"] = payload["engineer_id"]
-            updates["assigned_engineer_name"] = eng["name"]
-            engineer_id = payload["engineer_id"]
-        if not operations_owner_id:
-            raise HTTPException(status_code=400, detail="Operations Owner must be set (Delivery Owner)")
-        if not engineer_id:
-            raise HTTPException(status_code=400, detail="Engineer must be set (Delivery Coordinator)")
-
-    # Auto-set milestone timestamps on the new stage numbers
-    if target == 9 and not project.get("start_date"):
-        updates["start_date"] = now
-        updates["build_status"] = updates.get("build_status") or "planning"
-    if target == 10:
-        updates["completed_at"] = now
-    if target == 8:
-        # Proposal marked as sent
-        updates["proposal_sent_at"] = now
-
-    # Apply remaining payload keys (whitelist write-once doc fields)
-    ALLOWED_PAYLOAD = {"package_url", "pricing_data", "proposal_url", "total_value",
-                       "currency", "brief_document_url", "roadmap_document_url",
-                       "delivery_owner_id", "operations_owner_id", "pricing_owner_id", "engineer_id"}
+    # Everything else a stage may carry, still whitelisted: a transition should
+    # not be a way to write any field on a project.
+    ALLOWED_PAYLOAD = {"package_url", "proposal_url", "contract_url", "total_value",
+                       "currency", "commercial_status", "demo_status"}
     for k, v in payload.items():
-        if k in ALLOWED_PAYLOAD and k not in ("delivery_owner_id", "operations_owner_id", "pricing_owner_id", "engineer_id"):
+        if k in ALLOWED_PAYLOAD:
             updates[k] = v
 
     await db.projects.update_one({"id": project_id}, {"$set": updates})
-    await _audit("project", project_id, f"stage_{target}", user, {"note": data.note})
-
     project.update(updates)
 
-    # ------- SPLIT logic at Stage 5 → spawn sibling Proposal + Build records -------
-    siblings = []
-    if target == 5 and not project.get("split_done"):
-        # 1) Proposal sibling at Stage 6 (owner = pricing_owner)
-        proposal_id = str(uuid.uuid4())
-        proposal_doc = {
-            **{k: v for k, v in project.items() if k not in ("id", "_id", "stage_history", "split_done")},
-            "id": proposal_id,
-            "project_id_display": project["project_id_display"] + "-P",
-            "stage": 6,
-            "status": STAGES[6]["key"],
-            "track": "proposal",
-            "parent_project_id": project_id,
-            "sibling_project_id": None,  # set after build created
-            "stage_history": [{"stage": 6, "at": now, "by": user.get("user_id"),
-                               "by_name": user.get("name"), "note": "Auto-spawned from Stage 5 split"}],
-            "created_at": now,
-        }
-        # 2) Build sibling at Stage 9 (owner = delivery_owner, engineer assigned)
-        build_id = str(uuid.uuid4())
-        build_doc = {
-            **{k: v for k, v in project.items() if k not in ("id", "_id", "stage_history", "split_done")},
-            "id": build_id,
-            "project_id_display": project["project_id_display"] + "-B",
-            "stage": 9,
-            "status": STAGES[9]["key"],
-            "track": "build",
-            "parent_project_id": project_id,
-            "sibling_project_id": proposal_id,
-            "stage_history": [{"stage": 9, "at": now, "by": user.get("user_id"),
-                               "by_name": user.get("name"), "note": "Auto-spawned from Stage 5 split"}],
-            "created_at": now,
-            "start_date": now,
-            "build_status": "planning",
-            "build_comments": [],
-        }
-        proposal_doc["sibling_project_id"] = build_id
-        await db.projects.insert_one(proposal_doc)
-        await db.projects.insert_one(build_doc)
-        await db.projects.update_one({"id": project_id}, {"$set": {"split_done": True,
-                                                                    "sibling_project_id": proposal_id}})
-        await _audit("project", project_id, "split", user, {"proposal_id": proposal_id, "build_id": build_id})
+    await _audit("project", project_id, f"stage_{target}", user, {
+        "from_stage": current, "to_stage": target,
+        "why": data.note, "forced": forced,
+    })
+    await _send_stage_email(target, project, user)
 
-        # Email both tracks' next-stage roles
-        await _send_stage_email(6, proposal_doc, user)
-        await _send_stage_email(9, build_doc, user)
+    if forced:
+        await _alert_senior_partner(
+            project, user,
+            f"Gate forced on {project.get('name')}",
+            f"<p><strong>{user.get('name')}</strong> advanced "
+            f"<strong>{project.get('name')}</strong> from {stage_label(current)} to "
+            f"{stage_label(target)} without meeting every gate condition.</p>"
+            f"<p><strong>Unmet:</strong> {', '.join(blocking)}</p>"
+            f"<p><strong>Reason given:</strong> {data.note}</p>",
+        )
 
-        siblings = [{"id": proposal_id, "track": "proposal"}, {"id": build_id, "track": "build"}]
-    else:
-        await _send_stage_email(target, project, user)
+    return _serialize_project(project)
 
-    result = _serialize_project(project)
-    if siblings:
-        result["siblings"] = siblings
-        result["split_done"] = True
-    return result
+
+class HealthUpdate(BaseModel):
+    health: str
+    reason: Optional[str] = ""
+
+
+@router.post("/projects/{project_id}/health")
+async def set_health(project_id: str, data: HealthUpdate, request: Request):
+    """Set project health. The TSD alone, and never without a reason."""
+    user = await _get_user(request)
+    project = await db.projects.find_one({"id": project_id}, {"_id": 0})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    permissions.require(
+        permissions.can_set_health(user, project),
+        "Only this project's TSD sets its health",
+    )
+    health = (data.health or "").upper()
+    if health not in ("GREEN", "AMBER", "RED"):
+        raise HTTPException(status_code=400, detail="Health is GREEN, AMBER or RED")
+    reason = (data.reason or "").strip()
+    if health != "GREEN" and not reason:
+        raise HTTPException(
+            status_code=400,
+            detail="A project that is not green needs a reason. It is what makes the status useful.",
+        )
+
+    previous = project.get("health")
+    await db.projects.update_one({"id": project_id}, {"$set": {
+        "health": health,
+        "health_reason": reason,
+        "health_set_by": user.get("user_id"),
+        "health_set_at": _now(),
+    }})
+    await _audit("project", project_id, "health", user,
+                 {"from": previous, "to": health, "reason": reason})
+
+    # Red is the Senior Partner's cue to intervene, which is the whole of what
+    # they asked to be told about.
+    if health == "RED" and previous != "RED":
+        await _alert_senior_partner(
+            project, user,
+            f"{project.get('name')} is RED",
+            f"<p><strong>{project.get('name')}</strong> for "
+            f"<strong>{project.get('client_name_snapshot')}</strong> has been set to RED by "
+            f"{user.get('name')}.</p><p><strong>Reason:</strong> {reason}</p>",
+        )
+
+    return {"health": health, "health_reason": reason}
+
+
+class ArchitectSelection(BaseModel):
+    user_id: str
+
+
+@router.post("/projects/{project_id}/request-architect")
+async def request_architect(project_id: str, request: Request):
+    """The TSD asks for a Solution Architect.
+
+    This produces no package. The architect reads the project itself: the
+    brief, the transcripts, the requirements, the journeys, the history. A
+    briefing bundle would be a copy, and a copy goes stale the moment the
+    project moves.
+    """
+    user = await _get_user(request)
+    project = await db.projects.find_one({"id": project_id}, {"_id": 0})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    permissions.require(
+        permissions.can_move_stage(user, project),
+        "Only this project's TSD requests an architect",
+    )
+    if project.get("architect_id"):
+        raise HTTPException(status_code=400, detail="This project already has an architect")
+
+    await db.projects.update_one({"id": project_id},
+                                 {"$set": {"architect_requested_at": _now()}})
+    await _audit("project", project_id, "architect_requested", user, {})
+    await _alert_senior_partner(
+        project, user,
+        f"Architect needed on {project.get('name')}",
+        f"<p><strong>{user.get('name')}</strong> has requested a Solution Architect for "
+        f"<strong>{project.get('name')}</strong>.</p>"
+        f"<p>This stage waits for your selection.</p>",
+    )
+    candidates = await db.users.find(
+        {"can_architect": True, "status": "active"},
+        {"_id": 0, "user_id": 1, "name": 1, "email": 1},
+    ).to_list(100)
+    return {"requested_at": _now(), "candidates": candidates}
+
+
+@router.get("/staff")
+async def list_staff(request: Request):
+    """Everybody who can be put on a project.
+
+    This used to be the staff of the project's unit. A pod deliberately mixes
+    people from across the capability teams -- an architect from Frontier, a
+    model engineer from Foundry, security from Firewall -- so narrowing the
+    list to one unit made forming a correct pod impossible rather than merely
+    inconvenient.
+
+    Names, emails and function roles only. The full staff directory, with the
+    fields that are nobody else's business, stays administrators-only.
+    """
+    await _get_user(request)
+    people = await db.users.find(
+        {"status": {"$ne": "disabled"}},
+        {"_id": 0, "user_id": 1, "name": 1, "email": 1, "function_role": 1,
+         "can_architect": 1, "picture": 1},
+    ).sort("name", 1).to_list(1000)
+    return {"staff": people, "total": len(people)}
+
+
+@router.get("/architect-candidates")
+async def architect_candidates(request: Request):
+    """Engineers who may be named Solution Architect.
+
+    Architects come from the engineering team, so this is engineers carrying
+    `can_architect` rather than a separate pool of people.
+    """
+    await _get_user(request)
+    return await db.users.find(
+        {"can_architect": True, "status": "active"},
+        {"_id": 0, "user_id": 1, "name": 1, "email": 1, "function_role": 1},
+    ).to_list(100)
+
+
+@router.post("/projects/{project_id}/select-architect")
+async def select_architect(project_id: str, data: ArchitectSelection, request: Request):
+    """Name the technical owner. The Senior Partner alone.
+
+    This is the one place the Senior Partner sits on the critical path, and it
+    is deliberate: stage 6 waits for them rather than routing around them.
+    """
+    user = await _get_user(request)
+    permissions.require(
+        permissions.can_select_architect(user),
+        "Only the Senior Partner selects the Solution Architect",
+    )
+    project = await db.projects.find_one({"id": project_id}, {"_id": 0})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    chosen = await db.users.find_one(
+        {"user_id": data.user_id, "status": "active"}, {"_id": 0, "user_id": 1, "name": 1})
+    if not chosen:
+        raise HTTPException(status_code=404, detail="That person was not found")
+    if not await db.users.count_documents({"user_id": data.user_id, "can_architect": True}):
+        raise HTTPException(
+            status_code=400,
+            detail=f"{chosen['name']} is not marked as able to architect. An administrator "
+                   f"grants that on their account.",
+        )
+
+    await db.projects.update_one({"id": project_id}, {"$set": {
+        "architect_id": chosen["user_id"],
+        "architect_name": chosen["name"],
+        "architecture_status": "in_progress",
+    }})
+    await _audit("project", project_id, "architect_selected", user,
+                 {"architect_id": chosen["user_id"], "architect_name": chosen["name"]})
+
+    project["architect_id"] = chosen["user_id"]
+    project["architect_name"] = chosen["name"]
+    await _send_stage_email(project.get("stage") or FIRST_STAGE, project, user)
+    return {"architect_id": chosen["user_id"], "architect_name": chosen["name"]}
+
 
 
 @router.post("/projects/{project_id}/lose")
@@ -1175,14 +1788,17 @@ async def build_update(project_id: str, data: BuildUpdate, request: Request):
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # A status value belongs to the build track, but a written progress note
-    # does not -- anyone working a project should be able to record where it
-    # stands. Requiring the build track for both meant staff on every other
-    # project had nowhere to post an update.
-    if data.status and project.get("track") != "build":
+    # A status value belongs to a project that is actually being built, but a
+    # written progress note does not: anyone working a project should be able
+    # to record where it stands.
+    #
+    # This used to test `track == "build"`. Tracks are retired, so that field
+    # is now always absent and the check would have refused every update. What
+    # it meant is expressed directly: has this project reached Engineering.
+    if data.status and (project.get("stage") or FIRST_STAGE) < BUILD_STAGE:
         raise HTTPException(
             status_code=400,
-            detail="Build status applies to build-track projects; post a comment instead",
+            detail="Build status applies once a project reaches Engineering; post a comment instead",
         )
 
     if not permissions.can_view_all_projects(user):
@@ -1960,6 +2576,38 @@ async def list_audit(
 # ===========================================================================
 # ROLE ASSIGNMENT (admin UI for assigning users to flow roles)
 # ===========================================================================
+@router.get("/users-by-function/{function_role}")
+async def users_by_function(function_role: str, request: Request):
+    """People to offer for a delivery assignment.
+
+    Whoever actually holds the function comes first, because that is a
+    deliberate grant. Everybody active follows, so a stage that needs a name
+    can always be completed: an empty dropdown is not a permission error, it
+    is a dead end with no explanation, and that is what the old flag-based
+    lists produced once the flags stopped being maintained.
+    """
+    await _get_user(request)
+    if function_role not in permissions.FUNCTION_ROLES:
+        raise HTTPException(status_code=400, detail="Unknown function role")
+
+    fields = {"_id": 0, "user_id": 1, "name": 1, "email": 1,
+              "function_role": 1, "can_architect": 1}
+    holders = await db.users.find(
+        {"function_role": function_role, "status": "active"}, fields
+    ).sort("name", 1).to_list(200)
+    held_ids = {u["user_id"] for u in holders}
+
+    others = await db.users.find(
+        {"status": "active", "user_id": {"$nin": list(held_ids)}}, fields
+    ).sort("name", 1).to_list(300)
+
+    for u in holders:
+        u["holds_function"] = True
+    for u in others:
+        u["holds_function"] = False
+    return holders + others
+
+
 @router.get("/users-by-role/{flag}")
 async def users_by_role(flag: str, request: Request):
     """People to offer for a pipeline assignment.
@@ -2050,15 +2698,20 @@ async def my_dashboard(request: Request):
     approval_queue = await db.projects.count_documents({"stage": 7})
 
     # Pending proposals (Stage 6 → awaiting pricing owner / ops to write proposal)
-    pending_proposals = await db.projects.count_documents({"stage": 6})
+    # Projects waiting on the Senior Partner to name an architect. Stage 6 is
+    # the one place the lifecycle deliberately blocks on a single person, so
+    # it is worth counting on its own.
+    pending_proposals = await db.projects.count_documents(
+        {"stage": 6, "architect_id": None})
 
-    # In Build (Stage 9)
-    in_build_count = await db.projects.count_documents({"stage": 9})
+    # Anything from Engineering onward is being built.
+    in_build_count = await db.projects.count_documents({"stage": {"$gte": BUILD_STAGE}})
 
-    # Build statuses for engineer dashboard
+    # Build statuses for the engineer dashboard. This matched `track: "build"`
+    # before; tracks are retired, so it matches the stage that replaced them.
     build_status_counts: Dict[str, int] = {}
     async for doc in db.projects.aggregate([
-        {"$match": {"track": "build", "build_status": {"$ne": None}}},
+        {"$match": {"stage": {"$gte": BUILD_STAGE}, "build_status": {"$ne": None}}},
         {"$group": {"_id": "$build_status", "count": {"$sum": 1}}}
     ]):
         build_status_counts[doc["_id"]] = doc["count"]

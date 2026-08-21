@@ -22,8 +22,8 @@ import { useUser } from "../context/UserContext";
 
 const ALL_UNITS = [
   { slug: "talent", name: "Talent & Delivery" },
-  { slug: "thco-hr", name: "THCO HR" },
-  { slug: "it-tools", name: "IT & THCO Tools" },
+  { slug: "thco-hr", name: "Crowther HR" },
+  { slug: "it-tools", name: "IT & Crowther Tools" },
   { slug: "sales", name: "Sales & Business Dev" },
   { slug: "marketing", name: "Marketing & Brand" },
   { slug: "advisory", name: "Advisory & Consulting" },
@@ -39,6 +39,34 @@ const ROLE_LABELS = {
   team_member: "Team Member",
 };
 
+// What a person does on a delivery project, as opposed to how much of the
+// system they may reach. `role` above is the access level; this is the job.
+// One person can be a mini_admin and a talent_sd -- the two answer different
+// questions, and collapsing them would mean promoting somebody to see their
+// own work.
+//
+// Solution Architect is deliberately absent. It is a hat worn on one project:
+// an engineer carries `can_architect`, and the project names one of them.
+const FUNCTION_ROLES = [
+  { value: "", label: "Not set" },
+  { value: "senior_partner", label: "Senior Partner" },
+  { value: "commercial", label: "Commercial / Initiator" },
+  { value: "tsd", label: "TSD (owns projects)" },
+  { value: "engineer", label: "Engineer" },
+  { value: "product_designer", label: "Product Designer" },
+  { value: "qa", label: "QA / Tester" },
+  { value: "talent_sd", label: "TalentSD" },
+  { value: "people_ops", label: "People & Operations" },
+  { value: "legal", label: "Legal" },
+  { value: "finance", label: "Finance" },
+];
+
+// Only these reach the pipeline. Engineers, designers and QA work on the
+// board instead, which is a different router and unaffected.
+const PIPELINE_FUNCTIONS = new Set([
+  "senior_partner", "commercial", "tsd", "talent_sd", "people_ops", "legal", "finance",
+]);
+
 const emptyForm = {
   name: "",
   email: "",
@@ -47,6 +75,8 @@ const emptyForm = {
   accessible_units: [],
   is_hr: false,
   is_engineer: false,
+  function_role: "",
+  can_architect: false,
   is_fulfillment: false,
   // Optionally make this person the head of a unit as they are invited. A
   // unit has one head, so choosing one here replaces whoever holds it.
@@ -173,7 +203,7 @@ export default function UserManagement() {
           : `${person.name} can now manage projects in ${unitName(slug)}`
       );
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Could not change the project manager");
+      toast.error(e.response?.data?.detail || "Could not change the TSD");
     } finally {
       setSaving((s) => ({ ...s, [key]: false }));
     }
@@ -191,7 +221,7 @@ export default function UserManagement() {
           : `${unitName(slug)} now has no head`
       );
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Could not change the project manager");
+      toast.error(e.response?.data?.detail || "Could not change the TSD");
     } finally {
       setSaving((s) => ({ ...s, [`head_${slug}`]: false }));
     }
@@ -266,6 +296,10 @@ export default function UserManagement() {
         is_engineer: form.is_engineer,
         is_fulfillment: form.is_fulfillment,
         head_of_unit: form.head_of_unit || undefined,
+        // Empty means not set, which is a real state: somebody who has not
+        // been given a delivery function yet sees only what they are put on.
+        function_role: form.function_role || undefined,
+        can_architect: form.function_role === "engineer" ? form.can_architect : undefined,
       });
       setCreatedCreds({ email: res.email, password: res.temp_password, emailSent: res.email_sent });
       toast.success(
@@ -445,7 +479,7 @@ export default function UserManagement() {
           <div>
             <h1 className="font-display text-4xl text-gray-900 leading-tight">Staff Management</h1>
             <p className="text-sm text-gray-500 mt-2">
-              Add staff to the portal, assign their role and units, and appoint project managers.
+              Add staff to the portal, assign their role and units, and appoint TSDs.
             </p>
           </div>
           <Button
@@ -485,9 +519,9 @@ export default function UserManagement() {
           leaderless while their members were managing projects daily. */}
       <div className="lux-card p-6" data-testid="unit-heads-panel">
         <div>
-          <h2 className="font-display text-xl text-gray-900">Project managers</h2>
+          <h2 className="font-display text-xl text-gray-900">TSDs</h2>
           <p className="text-sm text-gray-500 mt-1">
-            A project manager opens projects for their unit, staffs them and runs their
+            A TSD opens projects for their unit, staffs them and runs their
             boards. Tick anyone to grant it; untick to take it back.
           </p>
         </div>
@@ -531,7 +565,7 @@ export default function UserManagement() {
                               ? "border-[#BFE7DA] bg-[#EAF8F3] text-[#12795C] font-medium"
                               : "border-[#EAE7E0] text-gray-500 hover:border-gray-300"
                           }`}
-                          title={on ? `Remove ${p.name} as a project manager here` : `Make ${p.name} a project manager here`}
+                          title={on ? `Remove ${p.name} as a TSD here` : `Make ${p.name} a TSD here`}
                           data-testid={`pm-toggle-${unit.slug}-${p.user_id}`}
                         >
                           {busy ? "…" : p.name}
@@ -599,7 +633,7 @@ export default function UserManagement() {
                     {/* Role and, separately, whether they manage projects.
                         Stacked and never wrapped mid-phrase: side by side in a
                         narrow column these broke across lines and read as
-                        fragments ("Admin" over "PM · THCO HR"). */}
+                        fragments ("Admin" over "PM · Crowther HR"). */}
                     <td className="px-6 py-4 align-top">
                       <div className="flex flex-col items-start gap-1.5">
                         <span
@@ -621,7 +655,7 @@ export default function UserManagement() {
                         {unitsManaged(u).length > 0 && (
                           <span
                             className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-[#EAF8F3] text-[#12795C] border border-[#BFE7DA] whitespace-nowrap max-w-full truncate"
-                            title={`Project manager — ${unitsManaged(u).join(", ")}`}
+                            title={`TSD — ${unitsManaged(u).join(", ")}`}
                             data-testid={`pm-badge-${u.user_id}`}
                           >
                             {unitsManaged(u).length === 1
@@ -746,7 +780,7 @@ export default function UserManagement() {
                 <p className="lux-eyebrow mb-1">New Staff</p>
                 <DialogTitle className="font-display text-2xl text-gray-900">Invite a staff member</DialogTitle>
                 <DialogDescription className="text-gray-500 text-[13px]">
-                  Say whether they're staff or a project manager, then set their access and send the invite.
+                  Say whether they're staff or a TSD, then set their access and send the invite.
                 </DialogDescription>
               </DialogHeader>
 
@@ -780,7 +814,7 @@ export default function UserManagement() {
                     decision here as the invitation goes out. */}
                 <div>
                   <label className="block text-[11px] font-semibold uppercase tracking-[0.15em] text-gray-400 mb-2">
-                    Are they staff or a project manager?
+                    Are they staff or a TSD?
                   </label>
                   <div className="grid grid-cols-2 gap-3">
                     <button
@@ -811,7 +845,7 @@ export default function UserManagement() {
                       data-testid="create-kind-head"
                     >
                       <p className={`text-[13px] font-medium ${form.head_of_unit ? "text-[#12795C]" : "text-gray-900"}`}>
-                        Project manager
+                        TSD
                       </p>
                       <p className="text-[11px] mt-0.5 text-gray-400">
                         Opens projects for a unit and adds staff to them
@@ -958,7 +992,45 @@ export default function UserManagement() {
                       );
                     })}
                   </div>
-                  <p className="text-[11px] text-gray-400 mt-2">THCO Flow is org-wide — every member sees it automatically.</p>
+                  <p className="text-[11px] text-gray-400 mt-2">Crowther OS is org-wide — every member sees it automatically.</p>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-[0.15em] text-gray-400 mb-2">
+                    Delivery function
+                  </label>
+                  <select
+                    value={form.function_role}
+                    onChange={(e) => setForm({ ...form, function_role: e.target.value })}
+                    data-testid="create-function-role"
+                    className="w-full px-3 py-2 rounded-lg border border-[#EAE7E0] bg-white text-gray-900 text-sm"
+                  >
+                    {FUNCTION_ROLES.map((f) => (
+                      <option key={f.value} value={f.value}>{f.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    {PIPELINE_FUNCTIONS.has(form.function_role)
+                      ? "Reaches Crowther OS."
+                      : form.function_role
+                        ? "Works on the task board, not the pipeline."
+                        : "Without one, this person only sees what they are put on."}
+                  </p>
+
+                  {form.function_role === "engineer" && (
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, can_architect: !form.can_architect })}
+                      data-testid="create-can-architect"
+                      className={`mt-2 px-3 py-1.5 rounded-full border text-[11px] transition-all ${
+                        form.can_architect
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-700 font-medium"
+                          : "border-[#EAE7E0] text-gray-500 hover:border-gray-300"
+                      }`}
+                    >
+                      Can be named Solution Architect
+                    </button>
+                  )}
                 </div>
 
                 <div>

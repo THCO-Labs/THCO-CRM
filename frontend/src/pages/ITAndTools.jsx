@@ -83,7 +83,7 @@ const ALL_AGENTS = [
   { id: 26, name: "Curriculum & Learning", department: "Academy", status: "coming_soon", lastRun: "—" },
   { id: 27, name: "Code Review & Mentoring", department: "Academy", status: "coming_soon", lastRun: "—" },
   { id: 28, name: "Newsletter & Nurture", department: "Marketing", status: "coming_soon", lastRun: "—" },
-  { id: 29, name: "Internal HR & People Ops", department: "THCO HR", status: "coming_soon", lastRun: "—" },
+  { id: 29, name: "Internal HR & People Ops", department: "Crowther HR", status: "coming_soon", lastRun: "—" },
   { id: 30, name: "CRM & Pipeline Intel", department: "Sales", status: "coming_soon", lastRun: "—" },
   { id: 31, name: "Competitive Intelligence", department: "Sales", status: "coming_soon", lastRun: "—" },
   { id: 32, name: "Client Onboarding", department: "Operations", status: "coming_soon", lastRun: "—" },
@@ -159,7 +159,7 @@ const ITAndTools = () => {
           </BreadcrumbItem>
           <BreadcrumbSeparator className="text-gray-300" />
           <BreadcrumbItem>
-            <BreadcrumbPage className="text-gray-900 font-medium">IT & THCO Tools</BreadcrumbPage>
+            <BreadcrumbPage className="text-gray-900 font-medium">IT & Crowther Tools</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
@@ -172,7 +172,7 @@ const ITAndTools = () => {
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="lux-eyebrow mb-3">Business Unit</p>
-            <h1 className="font-display text-4xl text-gray-900 leading-tight">IT & THCO Tools</h1>
+            <h1 className="font-display text-4xl text-gray-900 leading-tight">IT & Crowther Tools</h1>
             <p className="text-sm text-gray-500 mt-2 max-w-xl">IT infrastructure, AI agents, outbound tooling, and system management</p>
             <p className="text-xs text-gray-400 mt-2">Lead: Emmanuel</p>
           </div>

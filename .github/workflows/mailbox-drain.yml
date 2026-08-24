@@ -37,6 +37,14 @@ concurrency:
   group: scheduled-jobs
   cancel-in-progress: false
 
+# Paused 24 August 2026: same reason as scheduled-jobs.yml's
+# MAILBOX_IMPORT_PAUSED -- resume_files is 26GB of the cluster's 32GB and the
+# database is refusing writes entirely. This loop is the more aggressive of
+# the two importers (up to ~6.5 hours a night), so pausing it matters more.
+# "Run workflow" by hand still works regardless of this flag.
+env:
+  MAILBOX_IMPORT_PAUSED: 'true'
+
 jobs:
   drain:
     runs-on: ubuntu-latest
@@ -50,6 +58,10 @@ jobs:
           MINUTES: ${{ github.event.inputs.minutes || '320' }}
         run: |
           set -u
+          if [ "${MAILBOX_IMPORT_PAUSED:-}" = "true" ] && [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "Mailbox drain is paused (MAILBOX_IMPORT_PAUSED=true). Use 'Run workflow' to run it by hand anyway."
+            exit 0
+          fi
           if [ -z "$BASE" ] || [ -z "$TOKEN" ]; then
             echo "APP_BASE_URL or SCHEDULER_TOKEN is not set."
             exit 1

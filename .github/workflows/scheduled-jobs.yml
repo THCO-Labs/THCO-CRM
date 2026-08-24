@@ -41,8 +41,13 @@ concurrency:
 
 # Flip to 'true' to pause the daily mailbox import again -- worth doing before
 # any bulk load against the database.
+#
+# Paused 24 August 2026: resume_files (CV binaries stored inline) grew to
+# 26GB of the cluster's 32GB, and the database is now refusing writes
+# entirely (NotWritablePrimary). Importing more mail only makes that worse.
+# Un-pause once storage capacity is actually resolved, not before.
 env:
-  MAILBOX_IMPORT_PAUSED: 'false'
+  MAILBOX_IMPORT_PAUSED: 'true'
 
 jobs:
   run:

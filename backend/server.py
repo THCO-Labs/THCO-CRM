@@ -3485,13 +3485,26 @@ async def label_pre_unit_head_projects():
 
 @app.on_event("startup")
 async def seed_units_on_boot():
+    """Give a brand-new database the ten starting units. Once only, and
+    read-gated before any write is attempted.
+
+    This used to upsert each canonical slug on every boot -- besides being a
+    write attempted unconditionally on every single startup (exactly what
+    took production down on 24 August, once the database stopped accepting
+    writes), it also meant a genuinely *deleted* unit looked identical to one
+    that had never been seeded, so deleting one of the original ten and
+    restarting the server brought it back. Gating on the collection being
+    completely empty fixes both: no write at all on any boot after the
+    first, and a deleted unit stays deleted.
+    """
     if db is None:
         return
-    created = 0
-    for slug, name in CANONICAL_UNITS:
-        res = await db.units.update_one(
-            {"slug": slug},
-            {"$setOnInsert": {
+    try:
+        if await db.units.count_documents({}, limit=1):
+            return
+        created = 0
+        for slug, name in CANONICAL_UNITS:
+            await db.units.insert_one({
                 "unit_id": f"unit_{uuid.uuid4().hex[:12]}",
                 "slug": slug,
                 "name": name,
@@ -3506,13 +3519,12 @@ async def seed_units_on_boot():
                            "userTasks": []},
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "created_by": "system",
-            }},
-            upsert=True,
-        )
-        if res.upserted_id is not None:
+            })
             created += 1
-    if created:
-        logger.info("Seeded %d business unit(s)", created)
+        if created:
+            logger.info("Seeded %d business unit(s)", created)
+    except Exception as e:
+        logger.warning("Business unit seeding skipped: %s", str(e)[:200])
 
 
 # ==================== SEED BUNDLED PROPOSALS ====================

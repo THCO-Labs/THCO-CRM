@@ -3423,22 +3423,31 @@ async def backfill_candidate_match_keys():
         return
     from services import candidate_identity as identity
 
-    filled = 0
-    cursor = db.candidates.find(
-        {"name_normalised": {"$exists": False}},
-        {"_id": 0, "candidate_id": 1, "name": 1, "linkedin": 1},
-    )
-    async for c in cursor:
-        await db.candidates.update_one(
-            {"candidate_id": c["candidate_id"]},
-            {"$set": {
-                "name_normalised": identity.normalise_name(c.get("name")),
-                "linkedin_slug": identity.linkedin_slug(c.get("linkedin")),
-            }},
+    # A one-shot backfill is not worth taking the whole app down over. A
+    # write rejected here (a full or read-only-primary database, most
+    # concretely) must not become a startup crash -- the fatal version of
+    # this took production down for as long as the database stayed
+    # unwritable, over a migration that either already ran or can simply
+    # run on the next successful boot.
+    try:
+        filled = 0
+        cursor = db.candidates.find(
+            {"name_normalised": {"$exists": False}},
+            {"_id": 0, "candidate_id": 1, "name": 1, "linkedin": 1},
         )
-        filled += 1
-    if filled:
-        logger.info("Backfilled match keys on %d candidate(s)", filled)
+        async for c in cursor:
+            await db.candidates.update_one(
+                {"candidate_id": c["candidate_id"]},
+                {"$set": {
+                    "name_normalised": identity.normalise_name(c.get("name")),
+                    "linkedin_slug": identity.linkedin_slug(c.get("linkedin")),
+                }},
+            )
+            filled += 1
+        if filled:
+            logger.info("Backfilled match keys on %d candidate(s)", filled)
+    except Exception as e:
+        logger.warning("Candidate match-key backfill skipped: %s", str(e)[:200])
 
 
 @app.on_event("startup")
@@ -3459,11 +3468,19 @@ async def label_pre_unit_head_projects():
     """
     if db is None:
         return
-    res = await db.projects.update_many(
-        {"is_demo": {"$exists": False}}, {"$set": {"is_demo": True}}
-    )
-    if res.modified_count:
-        logger.info("Labelled %d pre-unit-head project(s) as demo", res.modified_count)
+    # Same reasoning as the candidate backfill above: this is what actually
+    # took production down on 24 August. A write rejected by a full or
+    # read-only database must not be fatal to startup -- the label is
+    # cosmetic-adjacent (it only gates `has_projects`) and the migration
+    # simply runs on the next boot that can write.
+    try:
+        res = await db.projects.update_many(
+            {"is_demo": {"$exists": False}}, {"$set": {"is_demo": True}}
+        )
+        if res.modified_count:
+            logger.info("Labelled %d pre-unit-head project(s) as demo", res.modified_count)
+    except Exception as e:
+        logger.warning("Pre-unit-head project labelling skipped: %s", str(e)[:200])
 
 
 @app.on_event("startup")

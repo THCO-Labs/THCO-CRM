@@ -870,7 +870,17 @@ async def register(user_data: UserCreate, response: Response):
 # production container scales to zero and runs a single replica, so today that
 # is the whole service -- but if it is ever scaled out, this must move to a
 # shared store or each replica will allow the full budget.
+# Two limits, because the two keys mean different things and one number for
+# both was wrong. Eight failures against **one account** is a brute-force
+# attempt. Eight failures from **one address** is a Tuesday: the office shares
+# a single public IP, so every mistyped password in the building lands on the
+# same counter, and the first version locked the whole team out after eight of
+# them between everybody. The account limit is the real defence -- it is what
+# stops a password being ground down. The address limit exists only to catch a
+# spray across many accounts, which needs far more than eight attempts to be
+# worth anything, so it can afford to be generous.
 LOGIN_MAX_ATTEMPTS = int(os.environ.get("LOGIN_MAX_ATTEMPTS", "8"))
+LOGIN_MAX_ATTEMPTS_PER_IP = int(os.environ.get("LOGIN_MAX_ATTEMPTS_PER_IP", "50"))
 LOGIN_WINDOW_SECONDS = int(os.environ.get("LOGIN_WINDOW_SECONDS", "300"))
 _LOGIN_ATTEMPTS: dict = {}
 
@@ -889,13 +899,23 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+def _login_limit_for(key: str) -> int:
+    return LOGIN_MAX_ATTEMPTS_PER_IP if key.startswith("ip:") else LOGIN_MAX_ATTEMPTS
+
+
 def _login_throttle_check(*keys: str) -> None:
     now = time.monotonic()
     for key in keys:
+        limit = _login_limit_for(key)
         recent = [t for t in _LOGIN_ATTEMPTS.get(key, []) if now - t < LOGIN_WINDOW_SECONDS]
         _LOGIN_ATTEMPTS[key] = recent
-        if len(recent) >= LOGIN_MAX_ATTEMPTS:
-            retry_in = int(LOGIN_WINDOW_SECONDS - (now - recent[0])) + 1
+        if len(recent) >= limit:
+            # When the count drops back *below* the limit, which is when the
+            # (limit)th-newest attempt ages out -- not when the oldest does.
+            # Reporting the oldest told the caller to come back while they
+            # would still be refused.
+            oldest_that_matters = recent[-limit]
+            retry_in = max(1, int(LOGIN_WINDOW_SECONDS - (now - oldest_that_matters)) + 1)
             raise HTTPException(
                 status_code=429,
                 detail="Too many sign-in attempts. Try again in a few minutes.",

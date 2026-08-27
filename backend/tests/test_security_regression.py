@@ -566,6 +566,28 @@ class TestLoginThrottle:
         # The lockout must arrive before an attacker gets many tries.
         assert statuses.index(429) <= 10, f"lockout came too late: {statuses}"
 
+    def test_one_office_address_does_not_lock_out_the_whole_team(self, db):
+        """The regression that reached production on 27 August.
+
+        The first version counted eight failures per address as an attack. An
+        office shares one public IP, so eight mistyped passwords between
+        everybody locked the entire team out -- which is what happened, from a
+        single test run. The account limit is the brute-force defence; the
+        address limit only has to catch a spray across many accounts, so it is
+        deliberately generous.
+        """
+        for i in range(12):
+            r = requests.post(
+                f"{API}/auth/login",
+                json={"email": f"colleague{i}-{uuid.uuid4().hex[:6]}@qa-thco-fixture.com",
+                      "password": "mistyped"},
+                timeout=30,
+            )
+            assert r.status_code != 429, (
+                f"a shared address was locked out after {i + 1} failures by "
+                f"{i + 1} different people"
+            )
+
     def test_lockout_response_tells_the_caller_when_to_retry(self, db):
         victim = _make_user(db, name="QA Throttle Two", function_role="tsd",
                             password_hash="$2b$12$" + "y" * 53)

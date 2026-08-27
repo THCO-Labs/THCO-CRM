@@ -1879,3 +1879,39 @@ Two things about the rollout worth keeping:
 password is in git history and remains valid in production. Rotate it. The
 deploy removed the publicly downloadable copy, which was the worst of the
 exposure, but anybody with a clone still has the value.
+
+
+### The login throttle locked out the office — 27 August 2026, same day
+
+Shipped in `eea361d`, hit within the hour, fixed in `519a059`.
+
+The throttle counted **eight failures per address** as an attack. The office
+shares one public IP, so every mistyped password in the building landed on the
+same counter and the ninth locked out everybody. It was triggered by a single
+verification run from inside the office -- which is a fair result: the test
+found the defect, just after production rather than before it.
+
+The mistake was treating the two keys as the same kind of evidence. Eight
+failures against **one account** is somebody guessing a password, and that is
+the limit worth keeping tight -- it is the defence that actually matters.
+Eight failures from **one address** is a Tuesday. The address counter only has
+to catch a spray across many accounts, which needs far more than eight
+attempts to be worth anything, so it is now fifty
+(`LOGIN_MAX_ATTEMPTS_PER_IP`) while the account limit stays at eight.
+
+A successful sign-in clears both counters, so one colleague getting in
+unsticks the shared address for everybody else. That property was already
+there and is worth keeping for exactly this reason.
+
+`Retry-After` was wrong too: it reported when the *oldest* attempt aged out,
+but dropping one still leaves the count at the limit, so it told people to
+come back while they would still be refused. It now reports when the count
+actually falls below the limit.
+
+Verified against production, both directions: twelve failures from twelve
+different colleagues on one address -> no lockout; nine guesses at one account
+-> 429 at the ninth.
+
+**The general lesson, because it will recur:** a rate limit keyed on something
+users share is a rate limit on the whole group. Before choosing a threshold,
+ask what else sits behind that key.

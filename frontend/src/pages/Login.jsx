@@ -101,12 +101,12 @@ const Login = () => {
 
         {/* Brand */}
         <div className="relative z-10 flex items-center gap-3">
-          <span className="w-9 h-9 rounded-md bg-gradient-to-br from-[#C6A15B] to-[#8F7340] flex items-center justify-center">
-            <span className="font-display text-[#0C0F13] text-base font-semibold">T</span>
+          <span className="w-9 h-9 rounded-md bg-[#0C0F13] border border-[#1FB58A]/30 flex items-center justify-center p-1.5">
+            <img src="/crowther-icon.png" alt="Crowther" className="w-full h-full object-contain" />
           </span>
           <div>
             <p className="font-display text-white text-lg leading-none tracking-wide">Crowther</p>
-            <p className="text-[8px] uppercase tracking-[0.4em] text-[#6B7280] mt-1">Control Room</p>
+            <p className="text-[8px] uppercase tracking-[0.4em] text-[#6B7280] mt-1">Delivery OS</p>
           </div>
         </div>
 
@@ -123,9 +123,8 @@ const Login = () => {
         </div>
 
         {/* Footer line */}
-        <div className="relative z-10 flex items-center justify-between text-[10px] uppercase tracking-[0.25em] text-[#5C626D]">
+        <div className="relative z-10 flex items-center text-[10px] uppercase tracking-[0.25em] text-[#5C626D]">
           <span>Crowther &copy; {new Date().getFullYear()}</span>
-          <span>Eleven Units · One Room</span>
         </div>
       </div>
 
@@ -134,8 +133,8 @@ const Login = () => {
         <div className="w-full max-w-[400px]">
           {/* Mobile brand */}
           <div className="lg:hidden flex items-center justify-center gap-3 mb-10">
-            <span className="w-9 h-9 rounded-md bg-gradient-to-br from-[#C6A15B] to-[#8F7340] flex items-center justify-center">
-              <span className="font-display text-[#0C0F13] text-base font-semibold">T</span>
+            <span className="w-9 h-9 rounded-md bg-[#0C0F13] border border-[#1FB58A]/30 flex items-center justify-center p-1.5">
+              <img src="/crowther-icon.png" alt="Crowther" className="w-full h-full object-contain" />
             </span>
             <p className="font-display text-gray-900 text-xl tracking-wide">Crowther</p>
           </div>

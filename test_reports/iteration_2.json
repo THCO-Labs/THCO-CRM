@@ -56,7 +56,7 @@
   "test_credentials": {
     "super_admin": {
       "email": "joshua@thcohq.com",
-      "password": "THCOAdmin2024!"
+      "password": "<redacted>"
     }
   },
   "seed_data_creation": "Test client 'UI Test Client' was created and deleted during testing. Existing 'Acme Corporation' client with test_proposal.pdf preserved.",

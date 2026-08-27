@@ -3,7 +3,6 @@ import { toast } from "sonner";
 import { flowAPI, deliveryAPI } from "../../lib/api";
 import { Button } from "../ui/button";
 import { useUser, canManageUsers } from "../../context/UserContext";
-import CollaboratorPicker from "./CollaboratorPicker";
 import ThumbnailPicker from "../tasks/ThumbnailPicker";
 
 /**
@@ -32,7 +31,6 @@ export default function NewProjectForm({ onCreated, onCancel, compact = false })
     project_type: "new_client",
     source: "",
     notes: "",
-    collaborator_ids: [],
     thumbnail_id: null,
     // The intake form is the formal entry point to the lifecycle, so what the
     // commercial side already knows is captured here rather than chased later.
@@ -41,22 +39,40 @@ export default function NewProjectForm({ onCreated, onCancel, compact = false })
     transcripts: [],
     // Naming the TSD here settles stage 2 on the spot.
     tsd_id: "",
+    // And the architect, when the Senior Partner already knows.
+    architect_id: "",
   });
   // Files that arrived with the brief. Attached after the project exists,
   // because an upload needs something to belong to.
   const [files, setFiles] = useState([]);
   const [staff, setStaff] = useState([]);
+  const [architects, setArchitects] = useState([]);
   // Conversations that have already happened. The source and date matter:
   // "what did the client actually say" is unanswerable without knowing which
   // call it was said on.
   const [transcript, setTranscript] = useState({ source_label: "", source_date: "", content: "" });
+  // Held as raw files rather than read client-side, since PDF/DOCX text
+  // extraction is a server job (`cv_parser.extract_text`) -- uploaded once
+  // the project exists, same as the brief documents above.
+  const [transcriptFiles, setTranscriptFiles] = useState([]);
+  const [transcriptTab, setTranscriptTab] = useState("paste");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
-        const res = await flowAPI.staff();
-        setStaff(res?.staff || []);
+        // `users-by-function` rather than the raw staff list: it returns the
+        // people who hold the TSD role first, flagged, then everybody else
+        // active. Filtering the raw list by `function_role === "tsd"` -- which
+        // this did -- produced an empty dropdown, because no account has yet
+        // been granted a function role. An empty picker is not a safeguard,
+        // it is a dead end with no explanation.
+        setStaff(await flowAPI.usersByFunction("tsd"));
+      } catch { /* the selector simply stays empty */ }
+      try {
+        // Engineers carrying `can_architect`. Genuinely empty is a real
+        // state here, and the field says so rather than pretending.
+        setArchitects(await flowAPI.architectCandidates());
       } catch { /* the selector simply stays empty */ }
     })();
   }, []);
@@ -80,6 +96,13 @@ export default function NewProjectForm({ onCreated, onCancel, compact = false })
           await deliveryAPI.uploadDocument(created.id, file, file.name, "brief");
         } catch {
           toast.error(`${file.name} could not be attached. Add it from the project.`);
+        }
+      }
+      for (const t of transcriptFiles) {
+        try {
+          await deliveryAPI.uploadTranscript(created.id, t.file, t.source_label, t.source_date);
+        } catch {
+          toast.error(`${t.file.name} could not be attached. Add it from the project.`);
         }
       }
       toast.success(`Project created — ${created.project_id_display}`);
@@ -113,15 +136,60 @@ export default function NewProjectForm({ onCreated, onCancel, compact = false })
         />
       </Field>
 
-      {/* Staff no longer open their own work, so putting the team on at
-          creation is how they come to have any. Everyone chosen here is
-          emailed and notified once the project is saved. */}
-      <Field label="Who's working on this? (optional)">
-        <CollaboratorPicker
-          value={form.collaborator_ids}
-          onChange={(ids) => set("collaborator_ids", ids)}
-        />
+      {/* The single "who" that matters at intake: the TSD who will own and
+          run the project. Naming them here settles stage 2 on the spot;
+          left blank, the project waits at stage 2 for one to be assigned.
+          Collaborators are added later, once there's a project to add them
+          to -- a second "who's working on this" picker at creation time
+          only asked the same question twice. */}
+      <Field label="Select TSD (optional)">
+        <select
+          value={form.tsd_id}
+          onChange={(e) => set("tsd_id", e.target.value)}
+          className={inputCls}
+          data-testid="np-tsd"
+        >
+          <option value="">— decide later —</option>
+          {staff.map((s) => (
+            <option key={s.user_id} value={s.user_id}>
+              {s.name}
+              {s.holds_function ? "" : " (not a TSD)"}
+            </option>
+          ))}
+        </select>
+        <p className="text-xs text-gray-400 mt-1">
+          {form.tsd_id
+            ? "The project opens at stage 3, already assigned."
+            : "Left blank, the project waits at stage 2 for a TSD."}
+        </p>
       </Field>
+
+      {/* Naming the architect is the Senior Partner's, wherever it happens, so
+          this only appears for them. When it is already decided -- an expansion
+          for a client somebody already architects -- there is no reason to make
+          the project travel to stage 6 to record it. */}
+      {isAdmin && (
+        <Field label="Select Solution Architect (optional)">
+          <select
+            value={form.architect_id}
+            onChange={(e) => set("architect_id", e.target.value)}
+            className={inputCls}
+            data-testid="np-architect"
+          >
+            <option value="">— decide at stage 6 —</option>
+            {architects.map((a) => (
+              <option key={a.user_id} value={a.user_id}>{a.name}</option>
+            ))}
+          </select>
+          <p className="text-xs text-gray-400 mt-1">
+            {architects.length === 0
+              ? "Nobody is marked as able to architect yet — an administrator grants that on an engineer's account."
+              : form.architect_id
+                ? "They are told straight away, and added to the pod."
+                : "Only the Senior Partner and administrators can name one."}
+          </p>
+        </Field>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <Field label="Project Type">
@@ -177,11 +245,11 @@ export default function NewProjectForm({ onCreated, onCancel, compact = false })
 
       {/* Transcripts are stored as documents on the project, so that whoever
           picks it up later reads the source rather than a summary of it. */}
-      <Field label="Conversations so far (optional)">
-        {form.transcripts.length > 0 && (
+      <Field label="Document flow — what the client has sent or said (optional)">
+        {(form.transcripts.length > 0 || transcriptFiles.length > 0) && (
           <ul className="mb-2 space-y-1">
             {form.transcripts.map((t, i) => (
-              <li key={i} className="flex items-center justify-between text-sm px-3 py-2 rounded-lg bg-[#F7F6F3] border border-[#EAE7E0]">
+              <li key={`p${i}`} className="flex items-center justify-between text-sm px-3 py-2 rounded-lg bg-[#F7F6F3] border border-[#EAE7E0]">
                 <span className="text-gray-800">
                   {t.source_label}
                   {t.source_date && <span className="text-gray-500"> · {t.source_date}</span>}
@@ -190,6 +258,22 @@ export default function NewProjectForm({ onCreated, onCancel, compact = false })
                 <button
                   type="button"
                   onClick={() => set("transcripts", form.transcripts.filter((_, j) => j !== i))}
+                  className="text-gray-400 hover:text-red-600 text-xs"
+                >
+                  remove
+                </button>
+              </li>
+            ))}
+            {transcriptFiles.map((t, i) => (
+              <li key={`f${i}`} className="flex items-center justify-between text-sm px-3 py-2 rounded-lg bg-[#F7F6F3] border border-[#EAE7E0]">
+                <span className="text-gray-800">
+                  {t.source_label}
+                  {t.source_date && <span className="text-gray-500"> · {t.source_date}</span>}
+                  <span className="text-gray-400"> · {t.file.name}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setTranscriptFiles(transcriptFiles.filter((_, j) => j !== i))}
                   className="text-gray-400 hover:text-red-600 text-xs"
                 >
                   remove
@@ -215,52 +299,69 @@ export default function NewProjectForm({ onCreated, onCancel, compact = false })
               data-testid="np-transcript-date"
             />
           </div>
-          <textarea
-            rows={3}
-            value={transcript.content}
-            onChange={(e) => setTranscript({ ...transcript, content: e.target.value })}
-            className={inputCls + " resize-none"}
-            data-testid="np-transcript-content"
-            placeholder="Paste the transcript or your notes."
-          />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={!transcript.source_label.trim() || !transcript.content.trim()}
-            data-testid="np-transcript-add"
-            onClick={() => {
-              set("transcripts", [...form.transcripts, { ...transcript }]);
-              setTranscript({ source_label: "", source_date: "", content: "" });
-            }}
-          >
-            Add this conversation
-          </Button>
-        </div>
-      </Field>
 
-      {/* B5. Whoever opens the project often already knows who will run it.
-          Naming them here settles stage 2 rather than leaving the project to
-          wait for an assignment that has already been decided. */}
-      <Field label="Who will run this? (optional)">
-        <select
-          value={form.tsd_id}
-          onChange={(e) => set("tsd_id", e.target.value)}
-          className={inputCls}
-          data-testid="np-tsd"
-        >
-          <option value="">— decide later —</option>
-          {staff
-            .filter((s) => s.function_role === "tsd")
-            .map((s) => (
-              <option key={s.user_id} value={s.user_id}>{s.name}</option>
-            ))}
-        </select>
-        <p className="text-xs text-gray-400 mt-1">
-          {form.tsd_id
-            ? "The project opens at stage 3, already assigned."
-            : "Left blank, the project waits at stage 2 for a TSD."}
-        </p>
+          <div className="flex gap-1">
+            <button type="button" onClick={() => setTranscriptTab("paste")}
+                    className={`text-xs px-2 py-1 rounded ${transcriptTab === "paste" ? "bg-gray-200 text-gray-900" : "text-gray-500"}`}>
+              Paste text
+            </button>
+            <button type="button" onClick={() => setTranscriptTab("file")}
+                    className={`text-xs px-2 py-1 rounded ${transcriptTab === "file" ? "bg-gray-200 text-gray-900" : "text-gray-500"}`}>
+              Upload a file
+            </button>
+          </div>
+
+          {transcriptTab === "paste" ? (
+            <>
+              <textarea
+                rows={3}
+                value={transcript.content}
+                onChange={(e) => setTranscript({ ...transcript, content: e.target.value })}
+                className={inputCls + " resize-none"}
+                data-testid="np-transcript-content"
+                placeholder="Paste a call transcript, an email, meeting notes — anything the client sent or said."
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!transcript.source_label.trim() || !transcript.content.trim()}
+                data-testid="np-transcript-add"
+                onClick={() => {
+                  set("transcripts", [...form.transcripts, { ...transcript }]);
+                  setTranscript({ source_label: "", source_date: "", content: "" });
+                }}
+              >
+                Add this conversation
+              </Button>
+            </>
+          ) : (
+            <>
+              <input
+                type="file"
+                accept=".txt,.md,.pdf,.docx,.doc"
+                data-testid="np-transcript-file"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  if (!transcript.source_label.trim()) {
+                    toast.error("Say where this conversation came from first"); e.target.value = ""; return;
+                  }
+                  setTranscriptFiles([...transcriptFiles, { file, source_label: transcript.source_label, source_date: transcript.source_date }]);
+                  setTranscript({ source_label: "", source_date: "", content: "" });
+                  e.target.value = "";
+                }}
+                className="block w-full text-sm text-gray-600
+                           file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0
+                           file:bg-[#1B4332] file:text-white file:text-sm
+                           hover:file:bg-[#14342A]"
+              />
+              <p className="text-xs text-gray-400">
+                Attached once the project is saved. Text is pulled out of the file, same as a pasted one.
+              </p>
+            </>
+          )}
+        </div>
       </Field>
 
       {/* B4. A brief that arrived as a PDF should be attachable at the moment

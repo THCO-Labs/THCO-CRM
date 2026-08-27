@@ -82,7 +82,7 @@
   },
   "test_credentials": {
     "admin_email": "joshua@thcohq.com",
-    "admin_password": "THCOAdmin2024!"
+    "admin_password": "<redacted>"
   },
   "seed_data_creation": "Multiple test assessments created during testing (prefixed with test_, playwright_test_, e2e_test_, fresh_test_)",
   "retest_needed": false,

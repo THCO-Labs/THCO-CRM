@@ -51,7 +51,7 @@
   },
   "test_credentials": {
     "email": "joshua@thcohq.com",
-    "password": "THCOAdmin2024!",
+    "password": "<redacted>",
     "note": "Used for accessing /proposals page to verify card link to pebbles-brand"
   },
   "seed_data_creation": "None - all data hardcoded in component",

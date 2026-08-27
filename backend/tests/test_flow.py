@@ -1,5 +1,11 @@
 """Backend tests for THCO Flow (12-stage project management)."""
 import os
+# Credentials come from the environment. This file used to carry the
+# super admin's real password as a literal, in a tracked file, which
+# meant anybody with repository access had it.
+TEST_ADMIN_EMAIL = os.environ.get('TEST_ADMIN_EMAIL', '')
+TEST_ADMIN_PASSWORD = os.environ.get('TEST_ADMIN_PASSWORD', '')
+
 import re
 import pytest
 import requests
@@ -16,8 +22,8 @@ if not BASE_URL:
     except Exception:
         pass
 
-ADMIN_EMAIL = "joshua@thcohq.com"
-ADMIN_PASSWORD = "THCOAdmin2024!"
+ADMIN_EMAIL = TEST_ADMIN_EMAIL
+ADMIN_PASSWORD = TEST_ADMIN_PASSWORD
 
 
 @pytest.fixture(scope="session")

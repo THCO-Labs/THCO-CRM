@@ -6,6 +6,12 @@ Tests the /api/flowforge/transcribe endpoint and integration check functionality
 import pytest
 import requests
 import os
+# Credentials come from the environment. This file used to carry the
+# super admin's real password as a literal, in a tracked file, which
+# meant anybody with repository access had it.
+TEST_ADMIN_EMAIL = os.environ.get('TEST_ADMIN_EMAIL', '')
+TEST_ADMIN_PASSWORD = os.environ.get('TEST_ADMIN_PASSWORD', '')
+
 import io
 import wave
 import struct
@@ -21,8 +27,8 @@ class TestPhase4VoiceAndIntegrations:
         """Login and get authenticated session"""
         session = requests.Session()
         login_response = session.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "joshua@thcohq.com",
-            "password": "THCOAdmin2024!"
+            "email": TEST_ADMIN_EMAIL,
+            "password": TEST_ADMIN_PASSWORD
         })
         assert login_response.status_code == 200, f"Login failed: {login_response.text}"
         return session

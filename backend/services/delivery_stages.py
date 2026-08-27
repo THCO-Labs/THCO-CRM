@@ -142,7 +142,12 @@ STAGE_GATES: Dict[int, List[Dict[str, Optional[str]]]] = {
     ],
     3: [
         {"label": "TSD has reviewed the source information", "auto": None},
-        {"label": "TSD accepts ownership of the project", "auto": None},
+        # Was a judgement call with nothing behind it. The TSD now accepts the
+        # project explicitly -- one click, which tells the Senior Partner -- so
+        # this is a fact the system can check rather than a tick somebody gives
+        # themselves. Handing a project over and never hearing back was the
+        # gap; the acceptance is the answer.
+        {"label": "TSD accepts ownership of the project", "auto": "tsd_accepted"},
     ],
     4: [
         {"label": "Client context understood and recorded", "auto": None},

@@ -46,7 +46,7 @@
     "/app/backend/tests/test_flow_v2_restructure.py (new)"
   ],
   "success_rate": {"backend": "100% (11/11 pytest)", "frontend": "~85% — all UI elements render; only Stage 5 modal submission flow is blocked by the is_engineer backend bug"},
-  "test_credentials": "joshua@thcohq.com / THCOAdmin2024! (super_admin + all flags) — works.",
+  "test_credentials": "joshua@thcohq.com / <redacted> (super_admin + all flags) — works.",
   "seed_data_creation": "Created several TEST_QA_v2_* projects via API for split/build/transition coverage. Build sibling 91c70564-... has 2 test build_comments; proposal sibling a3b80c35-... was visited for UI verification.",
   "retest_needed": true,
   "main_agent_can_self_test": true,

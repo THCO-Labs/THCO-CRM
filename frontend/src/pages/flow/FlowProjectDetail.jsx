@@ -14,6 +14,8 @@ import { STAGES, PHASES, PHASE_ORDER, BUILD_STATUS_LABELS, LAST_STAGE, stageSumm
 import HealthControl from "../../components/flow/HealthControl";
 import ProjectWorkspace from "../../components/flow/ProjectWorkspace";
 import LifecycleLine from "../../components/flow/LifecycleLine";
+import TsdAcknowledgement from "../../components/flow/TsdAcknowledgement";
+import PodResponse from "../../components/flow/PodResponse";
 
 export default function FlowProjectDetail() {
   const { id } = useParams();
@@ -65,7 +67,7 @@ export default function FlowProjectDetail() {
       const res = await flowAPI.updateProject(id, form);
       toast.success(res.changed?.length ? `Updated ${res.changed.join(", ")}` : "No changes");
       setEditing(false);
-      await load();
+      await load({ silent: true });
     } catch (err) {
       // 403 here means the project belongs to someone else; the server is the
       // authority on that, not this screen.
@@ -73,8 +75,15 @@ export default function FlowProjectDetail() {
     } finally { setSavingEdit(false); }
   };
 
-  const load = async () => {
-    setLoading(true);
+  // `silent` refreshes project/gate state in place without flipping the
+  // page-level `loading` flag. That flag gates whether ProjectWorkspace (and
+  // its own local state -- which drawer is open, which tab is active) is
+  // mounted at all, so every non-silent call was unmounting and remounting
+  // the whole workspace on each background refresh: a drawer opened, an item
+  // checked inside it, and the drawer that item lived in was gone. Only the
+  // very first load (a real navigation) should show the full-page spinner.
+  const load = async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     try {
       const [p, u] = await Promise.all([flowAPI.getProject(id), authAPI.getMe()]);
       setProject(p); setMe(u);
@@ -82,7 +91,7 @@ export default function FlowProjectDetail() {
       // fetched once here rather than twice below.
       flowAPI.getGate(p.id).then(setGate).catch(() => setGate(null));
     } catch { toast.error("Project not found"); navigate("/flow/projects"); }
-    finally { setLoading(false); }
+    finally { if (!silent) setLoading(false); }
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
 
@@ -137,7 +146,7 @@ export default function FlowProjectDetail() {
       setProject((prev) => (prev
         ? { ...prev, tsd_id: res.tsd_id || null, tsd_name: res.tsd_name || null }
         : prev));
-      load();
+      load({ silent: true });
     } catch (e) {
       toast.error(e.response?.data?.detail || "Could not change the TSD");
     } finally {
@@ -168,7 +177,7 @@ export default function FlowProjectDetail() {
           : "No change to the team"
       );
       setTeamOpen(false);
-      load();
+      load({ silent: true });
     } catch (e) {
       toast.error(e.response?.data?.detail || "Could not update the team");
     } finally {
@@ -188,7 +197,7 @@ export default function FlowProjectDetail() {
       await flowAPI.transitionStage(id, target, note, payload, force);
       toast.success(`Moved to ${STAGES[target].label}`);
       setShowStageModal(null);
-      load();
+      load({ silent: true });
     } catch (e) {
       // An unmet gate comes back with the list of what is missing, which is
       // more use than "transition failed".
@@ -215,6 +224,7 @@ export default function FlowProjectDetail() {
   // Whoever owns the client owns the project state, so the controls that
   // change it are theirs.
   const isProjectTsd = me?.user_id && me.user_id === project.tsd_id;
+  const isProjectArchitect = me?.user_id && me.user_id === project.architect_id;
   const canRunProject = isProjectTsd || me?.role === "super_admin" || me?.role === "mini_admin";
 
   return (
@@ -232,7 +242,7 @@ export default function FlowProjectDetail() {
             <div className="flex items-center gap-2 mb-1">
               <p className="text-[11px] font-mono text-gray-400">{project.project_id_display}</p>
               <span className="text-[11px] text-gray-500">{stageSummary(stage)}</span>
-              <HealthControl project={project} canEdit={canRunProject} onChanged={load} />
+              <HealthControl project={project} canEdit={canRunProject} onChanged={() => load({ silent: true })} />
             </div>
             <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
             <div className="flex items-center gap-4 mt-2 text-sm text-gray-500 flex-wrap">
@@ -276,12 +286,56 @@ export default function FlowProjectDetail() {
             onAdvance={handleAdvance}
             canAdvance={!isLost && !transitioning && stage < LAST_STAGE && gate?.can_move}
             me={me}
-            onChanged={load}
+            onChanged={() => load({ silent: true })}
           />
         </div>
         </div>
 
-        {/* Who runs this project. A unit's manager runs everything in it,
+        {/* The TSD saying where they are with a project they were handed.
+          Directly under the header because "has the TSD picked this up" is the
+          first question anybody opening an early-stage project has, and until
+          now nothing on the page answered it. Hidden once the project is well
+          past intake -- it is an intake question, not a permanent panel. */}
+      {stage <= 4 && (
+        <div className="mb-5">
+          <TsdAcknowledgement
+            project={project}
+            role="tsd"
+            isTsd={isProjectTsd}
+            canRecord={isProjectTsd || isAdmin}
+            onChanged={() => load({ silent: true })}
+          />
+        </div>
+      )}
+
+      {/* The architect gets the same three buttons, for the same reason: being
+          named and then hearing nothing is the gap, and it was the same gap
+          for both roles. Shown from the moment one is named until the build
+          is under way. */}
+      {project.architect_id && stage >= 6 && stage <= 9 && (
+        <div className="mb-5">
+          <TsdAcknowledgement
+            project={project}
+            role="architect"
+            isTsd={isProjectArchitect}
+            canRecord={isProjectArchitect || isAdmin}
+            onChanged={() => load({ silent: true })}
+          />
+        </div>
+      )}
+
+      {/* Everybody else placed on the project. Being added was treated as
+          agreeing, which it is not -- people are on leave or at capacity,
+          and the project found out when the work did not happen. */}
+      <div className="mb-5">
+        <PodResponse
+          project={project}
+          me={me}
+          onChanged={() => load({ silent: true })}
+        />
+      </div>
+
+      {/* Who runs this project. A unit's manager runs everything in it,
             which is the right default and the wrong fit when one project
             belongs to somebody else -- so an administrator can hand a single
             project over without making that person run the whole unit. */}
@@ -381,11 +435,11 @@ export default function FlowProjectDetail() {
           The architect is handed no briefing package. They read this, the same
           as everyone else, from the moment they are named. */}
       <div className="mt-4">
-        <ProjectWorkspace projectId={project.id} project={project} onChanged={load} />
+        <ProjectWorkspace projectId={project.id} project={project} onChanged={() => load({ silent: true })} />
       </div>
 
       {/* BUILD STATUS - the board carries the work; this is the summary line */}
-      {isBuild && <BuildPanel project={project} onChange={load} />}
+      {isBuild && <BuildPanel project={project} onChange={() => load({ silent: true })} />}
 
       {showStageModal && (
         <StructuredStageModal

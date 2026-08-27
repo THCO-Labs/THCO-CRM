@@ -58,8 +58,25 @@ JWT_SECRET = os.environ.get('JWT_SECRET', 'thco-super-secret-key-2024')
 JWT_ALGORITHM = 'HS256'
 SESSION_EXPIRY_DAYS = 7
 
-# Create the main app
-app = FastAPI(title="THCO Internal Portal API")
+# Create the main app.
+#
+# The interactive documentation is off by default. `/docs`, `/redoc` and
+# `/openapi.json` were public, which handed an unauthenticated caller a
+# complete map of every endpoint, its parameters and its schemas -- including
+# the admin and user-management routes. That is reconnaissance nobody outside
+# the team needs, and none of those pages is behind the session check because
+# FastAPI mounts them before any of our code runs.
+#
+# Set API_DOCS=on in an environment where you want them (a local machine, a
+# staging box behind a VPN). Production should leave it unset.
+_DOCS_ENABLED = os.environ.get("API_DOCS", "").strip().lower() in ("1", "on", "true", "yes")
+
+app = FastAPI(
+    title="THCO Internal Portal API",
+    docs_url="/docs" if _DOCS_ENABLED else None,
+    redoc_url="/redoc" if _DOCS_ENABLED else None,
+    openapi_url="/openapi.json" if _DOCS_ENABLED else None,
+)
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
@@ -147,6 +164,10 @@ class UserUpdate(BaseModel):
     # Architects come from the engineering team, so being selectable as one is
     # a flag on an engineer rather than a role that replaces being one.
     can_architect: Optional[bool] = None
+    # Opening a project commits the firm to client work, so it belongs to the
+    # Senior Partner. This hands it to one named person -- the "in case he is
+    # busy" case -- and can be taken back the same way.
+    can_start_projects: Optional[bool] = None
 
 class LoginRecordResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -343,7 +364,28 @@ def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 def verify_password(password: str, hashed: str) -> bool:
-    return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+    """Whether this password matches the stored hash. Never raises.
+
+    `bcrypt.checkpw` throws on a hash it cannot parse, and an account can
+    legitimately hold one: a Google-SSO account has no password, an invited
+    account has none until it is claimed, and an interrupted migration can
+    leave a truncated string. Letting that propagate turned a wrong password
+    into a **500**, which is worse than it sounds for two reasons: it is a
+    crash on the busiest endpoint in the system, and it answers differently
+    from the 401 every other account returns -- so the error itself tells an
+    attacker which addresses are real.
+
+    A password that cannot be checked has not been proven, so it fails.
+    """
+    if not password or not hashed:
+        return False
+    try:
+        return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+    except (ValueError, TypeError):
+        logging.getLogger(__name__).warning(
+            "Password hash could not be parsed; treating the attempt as a failure"
+        )
+        return False
 
 def create_jwt_token(user_id: str, email: str) -> str:
     payload = {
@@ -809,10 +851,86 @@ async def register(user_data: UserCreate, response: Response):
         "session_token": session_token
     }
 
+# ---------------------------------------------------------------------------
+# Login throttling
+# ---------------------------------------------------------------------------
+# Nothing stood between an attacker and unlimited password guesses. Every
+# attempt was recorded in `login_records`, which tells you afterwards that you
+# were attacked; it does not stop it. bcrypt makes each guess slow, but slow is
+# not a rate limit -- it is roughly ten guesses a second per connection, which
+# is thousands an hour against a weak password.
+#
+# Two counters, both required: by account, so one person's password cannot be
+# ground down, and by source address, so a spray across many accounts from one
+# place is caught too. In memory rather than in Mongo because this must be
+# cheap enough to run on every attempt, and because a lockout that survives a
+# restart is a denial-of-service handed to whoever triggers it.
+#
+# Known limit, stated rather than hidden: this counts per process. The
+# production container scales to zero and runs a single replica, so today that
+# is the whole service -- but if it is ever scaled out, this must move to a
+# shared store or each replica will allow the full budget.
+LOGIN_MAX_ATTEMPTS = int(os.environ.get("LOGIN_MAX_ATTEMPTS", "8"))
+LOGIN_WINDOW_SECONDS = int(os.environ.get("LOGIN_WINDOW_SECONDS", "300"))
+_LOGIN_ATTEMPTS: dict = {}
+
+
+def _client_ip(request: Request) -> str:
+    """The caller's address, trusting the proxy header only for its last hop.
+
+    Azure Container Apps terminates TLS and appends the real client to
+    X-Forwarded-For. The *first* entry is client-supplied and trivially
+    spoofed, so taking it would let an attacker mint a fresh identity per
+    request and skip the limit entirely.
+    """
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",")[-1].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _login_throttle_check(*keys: str) -> None:
+    now = time.monotonic()
+    for key in keys:
+        recent = [t for t in _LOGIN_ATTEMPTS.get(key, []) if now - t < LOGIN_WINDOW_SECONDS]
+        _LOGIN_ATTEMPTS[key] = recent
+        if len(recent) >= LOGIN_MAX_ATTEMPTS:
+            retry_in = int(LOGIN_WINDOW_SECONDS - (now - recent[0])) + 1
+            raise HTTPException(
+                status_code=429,
+                detail="Too many sign-in attempts. Try again in a few minutes.",
+                headers={"Retry-After": str(retry_in)},
+            )
+
+
+def _login_throttle_record(*keys: str) -> None:
+    now = time.monotonic()
+    # Bounded so a spray across thousands of addresses cannot grow this without
+    # limit; the oldest half goes, and anyone dropped simply gets a fresh
+    # budget rather than free access.
+    if len(_LOGIN_ATTEMPTS) > 10000:
+        for stale in sorted(_LOGIN_ATTEMPTS, key=lambda k: max(_LOGIN_ATTEMPTS[k] or [0]))[:5000]:
+            _LOGIN_ATTEMPTS.pop(stale, None)
+    for key in keys:
+        _LOGIN_ATTEMPTS.setdefault(key, []).append(now)
+
+
+def _login_throttle_clear(*keys: str) -> None:
+    for key in keys:
+        _LOGIN_ATTEMPTS.pop(key, None)
+
+
 @api_router.post("/auth/login")
 async def login(credentials: UserLogin, request: Request, response: Response):
+    # Checked before the password is verified, so a locked-out caller costs a
+    # dictionary lookup rather than a bcrypt round.
+    email_key = f"email:{(credentials.email or '').lower()}"
+    ip_key = f"ip:{_client_ip(request)}"
+    _login_throttle_check(email_key, ip_key)
+
     user = await db.users.find_one({"email": credentials.email.lower()}, {"_id": 0})
     if not user:
+        _login_throttle_record(email_key, ip_key)
         # Record failed login attempt
         await record_login_attempt(
             user_id="unknown",
@@ -826,6 +944,7 @@ async def login(credentials: UserLogin, request: Request, response: Response):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
     if not verify_password(credentials.password, user.get("password_hash", "")):
+        _login_throttle_record(email_key, ip_key)
         await record_login_attempt(
             user_id=user["user_id"],
             user_name=user["name"],
@@ -872,7 +991,11 @@ async def login(credentials: UserLogin, request: Request, response: Response):
         login_method="email_password",
         success=True
     )
-    
+
+    # A correct password clears the counter, so somebody who mistyped twice and
+    # then got it right is not carrying a penalty into their next sign-in.
+    _login_throttle_clear(email_key, ip_key)
+
     # Create new session
     session_token = f"session_{uuid.uuid4().hex}"
     session_doc = {
@@ -960,6 +1083,8 @@ async def get_me(request: Request):
         # Architects come from engineering, so this is a flag on an engineer
         # rather than a role that replaces being one.
         "can_architect": user.get("can_architect", False),
+        # Granted individually by the Senior Partner or an admin.
+        "can_start_projects": user.get("can_start_projects", False),
         # Resolved per request in get_current_user. The sidebar uses these to
         # decide whether to offer THCO Flow and the New Project action.
         "headed_units": user.get("headed_units", []),
@@ -1254,6 +1379,7 @@ async def create_user(user_data: dict, request: Request):
         # state: they see only what they are put on until somebody decides.
         "function_role": (user_data.get("function_role") or None),
         "can_architect": bool(user_data.get("can_architect", False)),
+        "can_start_projects": bool(user_data.get("can_start_projects", False)),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
 
@@ -1400,7 +1526,8 @@ async def update_user(user_id: str, updates: UserUpdate, request: Request):
         # evict is how a stale grant survives.
         if update_dict.keys() & {
             "role", "status", "accessible_units", "headed_units",
-            "function_role", "can_architect", "is_hr", "is_engineer", "is_it",
+            "function_role", "can_architect", "can_start_projects",
+            "is_hr", "is_engineer", "is_it",
         }:
             clear_user_cache()
 
@@ -3157,6 +3284,12 @@ async def run_scheduled_job(request: Request, job: str):
     except Exception as e:
         logger.warning(f"Mailbox import job unavailable: {e}")
 
+    async def _contract_expiry_sweep():
+        from services.contract_expiry import contract_expiry_sweep
+        return await contract_expiry_sweep(db)
+
+    jobs["contract-expiry-sweep"] = _contract_expiry_sweep
+
     runner = jobs.get(job)
     if runner is None:
         raise HTTPException(status_code=400, detail=f"Unknown job '{job}'")
@@ -3257,6 +3390,29 @@ api_router.include_router(flow_router)
 from routers.delivery import router as delivery_router, set_db as set_delivery_db
 set_delivery_db(db)
 api_router.include_router(delivery_router)
+
+# Include Talent Staffing router (talent requirements, contract assignments --
+# CROWTHER_MIGRATION_PLAN.md §8). Separate from delivery.py, which is already
+# large, rather than adding more weight to it.
+from routers.talent_staffing import router as talent_staffing_router, set_db as set_talent_staffing_db
+set_talent_staffing_db(db)
+api_router.include_router(talent_staffing_router)
+
+# Include Control Tower router (Tier 3 -- portfolio view, exception view,
+# blockers, requirement-to-card traceability, assembled reports, and search
+# across project information). Reads what the other routers record; the only
+# thing it writes is a blocker, which had nowhere to live before.
+from routers.control_tower import router as control_tower_router, set_db as set_control_tower_db
+set_control_tower_db(db)
+api_router.include_router(control_tower_router)
+
+# Include Intelligence router (Tier 4 -- recommendations over what the other
+# tiers record). Every route is a read that suggests; nothing here writes to a
+# project, so "AI recommends, humans decide" is a property of the routing
+# rather than a convention. Degrades to data-only ranking with no LLM key.
+from routers.intelligence import router as intelligence_router, set_db as set_intelligence_db
+set_intelligence_db(db)
+api_router.include_router(intelligence_router)
 
 # Include Business Units router (admin-created units + member invites)
 from routers.units import router as units_router, set_db as set_units_db
@@ -3371,13 +3527,13 @@ async def startup_scheduler():
 
 
 # ==================== SEED BUSINESS UNITS ====================
-# The eleven units the company is organised into were only ever a hardcoded
+# The ten units the company is organised into were only ever a hardcoded
 # list in the frontend; the units collection held nothing unless a super admin
 # had created a custom one. A unit head is recorded on the unit, so the unit
 # has to exist as a record before anybody can be appointed to run it.
 #
-# Seeded on boot and idempotent: an existing unit is left completely alone, so
-# a renamed or reconfigured unit is never overwritten and no head is lost.
+# Seeded once, into an empty collection -- see seed_units_on_boot below for
+# why it no longer re-checks every slug on every startup.
 CANONICAL_UNITS = [
     ("talent", "Talent & Delivery"),
     ("thco-hr", "THCO HR"),
@@ -3485,46 +3641,42 @@ async def label_pre_unit_head_projects():
 
 @app.on_event("startup")
 async def seed_units_on_boot():
-    """Give a brand-new database the ten starting units. Once only, and
-    read-gated before any write is attempted.
+    """Give a brand-new database the ten starting units. Once only.
 
-    This used to upsert each canonical slug on every boot -- besides being a
-    write attempted unconditionally on every single startup (exactly what
-    took production down on 24 August, once the database stopped accepting
-    writes), it also meant a genuinely *deleted* unit looked identical to one
-    that had never been seeded, so deleting one of the original ten and
-    restarting the server brought it back. Gating on the collection being
-    completely empty fixes both: no write at all on any boot after the
-    first, and a deleted unit stays deleted.
+    This used to upsert each canonical slug on every boot -- safe for a
+    renamed or reconfigured unit (`$setOnInsert` never touches an existing
+    doc), but not for a *deleted* one: a missing slug looked identical to a
+    slug that had never been seeded, so deleting one of the original ten and
+    then restarting the server brought it back. An administrator's delete
+    must survive a restart, so this now runs at most once ever, gated on the
+    collection being completely empty -- not on which slugs it currently
+    holds.
     """
     if db is None:
         return
-    try:
-        if await db.units.count_documents({}, limit=1):
-            return
-        created = 0
-        for slug, name in CANONICAL_UNITS:
-            await db.units.insert_one({
-                "unit_id": f"unit_{uuid.uuid4().hex[:12]}",
-                "slug": slug,
-                "name": name,
-                "description": "",
-                "icon": "layers",
-                "accent": "#1FB58A",
-                "lead": "",
-                "head_user_id": None,
-                "head_name": None,
-                "config": {"sections": {"overview": True, "tools": True, "team": True,
-                                        "flow": True, "feedback": True},
-                           "userTasks": []},
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "created_by": "system",
-            })
-            created += 1
-        if created:
-            logger.info("Seeded %d business unit(s)", created)
-    except Exception as e:
-        logger.warning("Business unit seeding skipped: %s", str(e)[:200])
+    if await db.units.count_documents({}, limit=1):
+        return
+    created = 0
+    for slug, name in CANONICAL_UNITS:
+        await db.units.insert_one({
+            "unit_id": f"unit_{uuid.uuid4().hex[:12]}",
+            "slug": slug,
+            "name": name,
+            "description": "",
+            "icon": "layers",
+            "accent": "#1FB58A",
+            "lead": "",
+            "head_user_id": None,
+            "head_name": None,
+            "config": {"sections": {"overview": True, "tools": True, "team": True,
+                                    "flow": True, "feedback": True},
+                       "userTasks": []},
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_by": "system",
+        })
+        created += 1
+    if created:
+        logger.info("Seeded %d business unit(s)", created)
 
 
 # ==================== SEED BUNDLED PROPOSALS ====================
@@ -3568,6 +3720,37 @@ app.add_middleware(
 # does not happen at all. 500 bytes keeps it off small JSON replies, where the
 # CPU cost outweighs the saving.
 app.add_middleware(GZipMiddleware, minimum_size=500)
+
+
+# Response hardening. None of these were being sent, so a browser was left to
+# guess at every one of them.
+#
+# `nosniff` stops a browser second-guessing our Content-Type -- it is what
+# keeps an uploaded file served as `text/plain` from being executed as script.
+# `DENY` on framing blocks clickjacking: the portal has destructive one-click
+# actions and none of them should be reachable through somebody else's iframe.
+# The referrer policy keeps project ids and search terms out of the Referer
+# header when a user follows an external link.
+#
+# HSTS is set only on an HTTPS request. Sending it over plain HTTP is ignored
+# by browsers anyway, and setting it unconditionally would make a local
+# http://localhost run unreachable after the first visit.
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault(
+        "Permissions-Policy", "geolocation=(), microphone=(), camera=()"
+    )
+    forwarded_proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    if forwarded_proto == "https":
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+        )
+    return response
+
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

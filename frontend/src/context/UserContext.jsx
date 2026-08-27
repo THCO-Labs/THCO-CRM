@@ -41,13 +41,25 @@ export const PIPELINE_FUNCTIONS = [
   "finance",
 ];
 
+// Whether this person may be named Solution Architect. Mirrors
+// `permissions.can_architect` on the server: the explicit grant, **or** an
+// engineer in the development unit. Checking only the flag left every engineer
+// in Technology & Build out of the pipeline the server would have let them
+// into, and out of the architect picker the server would have offered them.
+export const ENGINEERING_UNIT = "technology";
+
+export const canArchitect = (user) =>
+  Boolean(user?.can_architect) ||
+  (user?.function_role === "engineer"
+    && (user?.accessible_units || []).includes(ENGINEERING_UNIT));
+
 export const canEnterPipeline = (user) => {
   if (hasFullAccess(user)) return true;
   if (isUnitHead(user)) return true;
   if (PIPELINE_FUNCTIONS.includes(user?.function_role)) return true;
   // An architect-capable engineer reaches the projects they architect; row
   // scoping on the API then limits them to those.
-  return Boolean(user?.can_architect);
+  return canArchitect(user);
 };
 
 export const hasUnitAccess = (user, slug) => {
@@ -63,17 +75,21 @@ export const hasUnitAccess = (user, slug) => {
 export const canManageUsers = (user) =>
   user?.role === "super_admin" || user?.role === "mini_admin" || Boolean(user?.is_hr);
 
-// Who may open a project. The client intake form is the formal entry point to
-// the lifecycle, and it is filled in by whoever had the client conversation:
-// commercial, a TSD, or an administrator. Staff are added to a project rather
-// than creating their own.
+// Who may open a project.
 //
-// The API enforces this; hiding the button only avoids offering an action that
-// would be refused.
+// Opening one commits the firm to client work, so it belongs to the Senior
+// Partner and to administrators. A TSD gets it individually, by grant, via
+// `can_start_projects` on their account -- the "in case he is busy" case.
+//
+// This must mirror `permissions.can_create_projects` on the server exactly.
+// It previously admitted every TSD, every commercial account and every unit
+// head, which is the rule the server used to have: the API refused them while
+// the dashboard still offered the button, so the action was visible to people
+// who could not perform it.
 export const canCreateProjects = (user) =>
   canManageUsers(user) ||
-  isUnitHead(user) ||
-  ["commercial", "tsd", "senior_partner"].includes(user?.function_role);
+  user?.function_role === "senior_partner" ||
+  Boolean(user?.can_start_projects);
 
 // Whether the Business Units section opens at all. Staff who have not been
 // put on a project have not been given any of that work yet, so they get

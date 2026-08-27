@@ -212,3 +212,22 @@ backend/candidates_needing_manual_review.csv
 *_newurl.tmp
 *.tmp
 docs/DELIVERY_OS_MIGRATION_PLAN.md
+
+# --- Added 27 Aug 2026 during the pre-production review ---
+# Backups of production user records, taken before the function-role write.
+# Real people's accounts; keep them locally, never commit them.
+backend/*function_roles_before.json
+
+# Scratch payloads from debugging API calls by hand.
+backend/ab.json
+backend/b.json
+backend/bd.json
+backend/rq.json
+backend/tr.json
+
+# Files uploaded against a project while testing locally. The container is
+# ephemeral so these never belonged in the image either.
+backend/uploads/delivery/
+
+# Artefact of a shell redirect to NUL on Windows.
+frontend/nul

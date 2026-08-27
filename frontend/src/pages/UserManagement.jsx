@@ -20,7 +20,17 @@ import { toast } from "sonner";
 import { usersAPI, unitsAPI } from "../lib/api";
 import { useUser } from "../context/UserContext";
 
-const ALL_UNITS = [
+// The units offered here come from the database, not from a list in this file.
+//
+// They used to be hardcoded, which meant Business Units Admin could rename,
+// hide or delete a unit and this screen carried on offering it: a deleted
+// "Academy & Learning" was still assignable, and granting somebody access to a
+// unit that no longer exists is a permission nobody can ever act on.
+//
+// Kept only as the fallback for the moments before the fetch returns, and if
+// the request fails outright -- an empty list would read as "this person has
+// no units" rather than "we could not load them".
+const FALLBACK_UNITS = [
   { slug: "talent", name: "Talent & Delivery" },
   { slug: "thco-hr", name: "Crowther HR" },
   { slug: "it-tools", name: "IT & Crowther Tools" },
@@ -29,7 +39,6 @@ const ALL_UNITS = [
   { slug: "advisory", name: "Advisory & Consulting" },
   { slug: "technology", name: "Technology & Build" },
   { slug: "operations", name: "Operations & Finance" },
-  { slug: "academy", name: "Academy & Learning" },
   { slug: "client-delivery", name: "Client Delivery" },
 ];
 
@@ -77,6 +86,7 @@ const emptyForm = {
   is_engineer: false,
   function_role: "",
   can_architect: false,
+  can_start_projects: false,
   is_fulfillment: false,
   // Optionally make this person the head of a unit as they are invited. A
   // unit has one head, so choosing one here replaces whoever holds it.
@@ -107,6 +117,9 @@ export default function UserManagement() {
   const [editRole, setEditRole] = useState("team_member");
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
+  const [editFunctionRole, setEditFunctionRole] = useState("");
+  const [editCanArchitect, setEditCanArchitect] = useState(false);
+  const [editCanStartProjects, setEditCanStartProjects] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
 
   // Password reset
@@ -137,6 +150,18 @@ export default function UserManagement() {
       /* the page is still usable without the head column */
     }
   }, []);
+
+  // What the unit-access pickers offer. Live units, hidden ones excluded --
+  // a hidden unit is one an administrator has taken out of circulation, and
+  // offering it here would put people into something they cannot reach.
+  // Falls back to the built-in list only while loading or if the fetch fails,
+  // so an empty picker never reads as "this person has no units".
+  const ALL_UNITS = useMemo(() => {
+    const live = (units || []).filter((u) => !u.hidden);
+    return live.length
+      ? live.map((u) => ({ slug: u.slug, name: u.name || u.slug }))
+      : FALLBACK_UNITS;
+  }, [units]);
 
   useEffect(() => {
     fetchUsers();
@@ -300,6 +325,9 @@ export default function UserManagement() {
         // been given a delivery function yet sees only what they are put on.
         function_role: form.function_role || undefined,
         can_architect: form.function_role === "engineer" ? form.can_architect : undefined,
+        // Only meaningful for a TSD: everyone else either already has it
+        // (Senior Partner, admins) or should not.
+        can_start_projects: form.function_role === "tsd" ? form.can_start_projects : undefined,
       });
       setCreatedCreds({ email: res.email, password: res.temp_password, emailSent: res.email_sent });
       toast.success(
@@ -341,6 +369,14 @@ export default function UserManagement() {
     // fix it.
     setEditName(u.name || "");
     setEditEmail(u.email || "");
+    // What this person does on a delivery project, and the two grants that
+    // hang off it. These could only be set while creating an account, which
+    // is why no existing account had a function role at all: there was no way
+    // to give one. That in turn made the TSD picker read "not a TSD" against
+    // every name, and left one lone engineer as the only possible architect.
+    setEditFunctionRole(u.function_role || "");
+    setEditCanArchitect(!!u.can_architect);
+    setEditCanStartProjects(!!u.can_start_projects);
   };
 
   const saveEdit = async () => {
@@ -356,11 +392,29 @@ export default function UserManagement() {
       if (name !== editUser.name) payload.name = name;
       if (email !== (editUser.email || "").toLowerCase()) payload.email = email;
 
+      // Sent only when changed. `function_role` uses null rather than "" to
+      // clear, because empty string is not a valid role and the server
+      // validates against the list.
+      if (editFunctionRole !== (editUser.function_role || "")) {
+        payload.function_role = editFunctionRole || null;
+      }
+      if (editCanArchitect !== !!editUser.can_architect) {
+        payload.can_architect = editCanArchitect;
+      }
+      if (editCanStartProjects !== !!editUser.can_start_projects) {
+        payload.can_start_projects = editCanStartProjects;
+      }
+
       await usersAPI.update(editUser.user_id, payload);
       setUsers((prev) =>
         prev.map((x) =>
           x.user_id === editUser.user_id
-            ? { ...x, accessible_units: editUnits, role: editRole, name, email }
+            ? {
+                ...x, accessible_units: editUnits, role: editRole, name, email,
+                function_role: editFunctionRole || null,
+                can_architect: editCanArchitect,
+                can_start_projects: editCanStartProjects,
+              }
             : x
         )
       );
@@ -633,7 +687,7 @@ export default function UserManagement() {
                     {/* Role and, separately, whether they manage projects.
                         Stacked and never wrapped mid-phrase: side by side in a
                         narrow column these broke across lines and read as
-                        fragments ("Admin" over "PM · Crowther HR"). */}
+                        fragments ("Admin" over "TSD · Crowther HR"). */}
                     <td className="px-6 py-4 align-top">
                       <div className="flex flex-col items-start gap-1.5">
                         <span
@@ -647,11 +701,12 @@ export default function UserManagement() {
                         >
                           {ROLE_LABELS[u.role] || u.role}
                         </span>
-                        {/* Managing projects is what lets somebody open them,
+                        {/* Running projects is what lets somebody open them,
                             so it belongs beside the role. Named on one unit or
-                            granted across several -- both make you a project
-                            manager, and reading only the first left most of
-                            them unlabelled. */}
+                            granted across several -- both make you a TSD, and
+                            reading only the first left most of them
+                            unlabelled. The role is TSD now; there are no
+                            project managers. */}
                         {unitsManaged(u).length > 0 && (
                           <span
                             className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-[#EAF8F3] text-[#12795C] border border-[#BFE7DA] whitespace-nowrap max-w-full truncate"
@@ -659,8 +714,8 @@ export default function UserManagement() {
                             data-testid={`pm-badge-${u.user_id}`}
                           >
                             {unitsManaged(u).length === 1
-                              ? `PM · ${unitsManaged(u)[0]}`
-                              : `PM · ${unitsManaged(u).length} units`}
+                              ? `TSD · ${unitsManaged(u)[0]}`
+                              : `TSD · ${unitsManaged(u).length} units`}
                           </span>
                         )}
                       </div>
@@ -1031,6 +1086,24 @@ export default function UserManagement() {
                       Can be named Solution Architect
                     </button>
                   )}
+
+                  {/* Opening a project is the Senior Partner's. This hands it
+                      to one named TSD for when he is not around, and can be
+                      taken back the same way. */}
+                  {form.function_role === "tsd" && (
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, can_start_projects: !form.can_start_projects })}
+                      data-testid="create-can-start-projects"
+                      className={`mt-2 px-3 py-1.5 rounded-full border text-[11px] transition-all ${
+                        form.can_start_projects
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-700 font-medium"
+                          : "border-[#EAE7E0] text-gray-500 hover:border-gray-300"
+                      }`}
+                    >
+                      Can start new projects
+                    </button>
+                  )}
                 </div>
 
                 <div>
@@ -1212,6 +1285,73 @@ export default function UserManagement() {
                   {editRole === "super_admin" ? "Super admins" : "HR members"} see every unit regardless of this list.
                 </p>
               )}
+            </div>
+
+            {/* What this person does on a delivery project. Separate from the
+                access role above: `role` is how much of the system they may
+                reach, this is the job they hold on a project. Both grants
+                below hang off it. */}
+            <div>
+              <label className="block text-[11px] font-semibold uppercase tracking-[0.15em] text-gray-400 mb-2">
+                Delivery role
+              </label>
+              <select
+                value={editFunctionRole}
+                onChange={(e) => setEditFunctionRole(e.target.value)}
+                data-testid="edit-function-role"
+                className="w-full h-11 px-3 bg-white border border-[#EAE7E0] rounded-xl text-sm text-gray-900 focus:outline-none focus:border-[#14181D]"
+              >
+                <option value="">— none —</option>
+                {FUNCTION_ROLES.map((f) => (
+                  <option key={f.value} value={f.value}>{f.label}</option>
+                ))}
+              </select>
+              <p className="text-[11px] text-gray-400 mt-1">
+                {editFunctionRole === "tsd"
+                  ? "Can be named TSD on a project, and appears first in the TSD picker."
+                  : editFunctionRole
+                    ? "Decides which delivery notifications reach them."
+                    : "Without one they only see what they are put on, and never appear as a suggested owner."}
+              </p>
+
+              <div className="flex flex-wrap gap-2 mt-3">
+                {/* An engineer who may be named Solution Architect. Until this
+                    can be granted here, one lone account carried it and every
+                    architect suggestion could only ever name that person. */}
+                {editFunctionRole === "engineer" && (
+                  <button
+                    type="button"
+                    onClick={() => setEditCanArchitect(!editCanArchitect)}
+                    data-testid="edit-can-architect"
+                    className={`px-3 py-1.5 rounded-full border text-[11px] transition-all ${
+                      editCanArchitect
+                        ? "border-emerald-300 bg-emerald-50 text-emerald-700 font-medium"
+                        : "border-[#EAE7E0] text-gray-500 hover:border-gray-300"
+                    }`}
+                  >
+                    {editCanArchitect && <Check className="w-3 h-3 inline mr-1 -mt-px" />}
+                    Can be named Solution Architect
+                  </button>
+                )}
+
+                {/* Opening a project is the Senior Partner's. This hands it to
+                    one named TSD for when he is unavailable. */}
+                {editFunctionRole === "tsd" && (
+                  <button
+                    type="button"
+                    onClick={() => setEditCanStartProjects(!editCanStartProjects)}
+                    data-testid="edit-can-start-projects"
+                    className={`px-3 py-1.5 rounded-full border text-[11px] transition-all ${
+                      editCanStartProjects
+                        ? "border-emerald-300 bg-emerald-50 text-emerald-700 font-medium"
+                        : "border-[#EAE7E0] text-gray-500 hover:border-gray-300"
+                    }`}
+                  >
+                    {editCanStartProjects && <Check className="w-3 h-3 inline mr-1 -mt-px" />}
+                    Can start new projects
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 

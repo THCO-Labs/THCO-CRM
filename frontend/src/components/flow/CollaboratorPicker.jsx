@@ -241,9 +241,13 @@ export default function CollaboratorPicker({ value = [], onChange, disabled }) {
                         <span className="min-w-0 flex-1">
                           <span className="flex items-center gap-1.5 min-w-0">
                             <span className="text-[13px] text-gray-900 truncate">{p.name || p.email}</span>
+                            {/* There are no project managers any more: the role
+                                is TSD. The flag behind this is still the legacy
+                                `is_head`, which the migration rewrites; the
+                                label is what people read, so it changes now. */}
                             {p.is_head && (
                               <span className="shrink-0 px-1.5 py-px rounded-full bg-[#C6A15B]/15 text-[#8F7340] text-[9px] font-semibold uppercase tracking-wide whitespace-nowrap">
-                                PM
+                                TSD
                               </span>
                             )}
                           </span>

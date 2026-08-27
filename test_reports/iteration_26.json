@@ -86,7 +86,7 @@
   },
   "test_credentials": {
     "admin_email": "joshua@thcohq.com",
-    "admin_password": "THCOAdmin2024!"
+    "admin_password": "<redacted>"
   },
   "seed_data_creation": "Test assessments created: lock_test_02790c5f@example.com (in progress with locked Q1/Q2), e2e_37q_3cd8bdcc@example.com (completed with all 37 answers)",
   "retest_needed": false,

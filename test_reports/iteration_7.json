@@ -57,7 +57,7 @@
   },
   "test_credentials": {
     "email": "joshua@thcohq.com",
-    "password": "THCOAdmin2024!",
+    "password": "<redacted>",
     "role": "Super Admin (Ayo)"
   },
   "seed_data_creation": "Test approvals created during testing: TEST_AutomationTool_*, TEST_StatusTool_*, TEST_ActionTool_*, TEST_GetTool_*, TEST_SocialMediaPoster_*, Test Approval Tool",

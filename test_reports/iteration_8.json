@@ -61,7 +61,7 @@
   },
   "test_credentials": {
     "email": "joshua@thcohq.com",
-    "password": "THCOAdmin2024!",
+    "password": "<redacted>",
     "role": "super_admin"
   },
   "seed_data_creation": "Multiple test conversations created in flowforge_conversations table for Talent unit during testing",

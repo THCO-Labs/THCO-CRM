@@ -936,8 +936,8 @@ export const deliveryAPI = {
   demos: async (id) => (await apiClient.get(`/delivery/projects/${id}/demos`)).data,
   addDemo: async (id, body) =>
     (await apiClient.post(`/delivery/projects/${id}/demos`, body)).data,
-  markDemoHeld: async (id, demoId) =>
-    (await apiClient.post(`/delivery/projects/${id}/demos/${demoId}/held`)).data,
+  markDemoHeld: async (id, demoId, body = {}) =>
+    (await apiClient.post(`/delivery/projects/${id}/demos/${demoId}/held`, body)).data,
   setDemoOutcome: async (id, demoId, outcome, notes = '') =>
     (await apiClient.post(`/delivery/projects/${id}/demos/${demoId}/outcome`, { outcome, notes })).data,
   updateDemo: async (id, demoId, body) =>
@@ -967,6 +967,20 @@ export const deliveryAPI = {
       { params: docType ? { doc_type: docType } : {} })).data,
   addTranscript: async (id, body) =>
     (await apiClient.post(`/delivery/projects/${id}/transcripts`, body)).data,
+  // A conversation handed over as a file instead of pasted in -- a call
+  // recording's transcript, a shared doc exported to .docx. Text is
+  // extracted server-side so it reads the same as a pasted one.
+  uploadTranscript: async (id, file, sourceLabel = '', sourceDate = '') => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('source_label', sourceLabel);
+    form.append('source_date', sourceDate);
+    const response = await apiClient.post(
+      `/delivery/projects/${id}/transcripts/upload`, form,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    );
+    return response.data;
+  },
   uploadDocument: async (id, file, title = '', docType = 'other') => {
     const form = new FormData();
     form.append('file', file);
@@ -1001,6 +1015,191 @@ export const deliveryAPI = {
     const response = await apiClient.get(path, { responseType: 'blob' });
     return URL.createObjectURL(response.data);
   },
+
+  // Scope changes: after scope_frozen, a new requirement is a decision, not
+  // an edit (CROWTHER_MIGRATION_PLAN.md §9.4).
+  scopeChanges: async (id) => (await apiClient.get(`/delivery/projects/${id}/scope-changes`)).data,
+  raiseScopeChange: async (id, body) =>
+    (await apiClient.post(`/delivery/projects/${id}/scope-changes`, body)).data,
+  decideScopeChange: async (scopeChangeId, body) =>
+    (await apiClient.post(`/delivery/scope-changes/${scopeChangeId}/decide`, body)).data,
+  // The impact assessment, separately from the decision: often a different
+  // person (the architect assesses, the TSD decides) at a different time.
+  // Pending changes only.
+  updateScopeChange: async (scopeChangeId, body) =>
+    (await apiClient.patch(`/delivery/scope-changes/${scopeChangeId}`, body)).data,
+
+  // The TSD telling the Senior Partner where they are with a project they were
+  // handed: received | acknowledged | accepted. Only `accepted` satisfies the
+  // stage 3 gate; the other two are progress, not commitment.
+  // Files that came with a piece of client feedback -- a marked-up
+  // screenshot, a spreadsheet of corrections. Kept beside the feedback rather
+  // than in the general document pile, so it is clear which comment they came
+  // with.
+  attachToFeedback: async (feedbackId, file) => {
+    const form = new FormData();
+    form.append('file', file);
+    return (await apiClient.post(`/delivery/feedback/${feedbackId}/attachments`, form,
+      { headers: { 'Content-Type': 'multipart/form-data' } })).data;
+  },
+  removeFeedbackAttachment: async (feedbackId, attachmentId) =>
+    (await apiClient.delete(`/delivery/feedback/${feedbackId}/attachments/${attachmentId}`)).data,
+
+  // The actual deliverable, on the milestone it satisfies.
+  attachDeliverable: async (milestoneId, file) => {
+    const form = new FormData();
+    form.append('file', file);
+    return (await apiClient.post(`/delivery/milestones/${milestoneId}/deliverables`, form,
+      { headers: { 'Content-Type': 'multipart/form-data' } })).data;
+  },
+  removeDeliverable: async (milestoneId, attachmentId) =>
+    (await apiClient.delete(`/delivery/milestones/${milestoneId}/deliverables/${attachmentId}`)).data,
+
+  // Demo rounds are full CRUD now. Deleting is refused once a round has been
+  // held or has an outcome -- that is history, not a mistake.
+  deleteDemo: async (projectId, demoId) =>
+    (await apiClient.delete(`/delivery/projects/${projectId}/demos/${demoId}`)).data,
+
+  // Somebody placed on a project saying whether they can take it. Declining
+  // requires a reason -- the TSD has to re-staff around it.
+  respondToPod: async (projectId, status, note = "") =>
+    (await apiClient.post(`/flow/projects/${projectId}/pod-response`, { status, note })).data,
+
+  acknowledgeProject: async (projectId, status, note = "", role = "tsd") =>
+    (await apiClient.post(`/flow/projects/${projectId}/acknowledge`, { status, note, role })).data,
+
+  // Lightweight logs -- one row each, no workflow of their own.
+  decisions: async (id) => (await apiClient.get(`/delivery/projects/${id}/decisions`)).data,
+  addDecision: async (id, body) => (await apiClient.post(`/delivery/projects/${id}/decisions`, body)).data,
+  risks: async (id) => (await apiClient.get(`/delivery/projects/${id}/risks`)).data,
+  addRisk: async (id, body) => (await apiClient.post(`/delivery/projects/${id}/risks`, body)).data,
+  updateRisk: async (riskId, body) => (await apiClient.patch(`/delivery/risks/${riskId}`, body)).data,
+
+  // Closure checklist: seeded on every project, checked off item by item.
+  toggleClosureItem: async (id, index, done) =>
+    (await apiClient.patch(`/flow/projects/${id}/closure-checklist/${index}`, { done })).data,
+
+  // Talent requirements and contract staffing (§8). Stage 12+ only.
+  talentRequirements: async (id) => (await apiClient.get(`/delivery/projects/${id}/talent-requirements`)).data,
+  raiseTalentRequirement: async (id, body) =>
+    (await apiClient.post(`/delivery/projects/${id}/talent-requirements`, body)).data,
+  confirmTalentRequirement: async (requirementId, body = {}) =>
+    (await apiClient.post(`/delivery/talent-requirements/${requirementId}/confirm`, body)).data,
+  rejectTalentRequirement: async (requirementId, reason) =>
+    (await apiClient.post(`/delivery/talent-requirements/${requirementId}/reject`, { reason })).data,
+  talentAssignments: async (id) => (await apiClient.get(`/delivery/projects/${id}/talent-assignments`)).data,
+  sourceTalent: async (requirementId, body) =>
+    (await apiClient.post(`/delivery/talent-requirements/${requirementId}/assignments`, body)).data,
+  advanceAssignment: async (assignmentId) =>
+    (await apiClient.post(`/delivery/talent-assignments/${assignmentId}/advance`)).data,
+  offerAssignment: async (assignmentId, offerDeadline) =>
+    (await apiClient.post(`/delivery/talent-assignments/${assignmentId}/offer`, { offer_deadline: offerDeadline })).data,
+  acceptAssignment: async (assignmentId) =>
+    (await apiClient.post(`/delivery/talent-assignments/${assignmentId}/accept`)).data,
+  declineAssignment: async (assignmentId, reason) =>
+    (await apiClient.post(`/delivery/talent-assignments/${assignmentId}/decline`, { reason })).data,
+  contractAssignment: async (assignmentId, body) =>
+    (await apiClient.post(`/delivery/talent-assignments/${assignmentId}/contract`, body)).data,
+  signAssignment: async (assignmentId) =>
+    (await apiClient.post(`/delivery/talent-assignments/${assignmentId}/sign`)).data,
+  deployAssignment: async (assignmentId) =>
+    (await apiClient.post(`/delivery/talent-assignments/${assignmentId}/deploy`)).data,
+  endAssignment: async (assignmentId, reason) =>
+    (await apiClient.post(`/delivery/talent-assignments/${assignmentId}/end`, { reason })).data,
+  overAllocatedTalent: async () => (await apiClient.get(`/delivery/talent/over-allocated`)).data,
+};
+
+
+// Control Tower API (Tier 3 -- control and visibility).
+//
+// Everything here except a blocker is a *read* of records the other routers
+// already keep. Scoping is the server's: an engineer's portfolio is their own
+// projects and an administrator's is all of them, decided by the same filter
+// the pipeline uses, so nothing here needs a role check in the browser.
+export const controlTowerAPI = {
+  // The portfolio, one row per project with the signals that matter.
+  // `includeClosed` brings stage-17 projects back in; off by default because a
+  // closed project is not something to watch.
+  portfolio: async (includeClosed = false) =>
+    (await apiClient.get('/control-tower/portfolio', {
+      params: { include_closed: includeClosed },
+    })).data,
+
+  // Only what somebody has to act on, ranked worst-first.
+  exceptions: async () => (await apiClient.get('/control-tower/exceptions')).data,
+
+  // Which function views this caller may open, and which one is theirs.
+  // Read from the server rather than listed in the browser: offering a view
+  // the API would refuse is the drift that keeps biting us.
+  functions: async () => (await apiClient.get('/control-tower/functions')).data,
+
+  // One function's dashboard -- the few lists that function acts on.
+  functionView: async (key) =>
+    (await apiClient.get(`/control-tower/function/${key}`)).data,
+
+  // Across requirements, decisions, risks, scope changes, blockers, feedback
+  // and document text -- not just project names.
+  search: async (q) =>
+    (await apiClient.get('/control-tower/search', { params: { q } })).data,
+
+  // Blockers: the one thing this tier records rather than reads.
+  blockers: async (projectId) =>
+    (await apiClient.get(`/control-tower/projects/${projectId}/blockers`)).data,
+  raiseBlocker: async (projectId, body) =>
+    (await apiClient.post(`/control-tower/projects/${projectId}/blockers`, body)).data,
+  resolveBlocker: async (blockerId, resolution) =>
+    (await apiClient.post(`/control-tower/blockers/${blockerId}/resolve`, { resolution })).data,
+  allBlockers: async (status = 'open') =>
+    (await apiClient.get('/control-tower/blockers', { params: { status } })).data,
+
+  // Requirement-to-card traceability: what is covered, what is not, and what
+  // is being built that no requirement asked for.
+  traceability: async (projectId) =>
+    (await apiClient.get(`/control-tower/projects/${projectId}/traceability`)).data,
+  linkCardRequirement: async (cardId, requirementId) =>
+    (await apiClient.patch(`/control-tower/cards/${cardId}/requirement`, {
+      requirement_id: requirementId || null,
+    })).data,
+
+  // The project report, assembled from records. At stage 17 this is the
+  // closure report the gate asks for.
+  report: async (projectId) =>
+    (await apiClient.get(`/control-tower/projects/${projectId}/report`)).data,
+};
+
+
+// Intelligence API (Tier 4 -- recommendations).
+//
+// Every call here suggests and nothing here saves. A suggestion is applied by
+// the caller passing its `fields` to whichever ordinary endpoint already owns
+// that write, so the same permission check runs whether a human typed the
+// value or accepted it. Half of these need no model at all and rank on real
+// records; the rest return `unavailable` with a reason when none is configured.
+export const intelligenceAPI = {
+  // Whether the layer is on. `verify` makes one cached live call so a
+  // present-but-revoked key reports as off rather than silently failing later.
+  status: async (verify = true) =>
+    (await apiClient.get('/intelligence/status', { params: { verify } })).data,
+
+  // Data-only: these work with no LLM key configured.
+  recommendTsd: async (projectId) =>
+    (await apiClient.get(`/intelligence/projects/${projectId}/recommend-tsd`)).data,
+  recommendArchitect: async (projectId) =>
+    (await apiClient.get(`/intelligence/projects/${projectId}/recommend-architect`)).data,
+  recommendHealth: async (projectId) =>
+    (await apiClient.get(`/intelligence/projects/${projectId}/recommend-health`)).data,
+  nextStep: async (projectId) =>
+    (await apiClient.get(`/intelligence/projects/${projectId}/next-step`)).data,
+
+  // Model-backed: these return `unavailable` when no key is configured.
+  analyseScopeChange: async (scopeChangeId) =>
+    (await apiClient.post(`/intelligence/scope-changes/${scopeChangeId}/analyse`)).data,
+  suggestRisks: async (projectId) =>
+    (await apiClient.get(`/intelligence/projects/${projectId}/suggest-risks`)).data,
+  extractRequirements: async (projectId, body) =>
+    (await apiClient.post(`/intelligence/projects/${projectId}/extract-requirements`, body)).data,
+  reportNarrative: async (projectId) =>
+    (await apiClient.get(`/intelligence/projects/${projectId}/report-narrative`)).data,
 };
 
 
@@ -1030,6 +1229,10 @@ export const tasksAPI = {
     const response = await apiClient.get(`/tasks/thumbnails/${thumbnailId}/image`, { responseType: 'blob' });
     return URL.createObjectURL(response.data);
   },
+  // Permanently removes an image from the shared pool -- distinct from
+  // releasing, which only unclaims it back into that same pool.
+  deleteThumbnail: async (thumbnailId) =>
+    (await apiClient.delete(`/tasks/thumbnails/${thumbnailId}`)).data,
 
   // Attachments on task cards. Upload is one call per file so a person can
   // pick as many as they like and one oversized file cannot fail the rest.
@@ -1059,6 +1262,10 @@ export const tasksAPI = {
 
   // Projects — reuse Flow projects, annotated with board/task counts
   listProjectSummary: async () => (await apiClient.get('/tasks/projects/summary')).data,
+  // The caller's own assigned work plus its counts -- what the dashboard
+  // shows somebody who does not run the portfolio.
+  myCards: async (limit = 8) =>
+    (await apiClient.get('/tasks/cards/mine', { params: { limit } })).data,
 
   // Boards — always scoped to a project
   listBoards: async (projectId) =>
@@ -1079,6 +1286,19 @@ export const tasksAPI = {
   // Team Members (optionally scoped to a project's own members)
   listTeamMembers: async (projectId) =>
     (await apiClient.get('/tasks/team-members', { params: projectId ? { project_id: projectId } : {} })).data,
+
+  // Card comments. Anybody on the project may add one -- the person doing a
+  // piece of work is usually not the person who wrote the card, and until now
+  // they had nowhere to say "blocked on the staging key" that the project
+  // could see.
+  listComments: async (cardId) =>
+    (await apiClient.get(`/tasks/cards/${cardId}/comments`)).data,
+  addComment: async (cardId, body) =>
+    (await apiClient.post(`/tasks/cards/${cardId}/comments`, { body })).data,
+  editComment: async (commentId, body) =>
+    (await apiClient.patch(`/tasks/comments/${commentId}`, { body })).data,
+  deleteComment: async (commentId) =>
+    (await apiClient.delete(`/tasks/comments/${commentId}`)).data,
 
   // Labels (persistent, reusable)
   listLabels: async () => (await apiClient.get('/tasks/labels')).data,

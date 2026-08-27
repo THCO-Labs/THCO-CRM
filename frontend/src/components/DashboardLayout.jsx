@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -15,6 +15,8 @@ import {
   MessageSquare,
   Headphones,
   Bell,
+  Volume2,
+  VolumeX,
   Search,
   ChevronDown,
   LogOut,
@@ -34,6 +36,9 @@ import {
   Cake,
   Menu,
   X,
+  Home,
+  Scale,
+  DollarSign,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -46,24 +51,38 @@ import {
 } from "./ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { authAPI, flowforgeAPI, unitsAPI, notificationsAPI } from "../lib/api";
+import {
+  alertNewNotifications, soundEnabled, setSoundEnabled,
+  desktopPermission, requestDesktopPermission, playNotificationSound,
+} from "../lib/notificationAlert";
 import { toast } from "sonner";
 import { AnalyticsProvider, useAnalytics } from "../context/AnalyticsContext";
 import { useTheme } from "../context/ThemeContext";
 import { hasUnitAccess, hasFullAccess, canManageUsers, canCreateProjects, isUnitHead } from "../context/UserContext";
 import FlowForgeFAB from "./FlowForgeFAB";
 
-// The business units that used to own work.
+// Routing + default icon for the units that predate the generic
+// `UnitPage.jsx` template and have their own bespoke page instead. This map
+// is the ONLY thing that's static -- whether one of these units still exists
+// and what it's called always comes from the units collection (`dynamicUnits`
+// below), so a rename or delete in Business Units Admin shows up here
+// immediately instead of being masked by a hardcoded name.
 //
-// Units no longer open or own projects: a project arrives from a client
-// conversation, is owned by a named TSD, and is built by a pod drawn from
-// across the capability teams. Crowther OS is the product, not a unit inside
-// it, so it is promoted out of this list and the rest are retired from the
-// sidebar.
-//
-// The unit records themselves are untouched. People still belong to units and
-// the admin screens still manage them; what has gone is the claim that a unit
-// is somewhere you go to find work.
-const UNITS = [];
+// Crowther OS ("flow") is deliberately not in this map: it's the delivery
+// pipeline product, not a business unit, has no record in the units
+// collection, and already gets its own fixed nav item further down.
+const BUILTIN_UNIT_META = {
+  "talent": { icon: Users, path: "/talent" },
+  "thco-hr": { icon: UserCog, path: "/thco-hr" },
+  "it-tools": { icon: Wrench, path: "/it-tools" },
+  "sales": { icon: TrendingUp, path: "/sales" },
+  "marketing": { icon: Megaphone, path: "/marketing" },
+  "advisory": { icon: Briefcase, path: "/advisory" },
+  "technology": { icon: Code, path: "/technology" },
+  "operations": { icon: Building2, path: "/operations" },
+  "academy": { icon: GraduationCap, path: "/academy" },
+  "client-delivery": { icon: Truck, path: "/client-delivery" },
+};
 
 // Map stored icon keys (admin-created units) to lucide components for the sidebar
 const DYN_ICON_MAP = {
@@ -71,6 +90,7 @@ const DYN_ICON_MAP = {
   "wrench": Wrench, "trending-up": TrendingUp, "megaphone": Megaphone, "graduation-cap": GraduationCap,
   "code": Code, "truck": Truck, "clipboard-list": ClipboardList, "headphones": Headphones,
   "folder-kanban": FolderKanban, "lightbulb": Layers,
+  "home": Home, "scale": Scale, "dollar-sign": DollarSign, "shield-check": ShieldCheck,
 };
 
 const NavItem = ({ to, icon: Icon, label, active, collapsed, badge, testId }) => (
@@ -140,6 +160,12 @@ const DashboardLayoutInner = ({ children, user }) => {
   const [searchFocused, setSearchFocused] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  // What the count was at the previous poll, so a rise can be told from a
+  // steady state. A ref rather than state: changing it must not re-render, and
+  // the polling closure needs to read the latest value.
+  const lastUnreadRef = useRef(null);
+  const [soundOn, setSoundOn] = useState(soundEnabled);
+  const [desktopState, setDesktopState] = useState(desktopPermission);
   const location = useLocation();
   const navigate = useNavigate();
   const { trackAction } = useAnalytics();
@@ -200,21 +226,52 @@ const DashboardLayoutInner = ({ children, user }) => {
       const data = await notificationsAPI.list({ limit: 30 });
       setNotifications(data.notifications || []);
       setUnreadCount(data.unread || 0);
+      lastUnreadRef.current = data.unread || 0;
     } catch (error) {
       console.error("Failed to load notifications:", error);
     }
   };
 
   useEffect(() => {
-    const refreshUnread = () => {
-      notificationsAPI.unreadCount()
-        .then((d) => setUnreadCount(d.unread || 0))
-        .catch(() => {});
+    // Compared against the previous poll to detect *arrival* rather than
+    // presence. `null` on the first run so a person who logs in with unread
+    // notifications already waiting is not greeted by a chime for things they
+    // have seen before.
+    const refreshUnread = async () => {
+      try {
+        const { unread = 0 } = await notificationsAPI.unreadCount();
+        setUnreadCount(unread);
+
+        const previous = lastUnreadRef.current;
+        lastUnreadRef.current = unread;
+        if (previous === null || unread <= previous) return;
+
+        // Something new landed. Fetch just enough to name it in the desktop
+        // popup -- the count alone would make for a useless notification.
+        let latest = null;
+        try {
+          const data = await notificationsAPI.list({ limit: 1, unread_only: true });
+          latest = (data.notifications || [])[0] || null;
+          setNotifications(data.notifications || []);
+        } catch {
+          /* the sound still fires without it */
+        }
+        alertNewNotifications({
+          count: unread - previous,
+          latest,
+          onNavigate: (link) => navigate(link),
+        });
+      } catch {
+        /* a failed poll is not worth surfacing; the next one is 20s away */
+      }
     };
+
     refreshUnread();
-    const interval = setInterval(refreshUnread, 30000);
+    // 20s rather than 30: this is now how somebody working in another window
+    // finds out at all, so the delay is the delay before they hear anything.
+    const interval = setInterval(refreshUnread, 20000);
     return () => clearInterval(interval);
-  }, []);
+  }, [navigate]);
 
   const openNotification = async (n) => {
     if (!n.read) {
@@ -262,7 +319,7 @@ const DashboardLayoutInner = ({ children, user }) => {
     if (path === "/admin/users") return "Staff Management";
     if (path.startsWith("/admin/assessments")) return "Talent Assessments";
     if (path.startsWith("/talent")) {
-      if (path === "/talent") return "Talent & Delivery";
+      if (path === "/talent") return dynamicUnits.find((u) => u.slug === "talent")?.name || "Talent & Delivery";
       if (path === "/talent/sourcing") return "AI Candidate Sourcing";
       if (path === "/talent/database-search") return "Database Search";
       if (path === "/talent/candidates") return "Talent Database";
@@ -272,12 +329,18 @@ const DashboardLayoutInner = ({ children, user }) => {
       if (path === "/talent/network") return "Talent Network";
       if (path === "/talent/duplicates") return "Duplicate Review";
     }
-    if (path === "/thco-hr") return "Crowther HR";
+    if (path === "/thco-hr") return dynamicUnits.find((u) => u.slug === "thco-hr")?.name || "Crowther HR";
     if (path === "/project-management") return "Project Management";
     if (path.startsWith("/flow")) return "Crowther OS";
-    if (path === "/it-tools") return "IT & Crowther Tools";
-    const unit = UNITS.find((u) => path.startsWith(u.path));
-    return unit?.name || "Dashboard";
+    if (path === "/it-tools") return dynamicUnits.find((u) => u.slug === "it-tools")?.name || "IT & Crowther Tools";
+    // Generic unit pages: same fetched list as the sidebar, so a rename
+    // reflects here too.
+    if (path.startsWith("/unit/")) {
+      const slug = path.split("/")[2];
+      const unit = dynamicUnits.find((u) => u.slug === slug);
+      if (unit) return unit.name;
+    }
+    return "Dashboard";
   };
 
   const isActive = (path) => {
@@ -302,29 +365,26 @@ const DashboardLayoutInner = ({ children, user }) => {
   // Only show the units this person is allowed to enter.
   // Super admins and HR see every unit; everyone else sees their assignments.
   //
-  // The units collection now holds a record for each of the built-in units
-  // too (a unit head is stored on the unit, so the unit has to exist as a
-  // record). Those records describe the same units this file already lists
-  // by hand, so anything already in UNITS is dropped here -- otherwise every
-  // built-in unit renders twice, once from each source.
-  // Units are no longer places you go to find work, so none of them belong in
-  // the sidebar. Emptying UNITS alone would not do it: the same units also
-  // arrive from the API, and with nothing to compare against they would simply
-  // reappear under their own heading.
-  //
-  // The records are untouched. People still belong to units, and the admin
-  // screens still manage them.
-  const builtInSlugs = new Set(UNITS.map((u) => u.slug));
-  const dynamicNavUnits = [];
-  // eslint-disable-next-line no-unused-vars
-  const _retiredUnitNav = dynamicUnits
-    .filter((u) => !builtInSlugs.has(u.slug) && hasUnitAccess(user, u.slug))
-    .map((u) => ({
-      slug: u.slug,
-      name: u.name,
-      path: `/unit/${u.slug}`,
-      icon: DYN_ICON_MAP[u.icon] || Building2,
-    }));
+  // Every entry here -- built-in or admin-created -- is sourced from
+  // `dynamicUnits` (the live units collection), so a rename or delete in
+  // Business Units Admin is reflected the moment this list is refetched.
+  // BUILTIN_UNIT_META only overrides the route + default icon for units that
+  // have a bespoke page; anything not in that map falls through to the
+  // generic `UnitPage.jsx` template at `/unit/:slug`.
+  const dynamicNavUnits = dynamicUnits
+    .filter((u) => !u.hidden && hasUnitAccess(user, u.slug))
+    .map((u) => {
+      const meta = BUILTIN_UNIT_META[u.slug];
+      return {
+        slug: u.slug,
+        name: u.name,
+        path: meta ? meta.path : `/unit/${u.slug}`,
+        // "layers" is the default every unit is created with, so a built-in
+        // unit that was never given a custom icon keeps its bespoke default
+        // instead of showing the same generic icon as everything else.
+        icon: (u.icon !== "layers" && DYN_ICON_MAP[u.icon]) || (meta && meta.icon) || DYN_ICON_MAP[u.icon] || Building2,
+      };
+    });
 
   // Staff who have not been put on a project yet get no business units at
   // all -- not Flow, not a unit page. Everything under this heading is work
@@ -333,9 +393,7 @@ const DashboardLayoutInner = ({ children, user }) => {
   const seesBusinessUnits =
     hasFullAccess(user) || canManageUsers(user) || isUnitHead(user) || Boolean(user?.has_projects);
 
-  const visibleUnits = seesBusinessUnits
-    ? [...UNITS.filter((unit) => hasUnitAccess(user, unit.slug)), ...dynamicNavUnits]
-    : [];
+  const visibleUnits = seesBusinessUnits ? dynamicNavUnits : [];
 
   const showAdminSection = user?.role === "super_admin" || canManageUsers(user) || user?.is_hr;
 
@@ -438,13 +496,13 @@ const DashboardLayoutInner = ({ children, user }) => {
         {/* Logo */}
         <div className={`h-[68px] flex items-center border-b border-white/[0.06] ${collapsed ? "px-0 justify-center" : "px-5 justify-between"} relative z-10`}>
           <Link to="/dashboard" className="flex items-center gap-2.5 min-w-0">
-            <span className="w-8 h-8 shrink-0 rounded-md bg-gradient-to-br from-[#C6A15B] to-[#8F7340] flex items-center justify-center">
-              <span className="font-display text-[#0C0F13] text-sm font-semibold">T</span>
+            <span className="w-8 h-8 shrink-0 rounded-md bg-[#0C0F13] border border-[#1FB58A]/30 flex items-center justify-center p-1">
+              <img src="/crowther-icon.png" alt="Crowther" className="w-full h-full object-contain" />
             </span>
             {!collapsed && (
               <span className="min-w-0">
                 <span className="block font-display text-white text-[15px] leading-tight tracking-wide">Crowther</span>
-                <span className="block text-[8px] uppercase tracking-[0.35em] text-[#6B7280]">Control Room</span>
+                <span className="block text-[8px] uppercase tracking-[0.35em] text-[#6B7280]">Delivery OS</span>
               </span>
             )}
           </Link>
@@ -555,7 +613,7 @@ const DashboardLayoutInner = ({ children, user }) => {
                     testId="nav-user-management"
                   />
                 )}
-                {user?.role === "super_admin" && (
+                {canManageUsers(user) && (
                   <NavItem
                     to="/admin/business-units"
                     icon={Building2}
@@ -762,16 +820,58 @@ const DashboardLayoutInner = ({ children, user }) => {
               <DropdownMenuContent align="end" className="w-80 p-0 bg-white border-[#EAE7E0] shadow-xl rounded-xl">
                 <div className="flex items-center justify-between px-3 py-2.5 border-b border-[#F0EEE9]">
                   <p className="text-[13px] font-semibold text-gray-900">Notifications</p>
-                  {unreadCount > 0 && (
+                  <div className="flex items-center gap-2">
+                    {/* Muting is one click and it sticks. Somebody who cannot
+                        silence an alert silences the whole tab instead. */}
                     <button
                       type="button"
-                      onClick={markAllNotificationsRead}
-                      className="text-[11px] font-medium text-[#A9834E] hover:text-[#8a6a3e]"
+                      onClick={() => {
+                        const next = !soundOn;
+                        setSoundEnabled(next);
+                        setSoundOn(next);
+                        // Play it when switching on, so "on" is audibly proved
+                        // rather than promised -- and this click is also the
+                        // user gesture browsers require before audio works.
+                        if (next) playNotificationSound({ force: true });
+                      }}
+                      title={soundOn ? "Sound on — click to mute" : "Sound off — click to unmute"}
+                      className="text-gray-400 hover:text-gray-700"
+                      data-testid="notification-sound-toggle"
                     >
-                      Mark all read
+                      {soundOn ? <Volume2 size={14} /> : <VolumeX size={14} />}
                     </button>
-                  )}
+                    {unreadCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={markAllNotificationsRead}
+                        className="text-[11px] font-medium text-[#A9834E] hover:text-[#8a6a3e]"
+                      >
+                        Mark all read
+                      </button>
+                    )}
+                  </div>
                 </div>
+
+                {/* Desktop alerts have to be asked for from a click, so the ask
+                    lives here rather than firing on page load — where browsers
+                    ignore it and people reflexively hit Block. Shown only while
+                    the answer is still "default". */}
+                {desktopState === "default" && (
+                  <button
+                    type="button"
+                    onClick={async () => setDesktopState(await requestDesktopPermission())}
+                    className="w-full text-left px-3 py-2 bg-[#C6A15B]/[0.08] border-b border-[#F0EEE9]
+                               hover:bg-[#C6A15B]/[0.14]"
+                    data-testid="enable-desktop-notifications"
+                  >
+                    <span className="block text-[12px] font-medium text-[#7A6234]">
+                      Get alerted in other apps
+                    </span>
+                    <span className="block text-[11px] text-[#8F7340]">
+                      Show a desktop notification when this tab is not in front.
+                    </span>
+                  </button>
+                )}
                 <div className="max-h-[360px] overflow-y-auto py-1">
                   {notifications.length === 0 ? (
                     <div className="px-4 py-10 text-center">

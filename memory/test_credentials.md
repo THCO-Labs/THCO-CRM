@@ -1,18 +1,23 @@
+> **SECURITY NOTE.** The shared password that used to be written here
+> was live in production and committed to this repository. It has been
+> redacted; ask an administrator, or use your own account. Never write a
+> working credential into a tracked file.
+
 # Test Credentials
 
 ## THCO Executive Portal
 
 ### Super Admin (use for all admin/role-based testing)
 - Email: `joshua@thcohq.com`
-- Password: `THCOAdmin2024!`
+- Password: `<redacted>`
 - Role: `super_admin` (also has is_hr, is_fulfillment flags)
 
 ### Secondary Admin
 - Email: `adoption@thcohqs.com`
-- Password: `THCOAdmin2024!`
+- Password: `<redacted>`
 
 ### Fulfillment Team (created Feb 2026)
-All passwords: `THCOAdmin2024!` — `is_fulfillment=true`, can create projects.
+All passwords: `<redacted>` — `is_fulfillment=true`, can create projects.
 - `adeyosola@thcohqs.com` — Adeyosola Ademola
 - `christiana@thcohqs.com` — Christiana Olatunji
 - `florence@thcohqs.com` — Florence Adebimpe Ojo
@@ -28,7 +33,7 @@ All passwords: `THCOAdmin2024!` — `is_fulfillment=true`, can create projects.
 ```
 POST /api/auth/login
 Content-Type: application/json
-{"email":"joshua@thcohq.com","password":"THCOAdmin2024!"}
+{"email":"joshua@thcohq.com","password":"`<redacted>`"}
 ```
 Response field for the bearer token: `session_token` (NOT `token`).
 Frontend stores as `localStorage.session_token`.

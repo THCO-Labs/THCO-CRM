@@ -1,3 +1,8 @@
+> **SECURITY NOTE.** The shared password that used to be written here
+> was live in production and committed to this repository. It has been
+> redacted; ask an administrator, or use your own account. Never write a
+> working credential into a tracked file.
+
 # FlowForge / THCO Executive Portal - PRD
 
 ## Original Problem Statement
@@ -21,8 +26,8 @@ Build "FlowForge," an internal AI-powered workflow automation tool within an exe
 
 ### 4. Authentication
 - Bearer Token auth via localStorage (migrated from cookies due to CORS)
-- Super Admin: joshua@thcohq.com / THCOAdmin2024!
-- Second admin: adoption@thcohqs.com / THCOAdmin2024!
+- Super Admin: joshua@thcohq.com / `<redacted>`
+- Second admin: adoption@thcohqs.com / `<redacted>`
 
 ### 5. Winston Duke Brand Identity Presentation
 - 30-slide cinematic brand reveal

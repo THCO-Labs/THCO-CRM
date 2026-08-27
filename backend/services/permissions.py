@@ -143,24 +143,33 @@ def can_open_project(user: Dict[str, Any]) -> bool:
 def can_create_projects(user: Dict[str, Any]) -> bool:
     """Whether this person may open a project at all.
 
-    The client intake form is the formal entry point to the lifecycle, and it
-    is filled in by whoever had the client conversation. That is usually
-    commercial, sometimes a TSD, sometimes the Senior Partner.
+    Opening a project is committing the firm to a piece of client work, so it
+    is the Senior Partner's, and administrators' because they are
+    administrators. It is deliberately narrower than it was: previously any
+    commercial account, any TSD and any unit head could start one, which meant
+    the pipeline filled with projects nobody had agreed to take on.
 
-    Restricting this to unit heads was right when a project belonged to a unit.
-    It is wrong now: it would mean the person who spoke to the client cannot
-    record what was said, which is the one thing the intake form exists for.
-
-    Heading a unit still counts, and only for as long as the migration takes.
-    Those people are mapped to `tsd`; until that has run everywhere, locking
-    them out of work they already run would be a worse bug than the one this
-    replaces.
+    A TSD gets it individually, by grant, via `can_start_projects` on their
+    account — the same shape as `can_architect`. That is the "in case he is
+    busy" case: the Senior Partner hands it to the people he trusts to use it,
+    one at a time, and can take it back the same way. A blanket rule for
+    everybody holding the TSD function would be the thing this replaces.
     """
+    u = user or {}
     return (
-        is_admin(user)
-        or has_function(user, COMMERCIAL, TSD, SENIOR_PARTNER)
-        or is_unit_head(user)
+        is_admin(u)
+        or has_function(u, SENIOR_PARTNER)
+        or bool(u.get("can_start_projects"))
     )
+
+
+def can_grant_project_creation(user: Dict[str, Any]) -> bool:
+    """Who may hand out `can_start_projects`.
+
+    The Senior Partner and administrators. Anyone who could grant it to
+    themselves would make the restriction above decorative.
+    """
+    return is_admin(user) or has_function(user, SENIOR_PARTNER)
 
 
 # `can_create_project_in_unit` was removed with the unit field on a project.
@@ -446,13 +455,46 @@ def is_tsd(user: Dict[str, Any]) -> bool:
     return has_function(user, TSD)
 
 
+# The unit the development team sits in. Engineers here build the work, so
+# they are the pool a Solution Architect is chosen from.
+ENGINEERING_UNIT = "technology"
+
+
 def can_architect(user: Dict[str, Any]) -> bool:
     """Whether this person may be selected as a Solution Architect.
 
-    Architects come from the engineering team, so this is a flag on an
-    engineer rather than a role that replaces being one.
+    Two ways in, and the first is the important one:
+
+    **An engineer in Technology & Build qualifies by virtue of the job.** They
+    are the people who do the development, so requiring somebody to tick a box
+    for each of them individually meant the pool was whoever had been
+    remembered — in practice one person, which made every architect
+    recommendation name the same engineer no matter the project.
+
+    **The explicit `can_architect` flag still counts**, for anyone outside that
+    unit who should nonetheless be eligible. It grants; it is not required.
+
+    Architecting stays a hat rather than a role: an engineer architects project
+    A and writes code on project B, which is why this is not a `function_role`.
     """
-    return bool((user or {}).get("can_architect"))
+    u = user or {}
+    if bool(u.get("can_architect")):
+        return True
+    return (
+        function_role(u) == ENGINEER
+        and ENGINEERING_UNIT in (u.get("accessible_units") or [])
+    )
+
+
+# The same rule as a Mongo query, for the endpoints that list candidates rather
+# than test one person. Kept beside `can_architect` so the two cannot drift.
+ARCHITECT_CANDIDATE_QUERY = {
+    "status": "active",
+    "$or": [
+        {"can_architect": True},
+        {"function_role": ENGINEER, "accessible_units": ENGINEERING_UNIT},
+    ],
+}
 
 
 def require_function(user: Dict[str, Any], *roles: str, detail: str = "") -> None:
@@ -474,23 +516,78 @@ def is_project_architect(user: Dict[str, Any], project: Dict[str, Any]) -> bool:
     return bool(uid) and uid == (project or {}).get("architect_id")
 
 
-def can_move_stage(user: Dict[str, Any], project: Dict[str, Any]) -> bool:
+def architect_owned_stages() -> set:
+    """The stages whose owner is the Solution Architect.
+
+    Read from the stage table rather than written as a literal, so adding or
+    renumbering a stage cannot leave this list quietly wrong. Imported inside
+    the function purely to keep this module import-light for the many callers
+    that never ask about stages.
+    """
+    from services.delivery_stages import STAGES
+
+    return {n for n, cfg in STAGES.items() if cfg.get("owner") == "solution_architect"}
+
+
+def can_move_stage(
+    user: Dict[str, Any],
+    project: Dict[str, Any],
+    target_stage: Optional[int] = None,
+) -> bool:
     """Who may move a project through the pipeline.
 
-    The TSD owns the client and the project state, so the TSD moves it. This
-    is narrower than the old rule, which let anyone who could edit a project
-    also advance it.
+    Two people can, and they can do different things — the split is the point:
+
+    **The TSD moves it through every stage.** They own the client and the
+    project state, and delivery must not stall because somebody senior is in a
+    meeting. That includes the stages the Senior Partner nominally owns.
+
+    **The Architect moves it out of the stages they own** — architecture,
+    demo, build and QA — forward only. They are functional rather than
+    supervisory: when the work of their stage is done, they say so themselves
+    instead of asking the TSD to click a button on their behalf. They cannot
+    move a stage that is not theirs, and cannot move a project backwards,
+    because a backward move is a correction to project state and that is the
+    TSD's.
+
+    What neither of them gets is the Senior Partner's one reserved act:
+    naming the architect. That is `can_select_architect`, and no amount of
+    stage authority reaches it.
+
+    `target_stage` is optional so the same function answers both questions the
+    app asks: "may this person move the project *right now*" (the UI
+    capability flag, no target) and "may this person make *this* move" (the
+    transition itself, target given).
     """
-    return is_admin(user) or is_project_tsd(user, project)
+    # The Senior Partner is named explicitly rather than relied on to hold an
+    # admin account. Today they hold the super admin login, so `is_admin`
+    # already covered them by accident; the day somebody is granted the
+    # function role without that login, the accident stops working.
+    if is_admin(user) or is_senior_partner(user) or is_project_tsd(user, project):
+        return True
+
+    if is_project_architect(user, project):
+        current = (project or {}).get("stage")
+        if current not in architect_owned_stages():
+            return False
+        # Forward only. With no target this is the capability flag, and the
+        # honest answer there is "yes, from where this project currently is".
+        return True if target_stage is None else target_stage > current
+
+    return False
 
 
 def can_force_gate(user: Dict[str, Any], project: Dict[str, Any]) -> bool:
     """Who may advance past an unmet gate condition.
 
-    The TSD alone. Every use is recorded and the Senior Partner is alerted,
-    because a forced gate is the system being overruled rather than used.
+    The TSD, administrators, and the Senior Partner — deliberately *not* the
+    architect, even though they can now advance their own stages. Advancing a
+    stage whose conditions are met is doing the job; overruling the system when
+    they are not is a different act, it alerts the Senior Partner, and it
+    belongs with the people accountable for the project rather than for one
+    stage of it.
     """
-    return is_admin(user) or is_project_tsd(user, project)
+    return is_admin(user) or is_senior_partner(user) or is_project_tsd(user, project)
 
 
 def can_set_health(user: Dict[str, Any], project: Dict[str, Any]) -> bool:

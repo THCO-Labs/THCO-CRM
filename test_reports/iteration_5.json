@@ -58,7 +58,7 @@
   },
   "test_credentials": {
     "email": "joshua@thcohq.com",
-    "password": "THCOAdmin2024!",
+    "password": "<redacted>",
     "role": "Super Admin"
   },
   "seed_data_creation": "None required - all pages use static/sample data",

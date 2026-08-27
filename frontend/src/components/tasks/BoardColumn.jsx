@@ -11,6 +11,17 @@ import TaskCardEditor from "./TaskCardEditor";
 import TaskDetail from "./TaskDetail";
 import { READ_ONLY_PERMISSIONS } from "./permissions";
 
+// What the editor hydrates from when it is opened to create rather than edit.
+// Frozen at module scope so opening the form does not remount it every render.
+const BLANK_CARD = {
+  title: "",
+  description: "",
+  priority: "medium",
+  labels: [],
+  assignees: [],
+  due_date: null,
+};
+
 /**
  * A single Trello "list" / column. Horizontally sortable (reorder boards)
  * and hosts a vertical sortable list of cards.
@@ -43,6 +54,10 @@ export default function BoardColumn({
   };
 
   const cardIds = (board.cards || []).map((c) => c.card_id);
+
+  // A null card_id means the editor was opened blank, so this is a creation.
+  const saveCard = (cardId, data) =>
+    cardId ? onEditCard(cardId, data) : onAddCard(board.board_id, data);
   const renamingCard = (board.cards || []).find((c) => c.card_id === renamingCardId);
 
   return (
@@ -142,10 +157,12 @@ export default function BoardColumn({
         )}
       </div>
 
-      {/* Add task */}
+      {/* Add task -- opens the same form used to edit one, so a task can be
+          described, prioritised, assigned and dated in the one sitting it is
+          thought of, instead of being created bare and reopened. */}
       {permissions.createTasks && (
         <div className="px-2 pb-2.5">
-          <AddTask onCreate={(title) => onAddCard(board.board_id, { title })} />
+          <AddTask onOpen={() => setEditorCard(BLANK_CARD)} />
         </div>
       )}
 
@@ -154,7 +171,7 @@ export default function BoardColumn({
         card={editorCard}
         open={!!editorCard}
         onClose={() => setEditorCard(null)}
-        onSave={onEditCard}
+        onSave={saveCard}
         permissions={permissions}
       />
 

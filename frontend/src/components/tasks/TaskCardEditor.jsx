@@ -44,6 +44,12 @@ export default function TaskCardEditor({ card, open, onClose, onSave, permission
   const [assignees, setAssignees] = useState([]); // [{user_id, name, email, ...}]
   const [dueDate, setDueDate] = useState(null); // ISO datetime
 
+  // The same form creates a task and edits one. Adding used to capture a title
+  // and nothing else, so every new task needed opening again to say who it was
+  // for, when it was due, or what it actually involved -- two steps for one
+  // thought. A card with no `card_id` is a new one.
+  const isNew = !card?.card_id;
+
   // Hydrate from the card whenever it changes / opens
   useEffect(() => {
     if (card) {
@@ -58,7 +64,10 @@ export default function TaskCardEditor({ card, open, onClose, onSave, permission
 
   if (!card) return null;
 
+  const canSave = isNew ? Boolean(title.trim()) : true;
+
   const save = () => {
+    if (!canSave) return;
     const data = {
       title: title.trim() || card.title,
       description,
@@ -66,40 +75,42 @@ export default function TaskCardEditor({ card, open, onClose, onSave, permission
       labels: labels.map(({ label_id, name, color }) => ({ label_id, name, color })),
       due_date: dueDate,
     };
-    // Assignment stays an internal, coordinator-only concept — a public
-    // "Editable" share link never sends it (the backend wouldn't accept it
-    // either; see SharedCardUpdate in taskboard.py).
+    // Assignment stays an internal concept — a public "Editable" share link
+    // never sends it (the backend wouldn't accept it either; see
+    // SharedCardUpdate in taskboard.py).
     if (permissions.assignTasks) {
       data.assignees = assignees.map(({ user_id, name, email, picture, role }) => ({
         user_id, name, email, picture, role,
       }));
     }
-    onSave(card.card_id, data);
+    // `card_id` is null when creating; the parent decides create vs update.
+    onSave(card.card_id || null, data);
     onClose();
   };
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent
-        className="sm:max-w-[520px] p-0 gap-0 overflow-hidden bg-[#F6F1EA] dark:bg-[#161E1B] border-[#EAE7E0] dark:border-[#2A303B]"
+        className="sm:max-w-[520px] p-0 gap-0 overflow-hidden flex flex-col max-h-[90vh] bg-[#F6F1EA] dark:bg-[#161E1B] border-[#EAE7E0] dark:border-[#2A303B]"
         data-testid="task-editor"
       >
         {/* Header — primary background */}
-        <div className="px-6 pt-5 pb-4 border-b border-[#EAE7E0] dark:border-[#2A303B]">
+        <div className="shrink-0 px-6 pt-5 pb-4 border-b border-[#EAE7E0] dark:border-[#2A303B]">
           <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-[#A9834E] dark:text-[#1FB58A] mb-1">
-            Edit Task
+            {isNew ? "New Task" : "Edit Task"}
           </p>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             data-testid="editor-title"
-            placeholder="Task title"
+            autoFocus={isNew}
+            placeholder="What needs doing?"
             className="w-full bg-transparent font-display text-xl text-gray-900 dark:text-[#F2F0EB] placeholder:text-gray-400 focus:outline-none"
           />
         </div>
 
         {/* Body — secondary surface */}
-        <div className="px-6 py-5 space-y-5 bg-white/70 dark:bg-[#1A2622]">
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5 space-y-5 bg-white/70 dark:bg-[#1A2622]">
           {/* Description */}
           <Field icon={AlignLeft} label="Description">
             <Textarea
@@ -177,7 +188,7 @@ export default function TaskCardEditor({ card, open, onClose, onSave, permission
         </div>
 
         {/* Footer */}
-        <DialogFooter className="px-6 py-4 border-t border-[#EAE7E0] dark:border-[#2A303B] bg-[#F6F1EA] dark:bg-[#161E1B]">
+        <DialogFooter className="shrink-0 px-6 py-4 border-t border-[#EAE7E0] dark:border-[#2A303B] bg-[#F6F1EA] dark:bg-[#161E1B]">
           <Button
             variant="outline"
             onClick={onClose}
@@ -188,10 +199,11 @@ export default function TaskCardEditor({ card, open, onClose, onSave, permission
           </Button>
           <Button
             onClick={save}
+            disabled={!canSave}
             data-testid="editor-save"
-            className="bg-[#C6A15B] hover:bg-[#8F7340] dark:bg-[#1FB58A] dark:hover:bg-[#1B4332] text-white"
+            className="bg-[#C6A15B] hover:bg-[#8F7340] dark:bg-[#1FB58A] dark:hover:bg-[#1B4332] text-white disabled:opacity-40"
           >
-            Save Changes
+            {isNew ? "Add Task" : "Save Changes"}
           </Button>
         </DialogFooter>
       </DialogContent>

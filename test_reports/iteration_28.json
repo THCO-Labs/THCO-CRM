@@ -51,7 +51,7 @@
   },
   "test_credentials": {
     "admin_email": "joshua@thcohq.com",
-    "admin_password": "THCOAdmin2024!"
+    "admin_password": "<redacted>"
   },
   "seed_data_creation": "Created 2 TEST projects: TEST_QA_FreeTextClient_Project (backend) and TEST_QA_UI_FreeTextClient (UI). Both use client_name 'Acme Free Text Corp QA' and have multi-file client_documents. Safe to leave or purge.",
   "retest_needed": true,

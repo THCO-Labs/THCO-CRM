@@ -29,7 +29,7 @@ import {
 } from "../components/ui/select";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "../components/ui/breadcrumb";
 import { toast } from "sonner";
-import { flowforgeAPI } from "../lib/api";
+import { flowforgeAPI , unitsAPI } from "../lib/api";
 import ApprovalDetailModal from "../components/ApprovalDetailModal";
 
 // Status configuration
@@ -217,6 +217,16 @@ const ApprovalQueue = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState("all");
   const [unitFilter, setUnitFilter] = useState("all");
+  // Which units actually exist, so the filter cannot offer a deleted one.
+  const [units, setUnits] = useState([]);
+
+  useEffect(() => {
+    let live = true;
+    unitsAPI.list()
+      .then((rows) => { if (live) setUnits(rows || []); })
+      .catch(() => { /* the filter falls back to "All Units" only */ });
+    return () => { live = false; };
+  }, []);
   const [selectedApproval, setSelectedApproval] = useState(null);
   const [actionNote, setActionNote] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -300,20 +310,15 @@ const ApprovalQueue = () => {
     { value: "changes_requested", label: "Changes Requested" },
   ];
 
+  // Built from the live units collection, so a unit an administrator deleted
+  // or hid is not offered as a filter that can only ever return nothing.
   const unitOptions = [
     { value: "all", label: "All Units" },
-    { value: "talent", label: "Talent & Delivery" },
-    { value: "sales", label: "Sales & Business Dev" },
-    { value: "marketing", label: "Marketing & Brand" },
-    { value: "advisory", label: "Advisory & Consulting" },
-    { value: "technology", label: "Technology & Build" },
-    { value: "operations", label: "Operations & Finance" },
-    { value: "academy", label: "Academy & Learning" },
-    { value: "client-delivery", label: "Client Delivery" },
-    { value: "thco-hr", label: "Crowther HR" },
-    { value: "project-management", label: "Project Management" },
-    { value: "it-tools", label: "IT & Crowther Tools" },
+    ...(units || [])
+      .filter((u) => !u.hidden)
+      .map((u) => ({ value: u.slug, label: u.name || u.slug })),
   ];
+
 
   return (
     <div className="space-y-6" data-testid="approval-queue-page">

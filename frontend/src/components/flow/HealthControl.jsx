@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { flowAPI } from "../../lib/api";
+import { flowAPI, intelligenceAPI } from "../../lib/api";
 import { HEALTH } from "../../pages/flow/stages";
 import { Button } from "../ui/button";
+import Suggestion from "./Suggestion";
 
 /**
  * Project health, set by the TSD.
@@ -23,6 +24,13 @@ export default function HealthControl({ project, canEdit, onChanged }) {
   const [saving, setSaving] = useState(false);
 
   const current = HEALTH[project.health] || HEALTH.GREEN;
+
+  // Memoised on the project id: `Suggestion` refetches whenever this identity
+  // changes, and an inline arrow would make it change on every keystroke in
+  // the reason box.
+  const loadHealthSuggestion = useCallback(
+    () => intelligenceAPI.recommendHealth(project.id), [project.id]
+  );
 
   const save = async () => {
     if (health !== "GREEN" && !reason.trim()) {
@@ -60,7 +68,27 @@ export default function HealthControl({ project, canEdit, onChanged }) {
   }
 
   return (
-    <div className="rounded-lg border border-[#EAE7E0] bg-white p-3 w-72" data-testid="health-editor">
+    <div className="rounded-lg border border-[#EAE7E0] bg-white p-3 w-80" data-testid="health-editor">
+      {/* What the records say this project's colour is (Tier 4). It fills the
+          form in; it never sets health. The TSD's override is the whole point
+          of the field, and §13 keeps it intact deliberately -- the value here
+          is catching the project that is quietly amber while its header still
+          says green, not deciding on anyone's behalf. */}
+      <div className="mb-2">
+        <Suggestion
+          testId="health-suggestion"
+          load={loadHealthSuggestion}
+          applyLabel="Fill this in"
+          onApply={(fields) => {
+            setHealth(fields.health);
+            // Only pre-fill the reason for a non-green suggestion: green needs
+            // no reason, and pre-filling one would leave stale text behind if
+            // the person then switched to amber.
+            if (fields.health !== "GREEN") setReason(fields.reason || "");
+          }}
+        />
+      </div>
+
       <div className="flex gap-1 mb-2">
         {Object.entries(HEALTH).map(([key, cfg]) => (
           <button

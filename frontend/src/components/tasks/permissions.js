@@ -58,27 +58,46 @@ export function permissionsFromCanManage(canManage) {
 /**
  * What this person may do on one project's board.
  *
- * Three levels, matching the server: the project's managers (and
- * administrators) shape the board; collaborators work inside it; everybody
- * else reads.
+ * Three levels, mirroring `can_manage_boards` and `can_use_board` in
+ * `backend/services/permissions.py`:
  *
- * This mirrors can_manage_project in backend/services/permissions.py. It used
- * to grant control to anyone who ran the project's unit, which handed a
- * manager full controls over a colleague's project -- the buttons appeared and
- * then the server refused them.
+ *   shape the board   the project's TSD, its Solution Architect, administrators
+ *   work inside it    anybody on the project -- pod members and collaborators
+ *   read it           everybody else
+ *
+ * This checked `project_manager_id` and `project_manager_ids` only -- the
+ * legacy fields from before the role was renamed. A project carries `tsd_id`
+ * now, so **the TSD of a project got a read-only board**: the server would
+ * have allowed them to add a column, and the interface never offered it.
+ * The architect was missed the same way, and pod members were missed at the
+ * collaborator level because only `collaborator_ids` was read.
+ *
+ * The legacy fields are still checked, for rows the migration has not
+ * rewritten. They grant; they are no longer required.
  */
 export function permissionsForProject(user, project) {
   if (!user || !project) return READ_ONLY_PERMISSIONS;
 
+  const uid = user.user_id;
   const manages =
     user.role === "super_admin" ||
     user.role === "mini_admin" ||
     Boolean(user.is_hr) ||
-    user.user_id === project.created_by ||
-    user.user_id === project.project_manager_id ||
-    (project.project_manager_ids || []).includes(user.user_id);
+    // The two people accountable for the project.
+    uid === project.tsd_id ||
+    uid === project.architect_id ||
+    uid === project.created_by ||
+    // Legacy, still honoured until the migration has run everywhere.
+    uid === project.project_manager_id ||
+    (project.project_manager_ids || []).includes(uid);
 
   if (manages) return FULL_PERMISSIONS;
-  if ((project.collaborator_ids || []).includes(user.user_id)) return COLLABORATOR_PERMISSIONS;
-  return READ_ONLY_PERMISSIONS;
+
+  // Anybody placed on the project works inside the board. `pod_member_ids` is
+  // how people are placed now; `collaborator_ids` is the older field.
+  const onProject =
+    (project.pod_member_ids || []).includes(uid) ||
+    (project.collaborator_ids || []).includes(uid);
+
+  return onProject ? COLLABORATOR_PERMISSIONS : READ_ONLY_PERMISSIONS;
 }

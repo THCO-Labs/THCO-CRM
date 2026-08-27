@@ -13,7 +13,7 @@
 // Nothing is expanded by default. Hovering or focusing a stage marker reveals
 // what that stage is and what happens in it, and it disappears on leaving.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Lock } from "lucide-react";
 
 import { PHASES, PHASE_ORDER, STAGES, LAST_STAGE } from "../../pages/flow/stages";
@@ -34,17 +34,36 @@ export default function LifecycleLine({
   me,
   onChanged,
 }) {
-  const [hovered, setHovered] = useState(null);
-  // The reveal stays while the pointer is inside it, so somebody can move onto
-  // the panel to read it or press something without it vanishing under them.
-  const [inPanel, setInPanel] = useState(false);
+  // A marker is a 6px-tall sliver and the panel opens 8px below it, so the
+  // moment the pointer left the marker the panel would vanish before the
+  // pointer physically arrived over it -- there is no such thing as "leaving
+  // the marker straight down into the panel" without crossing dead space in
+  // between. A short close delay, cancelled by re-entering either the marker
+  // or the panel, bridges that gap instead of relying on adjacency.
+  const [activeStage, setActiveStage] = useState(null);
+  const closeTimer = useRef(null);
   const current = project.stage;
   const currentPhase = project.phase;
   const atEnd = current >= LAST_STAGE;
 
-  const showing = hovered ?? (inPanel ? current : null);
-  const detail = showing ? STAGES[showing] : null;
-  const detailIsCurrent = showing === current;
+  const clearCloseTimer = () => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  };
+  const openStage = (stage) => {
+    clearCloseTimer();
+    setActiveStage(stage);
+  };
+  const scheduleClose = () => {
+    clearCloseTimer();
+    closeTimer.current = setTimeout(() => setActiveStage(null), 400);
+  };
+  useEffect(() => clearCloseTimer, []);
+
+  const detail = activeStage ? STAGES[activeStage] : null;
+  const detailIsCurrent = activeStage === current;
 
   return (
     <div className="relative" data-testid="lifecycle-line">
@@ -65,7 +84,7 @@ export default function LifecycleLine({
             data-testid="lifecycle-advance-btn"
             title={canAdvance
               ? `Advance to ${STAGES[current + 1]?.label}`
-              : "Only this project's TSD moves it through the pipeline"}
+              : "This project's TSD moves it through the pipeline, and its architect advances the stages they own"}
             className="h-7 shrink-0 text-[11px]"
           >
             {canAdvance ? null : <Lock className="w-3 h-3 mr-1" />}
@@ -98,10 +117,10 @@ export default function LifecycleLine({
                   <button
                     key={s.stage}
                     type="button"
-                    onMouseEnter={() => setHovered(s.stage)}
-                    onMouseLeave={() => setHovered(null)}
-                    onFocus={() => setHovered(s.stage)}
-                    onBlur={() => setHovered(null)}
+                    onMouseEnter={() => openStage(s.stage)}
+                    onMouseLeave={scheduleClose}
+                    onFocus={() => openStage(s.stage)}
+                    onBlur={scheduleClose}
                     aria-label={`Stage ${s.stage}: ${s.label}`}
                     data-testid={`lifecycle-marker-${s.stage}`}
                     className="flex-1 h-full transition-colors"
@@ -134,8 +153,8 @@ export default function LifecycleLine({
       {detail && (
         <div
           className="absolute left-0 right-0 top-full mt-2 z-20"
-          onMouseEnter={() => setInPanel(true)}
-          onMouseLeave={() => { setInPanel(false); setHovered(null); }}
+          onMouseEnter={clearCloseTimer}
+          onMouseLeave={scheduleClose}
           data-testid="lifecycle-detail"
         >
           {detailIsCurrent ? (
@@ -149,11 +168,11 @@ export default function LifecycleLine({
           ) : (
             <div className="rounded-lg border border-[#EAE7E0] bg-white shadow-lg px-4 py-3">
               <div className="flex items-baseline gap-2">
-                <span className="text-[10px] font-mono text-gray-400">STAGE {showing}</span>
+                <span className="text-[10px] font-mono text-gray-400">STAGE {activeStage}</span>
                 <span className="text-sm font-medium text-gray-900">{detail.label}</span>
               </div>
               <p className="text-xs text-gray-500 mt-1">
-                {showing < current ? "Already passed." : "Still ahead."}
+                {activeStage < current ? "Already passed." : "Still ahead."}
               </p>
             </div>
           )}

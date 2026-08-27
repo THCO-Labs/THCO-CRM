@@ -5,6 +5,12 @@ Tests: Clients CRUD, Proposals CRUD, Share Links, Public Access
 import pytest
 import requests
 import os
+# Credentials come from the environment. This file used to carry the
+# super admin's real password as a literal, in a tracked file, which
+# meant anybody with repository access had it.
+TEST_ADMIN_EMAIL = os.environ.get('TEST_ADMIN_EMAIL', '')
+TEST_ADMIN_PASSWORD = os.environ.get('TEST_ADMIN_PASSWORD', '')
+
 import io
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
@@ -17,7 +23,7 @@ class TestProposalManagement:
         """Login and get session token"""
         response = requests.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "joshua@thcohq.com", "password": "THCOAdmin2024!"}
+            json={"email": TEST_ADMIN_EMAIL, "password": TEST_ADMIN_PASSWORD}
         )
         assert response.status_code == 200, f"Login failed: {response.text}"
         data = response.json()

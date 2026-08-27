@@ -2,6 +2,13 @@ import requests
 import sys
 from datetime import datetime
 import json
+import os
+# Credentials come from the environment. This file used to carry the
+# super admin's real password as a literal, in a tracked file, which
+# meant anybody with repository access had it.
+TEST_ADMIN_EMAIL = os.environ.get('TEST_ADMIN_EMAIL', '')
+TEST_ADMIN_PASSWORD = os.environ.get('TEST_ADMIN_PASSWORD', '')
+
 
 class THCOPortalTester:
     def __init__(self, base_url="https://executive-decks.preview.emergentagent.com"):
@@ -10,8 +17,8 @@ class THCOPortalTester:
         self.tests_run = 0
         self.tests_passed = 0
         self.admin_credentials = {
-            "email": "joshua@thcohq.com",
-            "password": "THCOAdmin2024!"
+            "email": TEST_ADMIN_EMAIL,
+            "password": TEST_ADMIN_PASSWORD
         }
 
     def run_test(self, name, method, endpoint, expected_status, data=None, headers=None):

@@ -62,6 +62,7 @@ export default function FlowCalendar() {
                               down for everybody. */}
                           <p className="text-xs text-gray-500 capitalize">
                             {(e.event_type || "event").replace(/_/g, " ")}
+                            {e.department && ` · ${e.department}`}
                           </p>
                         </div>
                         <div className="text-right">

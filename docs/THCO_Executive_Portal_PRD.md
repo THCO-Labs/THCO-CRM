@@ -108,7 +108,7 @@ The platform is designed for internal use by THCO leadership, business unit head
 5. `withCredentials` is set to `false` globally (required to avoid CORS conflicts with Emergent proxy)
 
 **Credentials:**
-- Super Admin: `joshua@thcohq.com` / `THCOAdmin2024!`
+- Super Admin: `joshua@thcohq.com` / `<redacted - see your password manager>`
 
 ---
 

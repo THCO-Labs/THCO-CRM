@@ -56,7 +56,7 @@
   ],
   "updated_files": ["/app/backend/tests/test_flow.py"],
   "success_rate": {"backend": "100% (17/17)", "frontend": "100% (12/12 critical UI flows, after opening modals correctly)"},
-  "test_credentials": {"admin_email": "joshua@thcohq.com", "admin_password": "THCOAdmin2024!", "token_field": "session_token"},
+  "test_credentials": {"admin_email": "joshua@thcohq.com", "admin_password": "<redacted>", "token_field": "session_token"},
   "seed_data_creation": "Created TEST_QA_* records: 1 project (transitioned 1->12), 1 'lost' project, 1 prospect handed-off (creates a second project), 1 contact w/ birthday + event, 3 messages (tier1 send, tier2 auto, tier2 bogus), 1 UI ticket, 1 UI contact, 1 UI project (advanced 1 stage). Safe to leave or purge via prefix TEST_QA_.",
   "retest_needed": false,
   "should_main_agent_self_test": false,

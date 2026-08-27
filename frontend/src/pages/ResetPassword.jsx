@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Lock, Loader2, Eye, EyeOff, CheckCircle } from "lucide-react";
+import { Lock, Loader2, Eye, EyeOff, CheckCircle, Atom } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -20,8 +20,8 @@ const resetPasswordSchema = z.object({
 
 const Brand = () => (
   <div className="flex items-center justify-center gap-3 mb-10">
-    <span className="w-9 h-9 rounded-md bg-gradient-to-br from-[#C6A15B] to-[#8F7340] flex items-center justify-center">
-      <span className="font-display text-[#0C0F13] text-base font-semibold">T</span>
+    <span className="w-9 h-9 rounded-md bg-[#0C0F13] border border-[#1FB58A]/30 flex items-center justify-center">
+      <Atom className="w-5 h-5 text-[#2DD4BF]" strokeWidth={1.75} />
     </span>
     <p className="font-display text-gray-900 text-xl tracking-wide">Crowther</p>
   </div>

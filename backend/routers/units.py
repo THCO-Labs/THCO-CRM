@@ -1,7 +1,11 @@
 """
 Business Units router.
 
-Lets a super admin:
+Lets any administrator (super admin, mini admin, or HR) create, edit, hide
+and invite members to business units. Deletion stays super-admin-only --
+hiding is the reversible way to take a unit off the sidebar without losing
+its configuration, so there is less reason to reach for delete at all.
+
   - create / list / update / delete business units (each with a configurable
     page: which sections show, and what members of the unit are responsible for)
   - invite members by email: creates (or updates) accounts, grants access to the
@@ -61,6 +65,8 @@ class UnitCreate(BaseModel):
     icon: str = "layers"
     accent: str = "#1FB58A"
     lead: str = ""
+    order: Optional[int] = None
+    hidden: bool = False
     config: UnitConfig = UnitConfig()
 
 
@@ -75,6 +81,8 @@ class UnitUpdate(BaseModel):
     icon: Optional[str] = None
     accent: Optional[str] = None
     lead: Optional[str] = None
+    order: Optional[int] = None
+    hidden: Optional[bool] = None
     config: Optional[UnitConfig] = None
 
 
@@ -107,7 +115,10 @@ def serialize(unit: dict) -> dict:
 async def list_units(request: Request):
     user = await _current(request)
     units = []
-    async for u in db.units.find({}, {"_id": 0}).sort("created_at", 1):
+    # Units with no explicit order (the original ten) sort first by creation
+    # order, same as always; units an admin has deliberately arranged (e.g.
+    # the newer departments) sort by that position instead.
+    async for u in db.units.find({}, {"_id": 0}).sort([("order", 1), ("created_at", 1)]):
         # member count
         cnt = await db.users.count_documents({"accessible_units": u.get("slug")})
         u = dict(u)
@@ -119,8 +130,7 @@ async def list_units(request: Request):
 @router.post("")
 async def create_unit(data: UnitCreate, request: Request):
     user = await _current(request)
-    if user.get("role") != "super_admin":
-        raise HTTPException(status_code=403, detail="Only super admins can create business units")
+    permissions.require_admin(user)
 
     slug = slugify(data.name)
     existing = await db.units.find_one({"slug": slug}, {"_id": 0})
@@ -136,6 +146,8 @@ async def create_unit(data: UnitCreate, request: Request):
         "icon": data.icon,
         "accent": data.accent,
         "lead": data.lead,
+        "order": data.order,
+        "hidden": data.hidden,
         "config": data.config.dict(),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "created_by": user.get("user_id"),
@@ -158,8 +170,7 @@ async def get_unit(slug: str, request: Request):
 @router.patch("/{slug}")
 async def update_unit(slug: str, data: UnitUpdate, request: Request):
     user = await _current(request)
-    if user.get("role") != "super_admin":
-        raise HTTPException(status_code=403, detail="Only super admins can edit business units")
+    permissions.require_admin(user)
 
     existing = await db.units.find_one({"slug": slug}, {"_id": 0})
     if not existing:
@@ -307,8 +318,7 @@ async def delete_unit(slug: str, request: Request):
 async def invite_members(slug: str, data: InviteMember, request: Request):
     """Create/update accounts for each email, grant unit+flow access, email credentials."""
     user = await _current(request)
-    if user.get("role") != "super_admin":
-        raise HTTPException(status_code=403, detail="Only super admins can invite members")
+    permissions.require_admin(user)
 
     unit = await db.units.find_one({"slug": slug}, {"_id": 0})
     if not unit:
@@ -368,7 +378,7 @@ async def invite_members(slug: str, data: InviteMember, request: Request):
                 html = _credentials_email_html(unit["name"], email, pw)
                 await send_email(
                     to=[email],
-                    subject=f"Your Crowther Control Room access — {unit['name']}",
+                    subject=f"Your Crowther Delivery OS access — {unit['name']}",
                     html=html,
                 )
                 emails_sent.append(email)
@@ -398,14 +408,14 @@ def _credentials_email_html(unit_name: str, email: str, password: str) -> str:
     login_link = f"{os.environ.get('FRONTEND_URL', 'http://localhost:5178')}/login"
     return f"""
     <div style="font-family:Inter,Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;background:#0C0F13;border-radius:12px;color:#E8E6F0">
-      <div style="font-size:22px;font-weight:700;color:#C6A15B;margin-bottom:4px">Crowther Control Room</div>
+      <div style="font-size:22px;font-weight:700;color:#C6A15B;margin-bottom:4px">Crowther Delivery OS</div>
       <p style="color:#9AA0AB;margin:0 0 18px">Welcome to <strong style="color:#fff">{unit_name}</strong></p>
       <p style="color:#E8E6F0">Your account has been created. Use the details below to sign in:</p>
       <div style="background:#161B22;border:1px solid #2a2f38;border-radius:10px;padding:16px;margin:16px 0">
         <p style="margin:4px 0;color:#9AA0AB">Email<br><strong style="color:#fff">{email}</strong></p>
         <p style="margin:12px 0 4px;color:#9AA0AB">Password<br><strong style="color:#fff">{password}</strong></p>
       </div>
-      <p style="color:#9AA0AB">Sign in at <a href="{login_link}" style="color:#1FB58A">the Crowther Control Room</a> and open <strong style="color:#fff">{unit_name}</strong> from your dashboard.</p>
+      <p style="color:#9AA0AB">Sign in at <a href="{login_link}" style="color:#1FB58A">Crowther Delivery OS</a> and open <strong style="color:#fff">{unit_name}</strong> from your dashboard.</p>
       <p style="color:#6B7280;font-size:12px;margin-top:6px">Or copy this link into your browser: {login_link}</p>
       <p style="color:#6B7280;font-size:12px;margin-top:18px">If you already had an account, your password is unchanged and the unit was added to your access.</p>
     </div>

@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import {
   Plus, Building2, Users, Trash2, Mail, Layers, Wrench, FolderKanban,
-  MessageSquare, UserCog, LayoutDashboard, Send, CheckCircle2, AlertCircle,
+  MessageSquare, UserCog, LayoutDashboard, Send, CheckCircle2, AlertCircle, GripVertical,
+  Eye, EyeOff,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -29,6 +30,10 @@ const ICON_OPTIONS = [
   { value: "headphones", label: "Headphones" },
   { value: "folder-kanban", label: "Folder" },
   { value: "lightbulb", label: "Lightbulb" },
+  { value: "home", label: "Home" },
+  { value: "scale", label: "Scale" },
+  { value: "dollar-sign", label: "Dollar Sign" },
+  { value: "shield-check", label: "Shield" },
 ];
 
 const SECTION_META = [
@@ -60,6 +65,9 @@ const BusinessUnitsAdmin = () => {
 
   const [editUnit, setEditUnit] = useState(null);
   const [deleting, setDeleting] = useState(null);
+  const [dragIndex, setDragIndex] = useState(null);
+  const [overIndex, setOverIndex] = useState(null);
+  const [reordering, setReordering] = useState(false);
 
   const load = async () => {
     try {
@@ -126,6 +134,43 @@ const BusinessUnitsAdmin = () => {
     }
   };
 
+  // Dragging a card sets its new position in the on-screen list immediately,
+  // then persists every unit's position (not just the ones that moved) so the
+  // whole arrangement -- built-in units included -- is explicit afterward
+  // rather than left to depend on creation order for anything untouched.
+  const handleDrop = async (targetIndex) => {
+    const fromIndex = dragIndex;
+    setDragIndex(null);
+    setOverIndex(null);
+    if (fromIndex === null || fromIndex === targetIndex) return;
+
+    const reordered = [...units];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(targetIndex, 0, moved);
+    setUnits(reordered);
+    setReordering(true);
+    try {
+      await Promise.all(reordered.map((u, idx) => unitsAPI.update(u.slug, { order: idx + 1 })));
+    } catch (e) {
+      toast.error("Failed to save the new order");
+      load();
+    } finally {
+      setReordering(false);
+    }
+  };
+
+  const toggleHidden = async (u) => {
+    const next = !u.hidden;
+    setUnits((prev) => prev.map((x) => (x.slug === u.slug ? { ...x, hidden: next } : x)));
+    try {
+      await unitsAPI.update(u.slug, { hidden: next });
+      toast.success(next ? "Unit hidden from the sidebar" : "Unit restored to the sidebar");
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Failed to update");
+      load();
+    }
+  };
+
   const confirmDelete = async () => {
     try {
       await unitsAPI.remove(deleting.slug);
@@ -146,11 +191,16 @@ const BusinessUnitsAdmin = () => {
           <p className="text-sm text-gray-500 mt-2">
             Create business units, configure what appears on each unit's page, and invite members by email.
             New members get their login details sent automatically.
+            Drag a card by its <GripVertical className="w-3.5 h-3.5 inline -mt-0.5" /> handle to change the order units appear in the sidebar,
+            or use <EyeOff className="w-3.5 h-3.5 inline -mt-0.5" /> Hide to take a unit off the sidebar without deleting it.
           </p>
         </div>
-        <Button onClick={openCreate} className="bg-[#1FB58A] hover:bg-[#179C76] text-white rounded-lg shrink-0">
-          <Plus className="w-4 h-4 mr-2" /> New Unit
-        </Button>
+        <div className="flex items-center gap-3 shrink-0">
+          {reordering && <span className="text-xs text-gray-400">Saving order…</span>}
+          <Button onClick={openCreate} className="bg-[#1FB58A] hover:bg-[#179C76] text-white rounded-lg">
+            <Plus className="w-4 h-4 mr-2" /> New Unit
+          </Button>
+        </div>
       </div>
 
       {loading ? (
@@ -162,9 +212,25 @@ const BusinessUnitsAdmin = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {units.map((u) => (
-            <div key={u.unit_id} className="lux-card p-5" data-testid={`unit-card-${u.slug}`}>
+          {units.map((u, i) => (
+            <div
+              key={u.unit_id}
+              draggable
+              onDragStart={() => setDragIndex(i)}
+              onDragOver={(e) => { e.preventDefault(); if (overIndex !== i) setOverIndex(i); }}
+              onDragEnd={() => { setDragIndex(null); setOverIndex(null); }}
+              onDrop={(e) => { e.preventDefault(); handleDrop(i); }}
+              className={`lux-card p-5 transition-opacity ${dragIndex === i ? "opacity-40" : ""} ${overIndex === i && dragIndex !== null && dragIndex !== i ? "ring-2 ring-[#1FB58A]" : ""} ${u.hidden ? "opacity-60" : ""}`}
+              data-testid={`unit-card-${u.slug}`}
+            >
               <div className="flex items-start gap-3">
+                <div
+                  className="w-6 h-10 flex items-center justify-center shrink-0 -ml-1 cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500"
+                  title="Drag to reorder"
+                  data-testid={`unit-drag-handle-${u.slug}`}
+                >
+                  <GripVertical className="w-4 h-4" />
+                </div>
                 <div
                   className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
                   style={{ backgroundColor: `${u.accent}1A`, border: `1px solid ${u.accent}55` }}
@@ -172,7 +238,14 @@ const BusinessUnitsAdmin = () => {
                   <Building2 className="w-5 h-5" style={{ color: u.accent }} />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="font-medium text-gray-900">{u.name}</p>
+                  <p className="font-medium text-gray-900 flex items-center gap-2">
+                    {u.name}
+                    {u.hidden && (
+                      <span className="px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 text-[10px] font-normal uppercase tracking-wide flex items-center gap-1">
+                        <EyeOff className="w-2.5 h-2.5" /> Hidden
+                      </span>
+                    )}
+                  </p>
                   <p className="text-[12px] text-gray-500 line-clamp-2">{u.description || "No description"}</p>
                   <p className="text-[11px] text-gray-400 mt-1">
                     {u.member_count || 0} member{(u.member_count || 0) === 1 ? "" : "s"}
@@ -204,7 +277,18 @@ const BusinessUnitsAdmin = () => {
                   <Mail className="w-3.5 h-3.5 mr-1.5" /> Invite Members
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => setEditUnit(u)} className="text-gray-500 rounded-lg text-[12px]">Edit</Button>
-                <Button size="sm" variant="ghost" onClick={() => setDeleting(u)} className="text-red-500 hover:bg-red-50 rounded-lg text-[12px] ml-auto">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => toggleHidden(u)}
+                  title={u.hidden ? "Show in sidebar" : "Hide from sidebar"}
+                  data-testid={`unit-toggle-hidden-${u.slug}`}
+                  className="text-gray-500 rounded-lg text-[12px] ml-auto"
+                >
+                  {u.hidden ? <Eye className="w-3.5 h-3.5 mr-1.5" /> : <EyeOff className="w-3.5 h-3.5 mr-1.5" />}
+                  {u.hidden ? "Show" : "Hide"}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setDeleting(u)} className="text-red-500 hover:bg-red-50 rounded-lg text-[12px]">
                   <Trash2 className="w-3.5 h-3.5" />
                 </Button>
               </div>
@@ -409,7 +493,8 @@ const BusinessUnitsAdmin = () => {
           <DialogHeader>
             <DialogTitle>Delete unit?</DialogTitle>
             <DialogDescription>
-              This removes "{deleting?.name}" and its configuration. Members keep their accounts but lose access to this unit.
+              This permanently removes "{deleting?.name}" and its configuration. Members keep their accounts but lose access to this unit.
+              If it's just not needed right now, <button type="button" onClick={() => { toggleHidden(deleting); setDeleting(null); }} className="text-[#1FB58A] underline">hide it instead</button> — that can be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

@@ -53,7 +53,7 @@
   },
   "test_credentials": {
     "email": "joshua@thcohq.com",
-    "password": "THCOAdmin2024!",
+    "password": "<redacted>",
     "role": "Super Admin"
   },
   "seed_data_creation": "Test conversations created during testing in Supabase flowforge_conversations and flowforge_messages tables",

@@ -60,7 +60,7 @@
   },
   "test_credentials": {
     "admin_email": "joshua@thcohq.com",
-    "admin_password": "THCOAdmin2024!",
+    "admin_password": "<redacted>",
     "test_client_id": "client_9ec725d83dc6",
     "test_client_name": "Acme Corporation"
   },
@@ -73,7 +73,7 @@
   },
   "features_tested": {
     "login_and_auth": {
-      "super_admin_login": "PASS - joshua@thcohq.com / THCOAdmin2024!",
+      "super_admin_login": "PASS - joshua@thcohq.com / <redacted>",
       "auth_me_returns_roles": "PASS - is_engineer, is_fulfillment, is_hr flags returned"
     },
     "user_management": {

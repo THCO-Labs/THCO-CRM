@@ -60,7 +60,7 @@ jobs:
       # outage should never suppress a client's birthday reminder.
       fail-fast: false
       matrix:
-        job: [relationship-reminders, mailbox-import]
+        job: [relationship-reminders, mailbox-import, contract-expiry-sweep]
 
     steps:
       - name: Run ${{ matrix.job }}

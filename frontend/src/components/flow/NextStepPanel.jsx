@@ -1,9 +1,12 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { Check, AlertTriangle, HelpCircle, Loader2, ArrowRight, Lock, Undo2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
-import { flowAPI } from "../../lib/api";
+import { flowAPI, intelligenceAPI } from "../../lib/api";
 import { FUNCTION_LABELS, LAST_STAGE, VALIDATION_STAGE } from "../../pages/flow/stages";
 import { Button } from "../ui/button";
+import Suggestion from "./Suggestion";
+import { fixFor, fixHref } from "./gateFixes";
 
 /**
  * What happens next on this project, and what stands in the way.
@@ -20,18 +23,43 @@ import { Button } from "../ui/button";
  *   satisfied null   nobody can tell from the data; a person judges it
  */
 
-const ConditionRow = ({ condition }) => {
+const ConditionRow = ({ condition, project }) => {
   const { satisfied, label } = condition;
   const icon =
     satisfied === true ? <Check className="w-3.5 h-3.5 text-[#1FB58A]" />
     : satisfied === false ? <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
     : <HelpCircle className="w-3.5 h-3.5 text-gray-400" />;
+
+  // A red condition becomes a link to wherever it is fixed. This panel is
+  // where most people first meet a blocked gate, so it is the place that
+  // most needed it.
+  const fix = project ? fixFor(condition) : null;
+  const href = fix && !fix.blockedByOther ? fixHref(project.id, fix) : null;
+
   return (
     <li className="flex items-start gap-2 py-1">
       <span className="mt-0.5 shrink-0">{icon}</span>
       <span className={`text-xs ${satisfied === false ? "text-red-700" : "text-gray-700"}`}>
         {label}
         {satisfied === null && <span className="text-gray-400"> · your judgement</span>}
+        {fix && (
+          <span className="block mt-0.5">
+            {href ? (
+              <Link
+                to={href}
+                className="text-[11px] text-[#1B4332] underline underline-offset-2
+                           hover:text-[#14342A] inline-flex items-center gap-1"
+                data-testid={`fix-${condition.auto}`}
+              >
+                {fix.action}
+                <ArrowRight className="w-3 h-3" />
+              </Link>
+            ) : (
+              <span className="text-[11px] text-gray-500">{fix.action}</span>
+            )}
+            <span className="block text-[11px] text-gray-400">{fix.hint}</span>
+          </span>
+        )}
       </span>
     </li>
   );
@@ -40,6 +68,10 @@ const ConditionRow = ({ condition }) => {
 export default function NextStepPanel({ project, onAdvance, refreshKey, me, onChanged }) {
   const [gate, setGate] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const loadNextStep = useCallback(
+    () => intelligenceAPI.nextStep(project.id), [project.id]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -82,6 +114,21 @@ export default function NextStepPanel({ project, onAdvance, refreshKey, me, onCh
             <p className="text-sm font-medium text-gray-900">
               {atEnd ? "This project is closed." : playbook.next}
             </p>
+            {/* The line above is the stage playbook: correct, and identical on
+                every project at this stage. This narrows it to *this* project
+                -- what its gate is still missing, who owns that, and how long
+                it has been waiting. Read-only: there is nothing to apply, the
+                next action is the panel's own Advance button. */}
+            {!atEnd && (
+              <div className="mt-2">
+                <Suggestion
+                  testId="next-step-suggestion"
+                  auto={false}
+                  title="What does this project need?"
+                  load={loadNextStep}
+                />
+              </div>
+            )}
             {owner_function && !atEnd && (
               <p className="text-xs text-gray-500 mt-1">
                 Owned by {FUNCTION_LABELS[owner_function] || owner_function}
@@ -105,7 +152,7 @@ export default function NextStepPanel({ project, onAdvance, refreshKey, me, onCh
                   : "shrink-0 bg-[#1B4332] hover:bg-[#1B4332]/90 text-white"
               }
               data-testid="advance-btn"
-              title={can_move ? undefined : "Only this project's TSD moves it through the pipeline"}
+              title={can_move ? undefined : "This project's TSD moves it through the pipeline, and its architect advances the stages they own"}
             >
               {can_move ? null : <Lock className="w-3 h-3 mr-1.5" />}
               {gate.next_stage_label}
@@ -144,7 +191,7 @@ export default function NextStepPanel({ project, onAdvance, refreshKey, me, onCh
             BEFORE LEAVING {gate.stage_label?.toUpperCase()}
           </p>
           <ul>
-            {conditions.map((c) => <ConditionRow key={c.label} condition={c} />)}
+            {conditions.map((c) => <ConditionRow key={c.label} condition={c} project={project} />)}
           </ul>
         </div>
       )}
@@ -212,6 +259,13 @@ const FEEDBACK_STAGE = 10;
 function ArchitectStep({ project, me, onChanged }) {
   const [candidates, setCandidates] = useState([]);
   const [busy, setBusy] = useState(false);
+  // Which candidate the records point at, so the Senior Partner sees the
+  // suggestion beside the actual list rather than instead of it.
+  const [suggestedId, setSuggestedId] = useState(null);
+
+  const loadArchitectSuggestion = useCallback(
+    () => intelligenceAPI.recommendArchitect(project.id), [project.id]
+  );
 
   const isTsd = me?.user_id && me.user_id === project.tsd_id;
   const isPartner = me?.function_role === "senior_partner"
@@ -244,7 +298,13 @@ function ArchitectStep({ project, me, onChanged }) {
   const select = async (userId, name) => {
     setBusy(true);
     try {
+      // `select-architect` only names them -- it never moved the stage, so
+      // stage 6 kept a project sitting on a satisfied gate until somebody
+      // separately clicked Advance. That's exactly the "room people sit in"
+      // this component's own comment says stage 6 must not be, so the move
+      // to stage 7 happens right here, in the same action.
       await flowAPI.selectArchitect(project.id, userId);
+      await flowAPI.transitionStage(project.id, ARCHITECT_STAGE + 1);
       toast.success(`${name} is the Solution Architect`);
       onChanged?.();
     } catch (e) {
@@ -259,6 +319,18 @@ function ArchitectStep({ project, me, onChanged }) {
           <p className="text-[10px] font-mono text-gray-400 mb-2">
             CHOOSE THE SOLUTION ARCHITECT
           </p>
+          {/* Ranks the same people the list below shows, on who holds the
+              role, who has architected for this client before, and who is
+              already loaded. It highlights a row; the Senior Partner still
+              clicks Select, which is the one decision §13 keeps with them. */}
+          <div className="mb-2">
+            <Suggestion
+              testId="architect-suggestion"
+              load={loadArchitectSuggestion}
+              applyLabel="Highlight"
+              onApply={(fields) => setSuggestedId(fields.architect_id)}
+            />
+          </div>
           {candidates.length === 0 ? (
             <p className="text-xs text-gray-500 italic">
               Nobody is marked as able to architect yet. An administrator grants that on
@@ -268,10 +340,18 @@ function ArchitectStep({ project, me, onChanged }) {
             <ul className="space-y-1.5">
               {candidates.map((c) => (
                 <li key={c.user_id}
-                    className="flex items-center justify-between gap-3 px-3 py-2
-                               rounded-lg border border-[#EAE7E0] bg-[#F7F6F3]">
+                    className={`flex items-center justify-between gap-3 px-3 py-2
+                               rounded-lg border ${
+                                 c.user_id === suggestedId
+                                   ? "border-[#1FB58A] bg-[#1FB58A]/[0.07]"
+                                   : "border-[#EAE7E0] bg-[#F7F6F3]"
+                               }`}>
                   <span className="min-w-0">
                     <span className="text-sm text-gray-900">{c.name}</span>
+                    {c.user_id === suggestedId && (
+                      <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full
+                                       bg-[#1FB58A]/15 text-[#1B4332]">suggested</span>
+                    )}
                     <span className="block text-[11px] text-gray-500 truncate">{c.email}</span>
                   </span>
                   <Button size="sm" disabled={busy}

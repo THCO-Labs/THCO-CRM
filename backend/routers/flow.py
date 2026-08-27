@@ -345,10 +345,14 @@ async def _alert_senior_partner(project: dict, actor: dict, subject_line: str, b
     Used for the two things they asked to be told about without being asked to
     act: a forced gate, and a project going red.
     """
-    from services import send_email
+    from services import notifications, send_email
     from services.email_templates import _base
 
-    partners = await _users_with_function(permissions.SENIOR_PARTNER)
+    # Resolved through the shared recipient helper so this falls back to the
+    # super admins when nobody has been granted the Senior Partner function
+    # role -- which is the current state, and which used to make every alert
+    # here a silent no-op.
+    partners = await notifications.function_role_recipients(db, [permissions.SENIOR_PARTNER])
     if not partners:
         return
     link = f"/flow/projects/{project['id']}"
@@ -448,6 +452,9 @@ class ProjectCreate(BaseModel):
     # here settles stage 2 on the spot, and the project opens at stage 3
     # instead of waiting to be assigned to somebody already decided.
     tsd_id: Optional[str] = None
+    # The architect, when that is already decided too. Senior Partner and
+    # administrators only -- naming the architect is theirs wherever it happens.
+    architect_id: Optional[str] = None
 
 
 class TranscriptIn(BaseModel):
@@ -626,8 +633,41 @@ async def create_project(data: ProjectCreate, request: Request):
         if chosen["user_id"] not in project["pod_member_ids"]:
             project["pod_member_ids"].append(chosen["user_id"])
 
+    # The architect may be known at intake too -- an expansion for a client
+    # somebody already architects, or a Senior Partner who has decided while
+    # reading the brief. Naming them here saves the round trip through stage 6
+    # without weakening the rule: only the Senior Partner and administrators
+    # may do it, exactly as at stage 6 itself.
+    if data.architect_id:
+        permissions.require(
+            permissions.can_select_architect(user),
+            "Only the Senior Partner names the Solution Architect",
+        )
+        arch = await db.users.find_one(
+            {"user_id": data.architect_id, **permissions.ARCHITECT_CANDIDATE_QUERY},
+            {"_id": 0, "user_id": 1, "name": 1, "email": 1},
+        )
+        if not arch:
+            raise HTTPException(
+                status_code=404,
+                detail="That person is not marked as able to architect. An administrator "
+                       "grants that on their account.",
+            )
+        project["architect_id"] = arch["user_id"]
+        project["architect_name"] = arch.get("name")
+        project["architecture_status"] = "in_progress"
+        if arch["user_id"] not in project["pod_member_ids"]:
+            project["pod_member_ids"].append(arch["user_id"])
+
     await db.projects.insert_one(project)
     project.pop("_id", None)
+
+    # Told the same way they would be if named at stage 6 -- being handed a
+    # project should not depend on which screen it was decided from.
+    if data.architect_id and project.get("architect_id"):
+        from services import notifications
+
+        await notifications.notify_project_role(db, project, arch, "architect", user)
 
     # The picture is claimed after the project exists, because a claim needs
     # something to belong to. Losing the race for it does not undo the project
@@ -908,6 +948,11 @@ async def set_project_manager(project_id: str, data: ProjectManagerSet, request:
     await _audit("project", project_id, "tsd_set", user,
                  {"tsd": person.get("name"), "previous": previous})
 
+    # Tell them they now own this client and this project.
+    from services import notifications
+
+    await notifications.notify_project_role(db, project, person, "tsd", user)
+
     return {
         "project_id": project_id,
         "tsd_id": person["user_id"],
@@ -950,7 +995,7 @@ async def set_pod(project_id: str, data: PodSet, request: Request):
 
     permissions.require(
         permissions.can_manage_project(user, project),
-        "Only this project's project manager can change who works on it",
+        "Only this project's TSD can change who works on it",
     )
 
     before = set(project.get("pod_member_ids") or [])
@@ -1010,7 +1055,7 @@ async def edit_project(project_id: str, data: ProjectEdit, request: Request):
 
     permissions.require(
         permissions.can_manage_project(user, project),
-        "Only this project's project manager or an administrator can edit it",
+        "Only this project's TSD or an administrator can edit it",
     )
 
     # The create endpoint stores the client under client_name_snapshot, so an
@@ -1082,7 +1127,7 @@ async def delete_project(project_id: str, request: Request, permanent: bool = Fa
 
     permissions.require(
         permissions.can_manage_project(user, project),
-        "Only this project's project manager or an administrator can remove it",
+        "Only this project's TSD or an administrator can remove it",
     )
 
     if permanent and not permissions.is_super_admin(user):
@@ -1198,21 +1243,33 @@ async def _resolve_gate(project: dict) -> List[dict]:
     if "has_milestones" in needed:
         resolved["has_milestones"] = await db.milestones.count_documents({"project_id": pid}) > 0
     if "board_build_clear" in needed or "board_qa_clear" in needed:
-        boards = await db.boards.find({"project_id": pid}, {"_id": 0, "board_id": 1, "title": 1}).to_list(50)
+        # `task_boards`/`task_cards` are the real collections -- this used to
+        # read `boards`/`cards`, which nothing in the app ever writes to, so
+        # both gates were permanently unsatisfiable from data regardless of
+        # the board's actual state. Every project that reached stage 13 or 14
+        # had to be force-advanced, every time.
+        boards = await db.task_boards.find({"project_id": pid}, {"_id": 0, "board_id": 1, "title": 1}).to_list(50)
         qa_ids = [b["board_id"] for b in boards if "qa" in (b.get("title") or "").lower()]
         done_ids = [b["board_id"] for b in boards if (b.get("title") or "").lower() in ("done", "complete")]
         open_ids = [b["board_id"] for b in boards
                     if b["board_id"] not in qa_ids and b["board_id"] not in done_ids]
         if "board_qa_clear" in needed:
             resolved["board_qa_clear"] = (
-                await db.cards.count_documents({"board_id": {"$in": qa_ids}}) == 0
+                await db.task_cards.count_documents({"board_id": {"$in": qa_ids}}) == 0
                 if qa_ids else False
             )
         if "board_build_clear" in needed:
             resolved["board_build_clear"] = (
-                await db.cards.count_documents({"board_id": {"$in": open_ids}}) == 0
+                await db.task_cards.count_documents({"board_id": {"$in": open_ids}}) == 0
                 if boards else False
             )
+    if "tsd_accepted" in needed:
+        # Only an outright acceptance clears the gate. "Received" and
+        # "acknowledged" are progress signals for the Senior Partner -- useful,
+        # and deliberately not the same as taking the project on.
+        resolved["tsd_accepted"] = (
+            (project.get("tsd_acknowledgement") or {}).get("status") == "accepted"
+        )
     if "closure_complete" in needed:
         checklist = project.get("closure_checklist") or []
         resolved["closure_complete"] = bool(checklist) and all(i.get("done") for i in checklist)
@@ -1281,9 +1338,13 @@ async def transition_stage(project_id: str, data: StageTransition, request: Requ
     if not is_valid_stage(target):
         raise HTTPException(status_code=400, detail="Invalid stage")
 
+    # The target matters: the TSD may make any move, the architect only a
+    # forward one out of a stage they own. Passing it is what makes that
+    # distinction real rather than advisory.
     permissions.require(
-        permissions.can_move_stage(user, project),
-        "Only this project's TSD moves it through the pipeline",
+        permissions.can_move_stage(user, project, target),
+        "This project's TSD moves it through the pipeline. Its architect can "
+        "advance the stages they own — architecture, demo, build and QA.",
     )
 
     current = project.get("stage") or FIRST_STAGE
@@ -1316,15 +1377,22 @@ async def transition_stage(project_id: str, data: StageTransition, request: Requ
     # checked against the stored record, "TSD selected" could never pass.
     payload = data.payload or {}
     resolved_payload: Dict[str, Any] = {}
+    newly_named_tsd = None
     if payload.get("tsd_id"):
         chosen = await db.users.find_one(
             {"user_id": payload["tsd_id"], "status": "active"},
-            {"_id": 0, "user_id": 1, "name": 1},
+            # `email` so the person named here can be told, the same as one
+            # named through the TSD picker.
+            {"_id": 0, "user_id": 1, "name": 1, "email": 1},
         )
         if not chosen:
             raise HTTPException(status_code=404, detail="That person was not found")
         resolved_payload["tsd_id"] = chosen["user_id"]
         resolved_payload["tsd_name"] = chosen["name"]
+        # Only a *change* is worth a notification. Re-submitting the same TSD
+        # on a later move should not tell them again.
+        if chosen["user_id"] != project.get("tsd_id"):
+            newly_named_tsd = chosen
 
     if target == 3 and not project.get("tsd_id") and not resolved_payload.get("tsd_id"):
         raise HTTPException(
@@ -1408,10 +1476,25 @@ async def transition_stage(project_id: str, data: StageTransition, request: Requ
     await db.projects.update_one({"id": project_id}, {"$set": updates})
     project.update(updates)
 
+    if target == BUILD_STAGE:
+        from routers.taskboard import seed_default_boards
+        await seed_default_boards(project_id, project.get("name"), user.get("user_id"), user.get("name"))
+
     await _audit("project", project_id, f"stage_{target}", user, {
         "from_stage": current, "to_stage": target,
         "why": data.note, "forced": forced,
     })
+
+    # A TSD named as part of this move is being handed the project, and hears
+    # about it the same way one named through the picker does. Sent after the
+    # write so the notification can never describe an assignment that failed.
+    if newly_named_tsd:
+        from services import notifications
+
+        await notifications.notify_project_role(
+            db, project, newly_named_tsd, "tsd", user
+        )
+
     await _send_stage_email(target, project, user)
 
     if forced:
@@ -1426,6 +1509,222 @@ async def transition_stage(project_id: str, data: StageTransition, request: Requ
         )
 
     return _serialize_project(project)
+
+
+# The three things a TSD can say back about a project they have been handed.
+# Ordered, because they are a progression rather than a menu: seeing it, having
+# read it, and taking it on are three different commitments, and the Senior
+# Partner cares about the difference.
+ACKNOWLEDGEMENT_STATES = {
+    "received": "has received",
+    "acknowledged": "has acknowledged",
+    "accepted": "has accepted",
+}
+
+
+# Which project field each role's acknowledgement is kept in, and what to call
+# them when the Senior Partner is told. One endpoint serves both because it is
+# the same act: the person handed a piece of this project saying where they are
+# with it.
+ACKNOWLEDGEMENT_ROLES = {
+    "tsd": ("tsd_acknowledgement", "TSD", "tsd_name"),
+    "architect": ("architect_acknowledgement", "Solution Architect", "architect_name"),
+}
+
+
+class TsdAcknowledgement(BaseModel):
+    status: str                      # received | acknowledged | accepted
+    note: Optional[str] = ""
+    # Only needed when an administrator records on somebody's behalf and the
+    # project has both roles filled. Otherwise it is inferred from the caller.
+    role: Optional[str] = None
+
+
+@router.post("/projects/{project_id}/acknowledge")
+async def acknowledge_project(project_id: str, data: TsdAcknowledgement, request: Request):
+    """The TSD or the Architect tells the Senior Partner where they are.
+
+    Handing somebody a project and hearing nothing back is the gap this fills,
+    and it is the same gap for both roles: the architect is named and then
+    silence. Three states, and only the last is a commitment: `accepted` is
+    what satisfies the stage 3 gate for a TSD. The other two say "I have it"
+    and "I have read it" without pretending to more than that.
+
+    Recorded on the project and sent to the Senior Partner in-app and by email,
+    because this is precisely the thing they are waiting on.
+    """
+    user = await _get_user(request)
+    project = await db.projects.find_one({"id": project_id}, {"_id": 0})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Inferred from who is calling, so neither role can speak for the other.
+    # An administrator may record on either's behalf and says which.
+    is_tsd = permissions.is_project_tsd(user, project)
+    is_arch = permissions.is_project_architect(user, project)
+    role = (data.role or "").strip().lower() or ("tsd" if is_tsd else "architect" if is_arch else "")
+
+    if role not in ACKNOWLEDGEMENT_ROLES:
+        raise HTTPException(
+            status_code=400, detail="role must be 'tsd' or 'architect'"
+        )
+    permissions.require(
+        permissions.is_admin(user)
+        or (role == "tsd" and is_tsd)
+        or (role == "architect" and is_arch),
+        "Only this project's TSD or its Solution Architect can acknowledge it",
+    )
+
+    status = (data.status or "").strip().lower()
+    if status not in ACKNOWLEDGEMENT_STATES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"status must be one of: {', '.join(ACKNOWLEDGEMENT_STATES)}",
+        )
+
+    field, role_label, name_field = ACKNOWLEDGEMENT_ROLES[role]
+    acknowledgement = {
+        "status": status,
+        "note": (data.note or "").strip(),
+        "at": _now(),
+        "by": user.get("user_id"),
+        "by_name": user.get("name"),
+        "role": role,
+    }
+    await db.projects.update_one({"id": project_id}, {"$set": {field: acknowledgement}})
+    project[field] = acknowledgement
+    await _audit("project", project_id, f"{role}_{status}", user,
+                 {"note": acknowledgement["note"]})
+
+    verb = ACKNOWLEDGEMENT_STATES[status]
+    who = project.get(name_field) or user.get("name") or f"The {role_label}"
+    name = project.get("name") or "a project"
+    note_html = (
+        f"<p><strong>They said:</strong> {acknowledgement['note']}</p>"
+        if acknowledgement["note"] else ""
+    )
+    await _alert_senior_partner(
+        project, user,
+        f"{who} {verb} {name}",
+        f"<p><strong>{who}</strong> {verb} <strong>{name}</strong>"
+        f"{' and has taken ownership of it.' if status == 'accepted' else '.'}</p>"
+        f"{note_html}",
+    )
+
+    # In-app as well as email: the alert helper above only emails, and the
+    # Senior Partner watches the bell.
+    from services import notifications
+
+    partners = await notifications.function_role_recipients(db, [permissions.SENIOR_PARTNER])
+    if partners:
+        await notifications.notify_user_ids(
+            db,
+            user_ids=[p["user_id"] for p in partners],
+            kind=notifications.TSD_ACKNOWLEDGEMENT,
+            title=f"{who} {verb} {name}",
+            reason=acknowledgement["note"] or f"Status is now “{status}”.",
+            link=f"/flow/projects/{project_id}",
+            entity_type="project", entity_id=project_id,
+            actor=user,
+        )
+    return acknowledgement
+
+
+# What somebody put on a project can say back about it. Declining is the state
+# that matters and the reason it exists: a person added to a pod who is on
+# leave, already at capacity, or the wrong discipline had no way to say so, and
+# the project found out when the work did not happen.
+POD_RESPONSES = {
+    "acknowledged": "has acknowledged",
+    "accepted": "has accepted",
+    "declined": "has declined",
+}
+
+
+class PodResponse(BaseModel):
+    status: str                        # acknowledged | accepted | declined
+    note: Optional[str] = ""
+
+
+@router.post("/projects/{project_id}/pod-response")
+async def respond_to_pod_placement(project_id: str, data: PodResponse, request: Request):
+    """A pod member says whether they can actually take the work.
+
+    The TSD staffs a project and, until now, heard nothing back. Being added
+    was treated as agreeing, which it is not: people are on leave, already
+    committed, or not the discipline the project needs.
+
+    Declining requires a reason, because "no" without one leaves the TSD
+    exactly where they started. It does **not** remove the person from the pod
+    -- that is the TSD's decision to make with the reason in front of them,
+    and silently unstaffing a project from a button would be worse.
+    """
+    user = await _get_user(request)
+    project = await db.projects.find_one({"id": project_id}, {"_id": 0})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    uid = user.get("user_id")
+    on_project = (
+        uid in (project.get("pod_member_ids") or [])
+        or uid in (project.get("collaborator_ids") or [])
+    )
+    if not on_project:
+        raise HTTPException(
+            status_code=403, detail="Only somebody placed on this project can respond to it"
+        )
+
+    status = (data.status or "").strip().lower()
+    if status not in POD_RESPONSES:
+        raise HTTPException(
+            status_code=400, detail=f"status must be one of: {', '.join(POD_RESPONSES)}"
+        )
+    note = (data.note or "").strip()
+    if status == "declined" and not note:
+        raise HTTPException(
+            status_code=400,
+            detail="Declining needs a reason — the TSD has to re-staff around it.",
+        )
+
+    response = {
+        "user_id": uid,
+        "user_name": user.get("name"),
+        "status": status,
+        "note": note,
+        "at": _now(),
+    }
+    # Replace this person's previous answer rather than appending, so the list
+    # is one row per person and reads as the current position.
+    await db.projects.update_one(
+        {"id": project_id}, {"$pull": {"pod_responses": {"user_id": uid}}}
+    )
+    await db.projects.update_one(
+        {"id": project_id}, {"$push": {"pod_responses": response}}
+    )
+    await _audit("project", project_id, f"pod_{status}", user, {"note": note})
+
+    # The TSD staffs the project, so the TSD is who needs to know -- and the
+    # architect too on a decline, since they raised what the pod needed.
+    recipients = [project.get("tsd_id")]
+    if status == "declined":
+        recipients.append(project.get("architect_id"))
+    recipients = [r for r in recipients if r and r != uid]
+
+    if recipients:
+        from services import notifications
+
+        verb = POD_RESPONSES[status]
+        await notifications.notify_user_ids(
+            db,
+            user_ids=recipients,
+            kind="pod_response",
+            title=f"{user.get('name')} {verb} a place on {project.get('name') or 'a project'}",
+            reason=note or f"Status is now “{status}”.",
+            link=f"/flow/projects/{project_id}",
+            entity_type="project", entity_id=project_id,
+            actor=user,
+        )
+    return response
 
 
 class HealthUpdate(BaseModel):
@@ -1514,7 +1813,7 @@ async def request_architect(project_id: str, request: Request):
         f"<p>This stage waits for your selection.</p>",
     )
     candidates = await db.users.find(
-        {"can_architect": True, "status": "active"},
+        permissions.ARCHITECT_CANDIDATE_QUERY,
         {"_id": 0, "user_id": 1, "name": 1, "email": 1},
     ).to_list(100)
     return {"requested_at": _now(), "candidates": candidates}
@@ -1551,7 +1850,7 @@ async def architect_candidates(request: Request):
     """
     await _get_user(request)
     return await db.users.find(
-        {"can_architect": True, "status": "active"},
+        permissions.ARCHITECT_CANDIDATE_QUERY,
         {"_id": 0, "user_id": 1, "name": 1, "email": 1, "function_role": 1},
     ).to_list(100)
 
@@ -1573,10 +1872,15 @@ async def select_architect(project_id: str, data: ArchitectSelection, request: R
         raise HTTPException(status_code=404, detail="Project not found")
 
     chosen = await db.users.find_one(
-        {"user_id": data.user_id, "status": "active"}, {"_id": 0, "user_id": 1, "name": 1})
+        {"user_id": data.user_id, "status": "active"},
+        # `email` is selected because the architect is told they have been
+        # named, and telling them is half the point of naming them.
+        {"_id": 0, "user_id": 1, "name": 1, "email": 1})
     if not chosen:
         raise HTTPException(status_code=404, detail="That person was not found")
-    if not await db.users.count_documents({"user_id": data.user_id, "can_architect": True}):
+    if not await db.users.count_documents(
+        {"user_id": data.user_id, **permissions.ARCHITECT_CANDIDATE_QUERY}
+    ):
         raise HTTPException(
             status_code=400,
             detail=f"{chosen['name']} is not marked as able to architect. An administrator "
@@ -1593,6 +1897,14 @@ async def select_architect(project_id: str, data: ArchitectSelection, request: R
 
     project["architect_id"] = chosen["user_id"]
     project["architect_name"] = chosen["name"]
+
+    # Tell them. This used to end here: the project record changed and the
+    # person who now owned its architecture was never informed by the system
+    # that named them.
+    from services import notifications
+
+    await notifications.notify_project_role(db, project, chosen, "architect", user)
+
     await _send_stage_email(project.get("stage") or FIRST_STAGE, project, user)
     return {"architect_id": chosen["user_id"], "architect_name": chosen["name"]}
 
@@ -1879,9 +2191,18 @@ async def create_milestone(data: MilestoneCreate, request: Request):
         "invoice_url": None,
         "created_at": _now(),
     }
+    milestone["deliverables"] = []
     await db.milestones.insert_one(milestone)
     await _audit("milestone", milestone["milestone_id"], "created", user, {"project_id": data.project_id})
     milestone.pop("_id", None)
+
+    # A milestone is work somebody has to do, so it appears on the board as a
+    # card rather than only in a list on the Build tab. No-ops when the board
+    # does not exist yet (before stage 13) -- `seed_default_boards` picks up
+    # every milestone at that point instead.
+    from routers.taskboard import seed_milestone_cards
+
+    await seed_milestone_cards(data.project_id, user.get("user_id"), user.get("name"))
     return milestone
 
 
@@ -1896,11 +2217,47 @@ async def deliver_milestone(milestone_id: str, request: Request):
 
 
 # ===========================================================================
+# CLOSURE CHECKLIST (stage 17 gate, CLOSURE_CHECKLIST template)
+# ===========================================================================
+# The checklist itself is seeded onto every project at creation (see
+# `closure_checklist` above) and read by the `closure_complete` auto-gate.
+# What was missing was any way to actually check an item off -- the data
+# existed, but nothing in the API could change `done` from false to true.
+class ClosureItemToggle(BaseModel):
+    done: bool
+
+
+@router.patch("/projects/{project_id}/closure-checklist/{index}")
+async def toggle_closure_item(project_id: str, index: int, data: ClosureItemToggle, request: Request):
+    user = await _get_user(request)
+    project = await db.projects.find_one({"id": project_id}, {"_id": 0, "closure_checklist": 1})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    checklist = project.get("closure_checklist") or []
+    if index < 0 or index >= len(checklist):
+        raise HTTPException(status_code=404, detail="No such checklist item")
+
+    checklist[index]["done"] = data.done
+    checklist[index]["done_by"] = user.get("name") if data.done else None
+    checklist[index]["done_at"] = _now() if data.done else None
+    await db.projects.update_one({"id": project_id}, {"$set": {"closure_checklist": checklist}})
+    await _audit("closure_checklist", project_id, "checked" if data.done else "unchecked", user,
+                 {"item": checklist[index]["label"]})
+    return {"closure_checklist": checklist}
+
+
+# ===========================================================================
 # CONTACTS
 # ===========================================================================
 class ContactCreate(BaseModel):
     client_id: Optional[str] = None
     client_name: Optional[str] = ""    # free-text client name (when client_id not set)
+    # Which project this person was recorded on. The *lookup* still matches on
+    # the client, deliberately -- somebody met on one engagement is the same
+    # person on the next one, and scoping them to a single project would mean
+    # re-entering them every time. This records where they came from, so a
+    # contact can be traced back to the engagement that produced them.
+    project_id: Optional[str] = None
     full_name: str
     preferred_name: Optional[str] = ""
     title: Optional[str] = ""
@@ -2067,9 +2424,21 @@ async def list_events(request: Request, days: int = 90):
     # Only the day and month are published. The year is stored so a date field
     # can hold it, but showing it would tell the whole firm everybody's age,
     # which is not what anyone agreed to by filling in a birthday.
+    #
+    # There's no single "department" field on a user — only a list of
+    # accessible units, and optionally heading one of them. A person who
+    # heads a unit is shown under that unit; otherwise we fall back to the
+    # first unit they have access to.
+    unit_name_by_slug = {}
+    head_slug_by_user = {}
+    async for unit in db.units.find({}, {"_id": 0, "slug": 1, "name": 1, "head_user_id": 1}):
+        unit_name_by_slug[unit["slug"]] = unit["name"]
+        if unit.get("head_user_id"):
+            head_slug_by_user[unit["head_user_id"]] = unit["slug"]
+
     async for u in db.users.find(
         {"status": "active", "birthday": {"$nin": [None, ""]}},
-        {"_id": 0, "user_id": 1, "name": 1, "birthday": 1, "picture": 1},
+        {"_id": 0, "user_id": 1, "name": 1, "birthday": 1, "picture": 1, "accessible_units": 1},
     ):
         try:
             born = datetime.strptime(u["birthday"], "%Y-%m-%d").date()
@@ -2091,6 +2460,7 @@ async def list_events(request: Request, days: int = 90):
         # `event_type` and `contact_name` off every row, so a staff birthday
         # that named its fields differently took the whole page down rather
         # than simply rendering oddly.
+        dept_slug = head_slug_by_user.get(u["user_id"]) or next(iter(u.get("accessible_units") or []), None)
         upcoming.append({
             "event_id": f"staff_birthday_{u['user_id']}",
             "event_type": "birthday",
@@ -2101,6 +2471,7 @@ async def list_events(request: Request, days: int = 90):
             "days_until": delta,
             # Marks it as a colleague rather than a client contact.
             "is_staff": True,
+            "department": unit_name_by_slug.get(dept_slug),
         })
 
     upcoming.sort(key=lambda x: x.get("days_until", 999))

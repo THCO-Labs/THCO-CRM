@@ -56,7 +56,7 @@
   "test_credentials": {
     "super_admin": {
       "email": "joshua@thcohq.com",
-      "password": "THCOAdmin2024!"
+      "password": "<redacted>"
     }
   },
   "seed_data_creation": "Analytics data was generated during testing through page navigation and API calls. Test page views and actions tracked.",

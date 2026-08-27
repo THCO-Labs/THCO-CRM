@@ -33,7 +33,7 @@ export const STAGES = {
   9:  { key: "demo",               label: "Mockup and Demo",                      phase: "validation", owner: "solution_architect" },
   10: { key: "feedback",           label: "Client Feedback and Iteration",        phase: "validation", owner: "tsd" },
   11: { key: "validation",         label: "Validation and Readiness",             phase: "validation", owner: "tsd" },
-  12: { key: "delivery_prep",      label: "Delivery Preparation",                 phase: "delivery",   owner: "tsd" },
+  12: { key: "delivery_prep",      label: "Delivery Preparation and Pod Formation", phase: "delivery",   owner: "tsd" },
   13: { key: "build",              label: "Engineering and Build",                phase: "delivery",   owner: "solution_architect" },
   14: { key: "qa",                 label: "QA and Testing",                       phase: "delivery",   owner: "solution_architect" },
   15: { key: "acceptance",         label: "Client Acceptance and UAT",            phase: "close",      owner: "tsd" },

@@ -1,8 +1,11 @@
-import { useEffect, useState } from "react";
-import { X, Loader2, Check, AlertTriangle, HelpCircle } from "lucide-react";
-import { flowAPI } from "../../lib/api";
+import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { X, Loader2, Check, AlertTriangle, HelpCircle, ArrowRight } from "lucide-react";
+import { flowAPI, intelligenceAPI } from "../../lib/api";
 import { STAGES, FUNCTION_LABELS } from "../../pages/flow/stages";
 import { Button } from "../ui/button";
+import Suggestion from "./Suggestion";
+import { fixFor, fixHref } from "./gateFixes";
 
 /**
  * The dialog that advances a project one stage.
@@ -36,19 +39,44 @@ const Field = ({ label, hint, children }) => (
   </div>
 );
 
-const ConditionRow = ({ condition }) => {
+const ConditionRow = ({ condition, project }) => {
   const { satisfied, label } = condition;
   const icon =
     satisfied === true ? <Check className="w-3.5 h-3.5 text-[#1FB58A]" />
     : satisfied === false ? <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
     : <HelpCircle className="w-3.5 h-3.5 text-gray-400" />;
+
+  // An unmet condition that has somewhere to be fixed becomes a link there.
+  // Being told what is missing and left to find where to put it is the part
+  // that wastes people's time.
+  const fix = project ? fixFor(condition) : null;
+  const href = fix && !fix.blockedByOther ? fixHref(project.id, fix) : null;
+
   return (
     <li className="flex items-start gap-2 py-1">
       <span className="mt-0.5 shrink-0">{icon}</span>
       <span className={`text-xs ${satisfied === false ? "text-red-700" : "text-gray-700"}`}>
         {label}
         {satisfied === null && (
-          <span className="text-gray-400"> · your judgement</span>
+          <span className="text-gray-400"> &middot; your judgement</span>
+        )}
+        {fix && (
+          <span className="block mt-0.5">
+            {href ? (
+              <Link
+                to={href}
+                className="text-[11px] text-[#1B4332] underline underline-offset-2
+                           hover:text-[#14342A] inline-flex items-center gap-1"
+                data-testid={`fix-${condition.auto}`}
+              >
+                {fix.action}
+                <ArrowRight className="w-3 h-3" />
+              </Link>
+            ) : (
+              <span className="text-[11px] text-gray-500">{fix.action}</span>
+            )}
+            <span className="block text-[11px] text-gray-400">{fix.hint}</span>
+          </span>
         )}
       </span>
     </li>
@@ -65,6 +93,10 @@ const StructuredStageModal = ({ targetStage, project, me, saving, onCancel, onSu
 
   const stage = STAGES[targetStage];
   const needsTsd = targetStage === 2;
+
+  const loadTsdSuggestion = useCallback(
+    () => intelligenceAPI.recommendTsd(project.id), [project.id]
+  );
 
   useEffect(() => {
     const fetch = async () => {
@@ -87,14 +119,24 @@ const StructuredStageModal = ({ targetStage, project, me, saving, onCancel, onSu
     fetch();
   }, [project.id, needsTsd]);
 
-  const blocking = gate?.blocking || [];
+  // Moving a project *back* is a correction, not an advance, and the gate has
+  // nothing to say about it — the server skips the conditions entirely on a
+  // backward move. Showing them anyway made going 10→9 look identical to going
+  // 10→11, which is exactly the confusion this removes.
+  const goingBack = targetStage < (project.stage ?? 1);
+  // The demo loop is the design rather than a correction, so it alone needs no
+  // written reason. Every other backward move does, and the server enforces it.
+  const isDemoLoop = (project.stage ?? 1) === 10 && targetStage === 9;
+  const reasonRequiredToGoBack = goingBack && !isDemoLoop;
+
+  const blocking = goingBack ? [] : (gate?.blocking || []);
   const isBlocked = blocking.length > 0;
   const canForce = gate?.can_move !== false;
   // Who is reading decides how the forced-gate warning is worded.
   const isSeniorPartner =
     me?.function_role === "senior_partner"
     || ["super_admin", "mini_admin"].includes(me?.role);
-  const noteRequired = isBlocked && force;
+  const noteRequired = (isBlocked && force) || reasonRequiredToGoBack;
   const submitDisabled =
     saving ||
     (isBlocked && !force) ||
@@ -137,24 +179,49 @@ const StructuredStageModal = ({ targetStage, project, me, saving, onCancel, onSu
             </div>
           ) : (
             <>
-              {gate?.playbook?.next && (
-                <div className="mb-4 rounded-lg bg-[#F7F6F3] px-3 py-2.5">
-                  <p className="text-[10px] font-mono text-gray-400 mb-0.5">WHAT HAPPENS NEXT</p>
-                  <p className="text-xs text-gray-700">{gate.playbook.next}</p>
-                </div>
-              )}
-
-              {gate?.conditions?.length > 0 && (
-                <div className="mb-4">
-                  <p className="text-[11px] font-medium text-gray-700 mb-1">
-                    Before leaving {gate.stage_label}
+              {/* Going back: the gate is not shown at all, because it does not
+                  apply and showing it made a backward move look like a forward
+                  one. What replaces it is what this move actually does. */}
+              {goingBack ? (
+                <div className={`mb-4 rounded-lg px-3 py-2.5 border ${
+                  isDemoLoop
+                    ? "bg-[#1FB58A]/[0.07] border-[#1FB58A]/30"
+                    : "bg-[#C6A15B]/10 border-[#C6A15B]/30"
+                }`}>
+                  <p className="text-[10px] font-mono text-gray-500 mb-0.5">
+                    {isDemoLoop ? "ANOTHER DEMO ROUND" : "MOVING THIS PROJECT BACK"}
                   </p>
-                  <ul className="rounded-lg border border-[#EAE7E0] px-3 py-2">
-                    {gate.conditions.map((c) => (
-                      <ConditionRow key={c.label} condition={c} />
-                    ))}
-                  </ul>
+                  <p className="text-xs text-gray-700">
+                    {isDemoLoop
+                      ? "Going back for another round is how the demo loop is meant to work, so this needs no written reason. The project returns to Mockup and Demo and a new round can be created."
+                      : <>This returns the project from <b>{STAGES[project.stage]?.label}</b> to{" "}
+                         <b>{stage?.label}</b>. Nothing already recorded is deleted. The gate
+                         conditions do not apply to a backward move &mdash; but the reason does,
+                         and it is kept in the stage history.</>}
+                  </p>
                 </div>
+              ) : (
+                <>
+                  {gate?.playbook?.next && (
+                    <div className="mb-4 rounded-lg bg-[#F7F6F3] px-3 py-2.5">
+                      <p className="text-[10px] font-mono text-gray-400 mb-0.5">WHAT HAPPENS NEXT</p>
+                      <p className="text-xs text-gray-700">{gate.playbook.next}</p>
+                    </div>
+                  )}
+
+                  {gate?.conditions?.length > 0 && (
+                    <div className="mb-4">
+                      <p className="text-[11px] font-medium text-gray-700 mb-1">
+                        Before leaving {gate.stage_label}
+                      </p>
+                      <ul className="rounded-lg border border-[#EAE7E0] px-3 py-2">
+                        {gate.conditions.map((c) => (
+                          <ConditionRow key={c.label} condition={c} project={project} />
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
               )}
 
               {needsTsd && (
@@ -176,6 +243,17 @@ const StructuredStageModal = ({ targetStage, project, me, saving, onCancel, onSu
                       </option>
                     ))}
                   </select>
+                  {/* Ranks the same people the dropdown lists, on who has run
+                      this client before and who is already loaded. It selects
+                      the dropdown; the move still has to be submitted. */}
+                  <div className="mt-2">
+                    <Suggestion
+                      testId="tsd-suggestion"
+                      load={loadTsdSuggestion}
+                      applyLabel="Choose them"
+                      onApply={(fields) => setTsdId(fields.tsd_id)}
+                    />
+                  </div>
                 </Field>
               )}
 

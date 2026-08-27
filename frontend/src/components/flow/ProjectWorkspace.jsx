@@ -9,21 +9,29 @@
 // it is a list of documents the architect uploaded, and one button. That fits
 // in a drawer.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Activity, AlertTriangle, Check, Contact, FileText, Layers, Loader2,
-  MonitorPlay, Plus, Trash2, Upload, Users, X,
+  MonitorPlay, Plus, Trash2, Upload, Users, X, GitBranch, ShieldAlert,
+  ClipboardCheck, Briefcase, Ban, Link2, ScrollText, Printer,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { deliveryAPI, flowAPI } from "@/lib/api";
+import { controlTowerAPI, deliveryAPI, flowAPI, intelligenceAPI } from "@/lib/api";
 import FileLink from "./FileLink";
+import Suggestion from "./Suggestion";
+import AttachmentStrip from "./AttachmentStrip";
 
 const TABS = [
   { key: "overview", label: "Overview" },
   { key: "product", label: "Product" },
   { key: "build", label: "Build" },
+  // Which requirement is which card, and what is covered by neither. It earns
+  // a tab rather than a drawer because it is a table you read across, and
+  // because it is the one view that answers "are we actually building what we
+  // agreed" -- a question asked at every stage from 13 onwards.
+  { key: "traceability", label: "Traceability" },
   { key: "history", label: "History" },
 ];
 
@@ -36,8 +44,33 @@ const DRAWERS = [
   // you occasionally need rather than something to read every time, so it is
   // an icon like the rest.
   { key: "contacts", label: "Client contacts", icon: Contact },
+  { key: "talent", label: "Talent", icon: Briefcase },
+  { key: "scope", label: "Scope changes", icon: GitBranch },
+  { key: "risks", label: "Decisions & risks", icon: ShieldAlert },
+  // What is holding this project up that is not a task. A task belongs on the
+  // board; waiting on a client signature, a third-party API or another project
+  // has had nowhere to live until now.
+  { key: "blockers", label: "Blockers", icon: Ban },
+  { key: "closure", label: "Closure checklist", icon: ClipboardCheck },
+  // Everything the project recorded, assembled. At stage 17 this is the
+  // closure report the gate asks for.
+  { key: "report", label: "Report", icon: ScrollText },
   { key: "activity", label: "Activity", icon: Activity },
 ];
+
+const BLOCKER_KINDS = [
+  { key: "internal", label: "Internal" },
+  { key: "client", label: "Waiting on client" },
+  { key: "third_party", label: "Third party" },
+  { key: "dependency", label: "Dependency" },
+];
+
+const BLOCKER_SEVERITY = {
+  low: "bg-gray-100 text-gray-700",
+  medium: "bg-[#C6A15B]/15 text-[#7A6234]",
+  high: "bg-orange-100 text-orange-800",
+  critical: "bg-red-100 text-red-700",
+};
 
 const REQUIREMENT_STATUS = {
   proposed: "bg-gray-100 text-gray-700",
@@ -54,10 +87,19 @@ export default function ProjectWorkspace({ projectId, project, onChanged }) {
   const [drawer, setDrawer] = useState(null);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Blockers live in the control tower router rather than the workspace call,
+  // so they are fetched alongside it. Kept in their own state so a blocker
+  // being raised does not refetch the whole workspace.
+  const [blockers, setBlockers] = useState([]);
 
   const load = async () => {
     try {
-      setData(await deliveryAPI.workspace(projectId));
+      const [workspace, blockerRows] = await Promise.all([
+        deliveryAPI.workspace(projectId),
+        controlTowerAPI.blockers(projectId).catch(() => []),
+      ]);
+      setData(workspace);
+      setBlockers(blockerRows || []);
     } catch (e) {
       toast.error(e.response?.data?.detail || "Could not load the project workspace");
     } finally {
@@ -66,6 +108,30 @@ export default function ProjectWorkspace({ projectId, project, onChanged }) {
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [projectId]);
+
+  // Open straight onto a tab or drawer named in the URL. This is what makes an
+  // unmet gate condition clickable: "Add requirements" links to
+  // `?tab=product`, "Attach demo materials" to `?drawer=demos`. It also makes
+  // those places linkable to a colleague, which they were not before.
+  //
+  // The parameter is cleared once acted on, so a later refresh does not
+  // re-open a drawer somebody has since closed.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const wantTab = params.get("tab");
+    const wantDrawer = params.get("drawer");
+    if (!wantTab && !wantDrawer) return;
+
+    if (wantTab && TABS.some((t) => t.key === wantTab)) setTab(wantTab);
+    if (wantDrawer && DRAWERS.some((d) => d.key === wantDrawer)) setDrawer(wantDrawer);
+
+    params.delete("tab");
+    params.delete("drawer");
+    const rest = params.toString();
+    window.history.replaceState(
+      {}, "", window.location.pathname + (rest ? `?${rest}` : "")
+    );
+  }, [projectId]);
 
   // Patch one list in place. An upload used to refetch the whole workspace,
   // which closed the drawer and lost the reader's place for a change only one
@@ -102,6 +168,13 @@ export default function ProjectWorkspace({ projectId, project, onChanged }) {
     demos: data.demos?.length || 0,
     documents: data.documents?.length || 0,
     feedback: data.feedback?.length || 0,
+    talent: (data.talent_requirements || []).filter((r) => r.status !== "cancelled").length,
+    scope: (data.scope_changes || []).filter((s) => s.decision === "pending").length,
+    risks: (data.risks || []).filter((r) => r.status === "open").length,
+    // Open blockers only. A resolved one is history, and badging it would mean
+    // the number never goes back down.
+    blockers: blockers.filter((b) => b.status === "open").length,
+    closure: (project?.closure_checklist || []).filter((c) => !c.done).length,
     activity: data.activity?.length || 0,
   };
 
@@ -158,6 +231,7 @@ export default function ProjectWorkspace({ projectId, project, onChanged }) {
           <BuildTab data={data} project={project}
                     canManage={can.manage_board} onChanged={refresh} />
         )}
+        {tab === "traceability" && <TraceabilityTab projectId={projectId} />}
         {tab === "history" && <HistoryTab data={data} project={project} />}
       </div>
 
@@ -179,12 +253,44 @@ export default function ProjectWorkspace({ projectId, project, onChanged }) {
           {drawer === "feedback" && (
             <FeedbackDrawer projectId={projectId} items={data.feedback}
                             canCapture={can.move_stage}
-                            onAdded={(row) => { addTo("feedback", row); onChanged?.(); }} />
+                            onAdded={(row) => { addTo("feedback", row); onChanged?.(); }}
+                            onChanged={onChanged} />
           )}
           {drawer === "contacts" && (
             <ContactsDrawer projectId={projectId}
                             clientName={project?.client_name_snapshot} />
           )}
+          {drawer === "talent" && (
+            <TalentDrawer projectId={projectId} stage={project?.stage}
+                          requirements={data.talent_requirements || []}
+                          assignments={data.talent_assignments || []}
+                          canManage={can.move_stage} onChanged={refresh} />
+          )}
+          {drawer === "scope" && (
+            <ScopeChangesDrawer projectId={projectId} items={data.scope_changes || []}
+                                canDecide={can.move_stage}
+                                onAdded={(row) => { addTo("scope_changes", row); onChanged?.(); }}
+                                onChanged={refresh} />
+          )}
+          {drawer === "risks" && (
+            <RisksDrawer projectId={projectId} decisions={data.decisions || []} risks={data.risks || []}
+                         onChanged={refresh} />
+          )}
+          {drawer === "blockers" && (
+            <BlockersDrawer projectId={projectId} blockers={blockers}
+                            onChanged={async () => {
+                              // Only the blocker list changed, so only it is
+                              // refetched -- the workspace behind the drawer is
+                              // untouched and the drawer stays where it is.
+                              setBlockers(await controlTowerAPI.blockers(projectId));
+                              onChanged?.();
+                            }} />
+          )}
+          {drawer === "closure" && (
+            <ClosureDrawer projectId={projectId} checklist={project?.closure_checklist || []}
+                           canEdit={can.move_stage} onChanged={refresh} />
+          )}
+          {drawer === "report" && <ReportDrawer projectId={projectId} />}
           {drawer === "activity" && <ActivityDrawer items={data.activity} />}
         </Drawer>
       )}
@@ -665,20 +771,8 @@ function BuildTab({ data, project, canManage, onChanged }) {
     <div className="space-y-5">
       <PodSection project={project} onChanged={onChanged} canManage={canManage} />
 
-      <Section title="Milestones">
-        {data.milestones.length === 0
-          ? <Empty>No milestones yet.</Empty>
-          : (
-            <ul className="divide-y divide-gray-100">
-              {data.milestones.map((m) => (
-                <li key={m.milestone_id || m.title} className="py-2 flex items-center justify-between text-sm">
-                  <span className="text-gray-800">{m.title}</span>
-                  <span className="text-xs text-gray-500">{fmt(m.due_date || m.target_date)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-      </Section>
+      <MilestonesSection projectId={project?.id} milestones={data.milestones}
+                         canManage={canManage} onChanged={onChanged} />
 
       <Section title="The board">
         <p className="text-sm text-gray-600">
@@ -837,6 +931,8 @@ function DemosDrawer({ projectId, demos, canManage, onChanged }) {
   const [openRound, setOpenRound] = useState(demos?.[demos.length - 1]?.demo_id || null);
   const [materials, setMaterials] = useState({});
   const [linkDraft, setLinkDraft] = useState("");
+  // The date and time a round was held, per round, before it is recorded.
+  const [heldDrafts, setHeldDrafts] = useState({});
 
   // Materials are loaded per round, on demand, so opening the drawer does not
   // fetch files for rounds nobody is looking at.
@@ -988,6 +1084,29 @@ function DemosDrawer({ projectId, demos, canManage, onChanged }) {
                       )}
                     </div>
 
+                    {/* When it happened. Defaulting to "now" was wrong for the
+                        ordinary case: a demo is usually recorded after it
+                        finishes, often the next morning, and the closure
+                        report reads these timestamps. */}
+                    {canManage && !d.held_at && d.outcome === "pending" && (
+                      <div className="flex flex-wrap items-end gap-2">
+                        <label className="text-[11px] text-gray-500">
+                          <span className="block mb-0.5">When was it held?</span>
+                          <input
+                            type="datetime-local"
+                            value={heldDrafts[d.demo_id] || ""}
+                            onChange={(e) => setHeldDrafts((h) => ({ ...h, [d.demo_id]: e.target.value }))}
+                            data-testid={`demo-held-at-${d.round}`}
+                            className="px-2 py-1.5 text-xs rounded-lg border border-[#EAE7E0]
+                                       bg-white text-gray-900 focus:outline-none focus:border-[#1B4332]"
+                          />
+                        </label>
+                        <span className="text-[11px] text-gray-400 pb-2">
+                          Leave blank for now
+                        </span>
+                      </div>
+                    )}
+
                     {/* What happens to the round */}
                     {canManage && d.outcome === "pending" && (
                       <div className="flex flex-wrap gap-2 pt-1">
@@ -995,7 +1114,12 @@ function DemosDrawer({ projectId, demos, canManage, onChanged }) {
                           <Button size="sm" variant="outline" disabled={busy}
                                   data-testid={`demo-held-${d.round}`}
                                   onClick={() => run(
-                                    () => deliveryAPI.markDemoHeld(projectId, d.demo_id),
+                                    () => deliveryAPI.markDemoHeld(projectId, d.demo_id,
+                                      heldDrafts[d.demo_id]
+                                        // A datetime-local value carries no zone;
+                                        // send it as the browser's local time.
+                                        ? { held_at: new Date(heldDrafts[d.demo_id]).toISOString() }
+                                        : {}),
                                     "Recorded as held")}>
                             Mark held
                           </Button>
@@ -1026,6 +1150,31 @@ function DemosDrawer({ projectId, demos, canManage, onChanged }) {
                         </Button>
                       </div>
                     )}
+
+                    {/* Deleting a round the client has actually seen is refused
+                        by the server -- that is history. This is for the round
+                        opened by mistake, which otherwise sits in the list
+                        forever and miscounts every later round. */}
+                    {canManage && !d.held_at && d.outcome === "pending" && (
+                      <div className="pt-1 border-t border-[#EAE7E0]">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          data-testid={`demo-delete-${d.round}`}
+                          onClick={async () => {
+                            if (!window.confirm(
+                              `Delete round ${d.round}? The remaining rounds are renumbered.`
+                            )) return;
+                            await run(() => deliveryAPI.deleteDemo(projectId, d.demo_id),
+                                      "Round deleted");
+                            setOpenRound(null);
+                          }}
+                          className="mt-2 text-[11px] text-gray-400 hover:text-red-600"
+                        >
+                          Delete this round
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </li>
@@ -1040,6 +1189,10 @@ function DemosDrawer({ projectId, demos, canManage, onChanged }) {
 
 function DocumentsDrawer({ projectId, documents, onAdded }) {
   const [uploading, setUploading] = useState(false);
+  const [addingTranscript, setAddingTranscript] = useState(false);
+  const [tab, setTab] = useState("paste");   // paste | file
+  const [transcript, setTranscript] = useState({ source_label: "", source_date: "", content: "" });
+  const [savingTranscript, setSavingTranscript] = useState(false);
 
   const upload = async (e) => {
     const file = e.target.files?.[0];
@@ -1054,6 +1207,38 @@ function DocumentsDrawer({ projectId, documents, onAdded }) {
     } finally { setUploading(false); e.target.value = ""; }
   };
 
+  const pasteTranscript = async () => {
+    if (!transcript.source_label.trim() || !transcript.content.trim()) {
+      toast.error("Where it's from and the transcript text are both required"); return;
+    }
+    setSavingTranscript(true);
+    try {
+      const row = await deliveryAPI.addTranscript(projectId, transcript);
+      toast.success("Conversation added");
+      onAdded(row);
+      setTranscript({ source_label: "", source_date: "", content: "" });
+      setAddingTranscript(false);
+    } catch (e) { toast.error(e.response?.data?.detail || "Could not save it"); }
+    finally { setSavingTranscript(false); }
+  };
+
+  const uploadTranscriptFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!transcript.source_label.trim()) {
+      toast.error("Say where this conversation came from first"); e.target.value = ""; return;
+    }
+    setSavingTranscript(true);
+    try {
+      const row = await deliveryAPI.uploadTranscript(projectId, file, transcript.source_label, transcript.source_date);
+      toast.success("Transcript uploaded");
+      onAdded(row);
+      setTranscript({ source_label: "", source_date: "", content: "" });
+      setAddingTranscript(false);
+    } catch (err) { toast.error(err.response?.data?.detail || "Could not upload it"); }
+    finally { setSavingTranscript(false); e.target.value = ""; }
+  };
+
   return (
     <div className="space-y-4">
       <label className="block">
@@ -1065,6 +1250,57 @@ function DocumentsDrawer({ projectId, documents, onAdded }) {
                           file:bg-[#1B4332] file:text-white file:text-sm
                           hover:file:bg-[#14342A]" />
       </label>
+
+      {addingTranscript ? (
+        <div className="space-y-2 p-3 rounded-lg border border-[#EAE7E0] bg-[#F7F6F3]">
+          <div className="flex gap-2">
+            <input placeholder="Where it came from, e.g. Initial call" value={transcript.source_label}
+                   onChange={(e) => setTranscript({ ...transcript, source_label: e.target.value })}
+                   className="flex-1 text-sm p-2 rounded border border-[#EAE7E0]" />
+            <input type="date" value={transcript.source_date}
+                   onChange={(e) => setTranscript({ ...transcript, source_date: e.target.value })}
+                   className="text-sm p-2 rounded border border-[#EAE7E0]" />
+          </div>
+
+          <div className="flex gap-1">
+            <button type="button" onClick={() => setTab("paste")}
+                    className={`text-xs px-2 py-1 rounded ${tab === "paste" ? "bg-gray-200 text-gray-900" : "text-gray-500"}`}>
+              Paste text
+            </button>
+            <button type="button" onClick={() => setTab("file")}
+                    className={`text-xs px-2 py-1 rounded ${tab === "file" ? "bg-gray-200 text-gray-900" : "text-gray-500"}`}>
+              Upload a file
+            </button>
+          </div>
+
+          {tab === "paste" ? (
+            <>
+              <textarea rows={4} placeholder="Paste the transcript or your notes." value={transcript.content}
+                        onChange={(e) => setTranscript({ ...transcript, content: e.target.value })}
+                        className="w-full text-sm p-2 rounded border border-[#EAE7E0]" />
+              <div className="flex gap-2">
+                <Button size="sm" disabled={savingTranscript} onClick={pasteTranscript}>Add this conversation</Button>
+                <Button size="sm" variant="ghost" onClick={() => setAddingTranscript(false)}>Cancel</Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <input type="file" onChange={uploadTranscriptFile} disabled={savingTranscript}
+                     accept=".txt,.md,.pdf,.docx,.doc"
+                     data-testid="transcript-file-upload"
+                     className="block w-full text-sm text-gray-600
+                                file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0
+                                file:bg-[#1B4332] file:text-white file:text-sm
+                                hover:file:bg-[#14342A]" />
+              <p className="text-[11px] text-gray-400">Text is pulled out of the file, same as a pasted one.</p>
+            </>
+          )}
+        </div>
+      ) : (
+        <Button size="sm" variant="outline" onClick={() => setAddingTranscript(true)} data-testid="add-transcript">
+          <Plus className="w-3.5 h-3.5 mr-1.5" /> Add a conversation
+        </Button>
+      )}
 
       {documents.length === 0 ? <Empty>Nothing here yet.</Empty> : (
         <ul className="divide-y divide-gray-100">
@@ -1096,9 +1332,14 @@ function DocumentsDrawer({ projectId, documents, onAdded }) {
   );
 }
 
-function FeedbackDrawer({ projectId, items, canCapture, onAdded }) {
+function FeedbackDrawer({ projectId, items, canCapture, onAdded, onChanged }) {
   const [text, setText] = useState("");
   const [saving, setSaving] = useState(false);
+  // Files that arrived with the feedback, held per item so the drawer does not
+  // reload the whole workspace every time one is attached.
+  const [attachments, setAttachments] = useState({});
+
+  const attachmentsFor = (f) => attachments[f.feedback_id] ?? (f.attachments || []);
 
   const save = async () => {
     if (!text.trim()) return;
@@ -1142,9 +1383,32 @@ function FeedbackDrawer({ projectId, items, canCapture, onAdded }) {
           {items.map((f) => (
             <li key={f.feedback_id} className="py-3">
               <p className="text-sm text-gray-800 whitespace-pre-wrap">{f.raw_text}</p>
-              <p className="text-[11px] text-gray-500 mt-1">
+              <p className="text-[11px] text-gray-500 mt-1 mb-1.5">
                 {f.captured_by_name} · {fmt(f.created_at)} · {f.classification?.replace("_", " ")}
               </p>
+              {/* What the client actually sent, kept with the comment it came
+                  with rather than in the general document pile. */}
+              <AttachmentStrip
+                testId={`feedback-files-${f.feedback_id}`}
+                attachments={attachmentsFor(f)}
+                label="Attach what they sent"
+                onUpload={async (file) => {
+                  const a = await deliveryAPI.attachToFeedback(f.feedback_id, file);
+                  setAttachments((prev) => ({
+                    ...prev, [f.feedback_id]: [...attachmentsFor(f), a],
+                  }));
+                  onChanged?.();
+                  return a;
+                }}
+                onRemove={async (attachmentId) => {
+                  await deliveryAPI.removeFeedbackAttachment(f.feedback_id, attachmentId);
+                  setAttachments((prev) => ({
+                    ...prev,
+                    [f.feedback_id]: attachmentsFor(f).filter((x) => x.attachment_id !== attachmentId),
+                  }));
+                  onChanged?.();
+                }}
+              />
             </li>
           ))}
         </ul>
@@ -1169,6 +1433,1078 @@ function ActivityDrawer({ items }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Scope changes (§9.4) -- raised once scope is frozen, decided by the TSD.
+// ---------------------------------------------------------------------------
+function ScopeChangesDrawer({ projectId, items, canDecide, onAdded, onChanged }) {
+  const [adding, setAdding] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState({ description: "", impact_timeline: "", impact_effort: "", impact_cost: "", impact_architecture: "" });
+  const [reasonDrafts, setReasonDrafts] = useState({});
+
+  const submit = async () => {
+    if (!form.description.trim()) { toast.error("Describe the change"); return; }
+    setBusy(true);
+    try {
+      const row = await deliveryAPI.raiseScopeChange(projectId, form);
+      onAdded(row);
+      setAdding(false);
+      setForm({ description: "", impact_timeline: "", impact_effort: "", impact_cost: "", impact_architecture: "" });
+      toast.success("Scope change raised");
+    } catch (e) { toast.error(e.response?.data?.detail || "Could not raise it"); }
+    finally { setBusy(false); }
+  };
+
+  const decide = async (sc, decision) => {
+    setBusy(true);
+    try {
+      await deliveryAPI.decideScopeChange(sc.scope_change_id, {
+        decision, decision_reason: reasonDrafts[sc.scope_change_id] || "",
+      });
+      toast.success(`Scope change ${decision}`);
+      onChanged();
+    } catch (e) { toast.error(e.response?.data?.detail || "Could not decide it"); }
+    finally { setBusy(false); }
+  };
+
+  const DECISION_CHIP = {
+    pending: "bg-amber-100 text-amber-800",
+    approved: "bg-[#1FB58A]/10 text-[#1B4332]",
+    rejected: "bg-red-50 text-red-700",
+    deferred: "bg-gray-100 text-gray-600",
+  };
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-gray-500">
+        Once scope is frozen, a new or changed requirement is a decision, not an edit --
+        the TSD approves, rejects or defers, and an approved change mints a committed requirement.
+      </p>
+
+      {adding ? (
+        <div className="space-y-2 p-3 rounded-lg border border-[#EAE7E0] bg-[#F7F6F3]">
+          <textarea placeholder="What is being asked for" value={form.description}
+                    onChange={(e) => setForm({ ...form, description: e.target.value })}
+                    className="w-full text-sm p-2 rounded border border-[#EAE7E0]" rows={2} />
+          <input placeholder="Timeline impact (free text)" value={form.impact_timeline}
+                 onChange={(e) => setForm({ ...form, impact_timeline: e.target.value })}
+                 className="w-full text-sm p-2 rounded border border-[#EAE7E0]" />
+          <input placeholder="Cost impact (free text)" value={form.impact_cost}
+                 onChange={(e) => setForm({ ...form, impact_cost: e.target.value })}
+                 className="w-full text-sm p-2 rounded border border-[#EAE7E0]" />
+          <input placeholder="Architecture impact (free text)" value={form.impact_architecture}
+                 onChange={(e) => setForm({ ...form, impact_architecture: e.target.value })}
+                 className="w-full text-sm p-2 rounded border border-[#EAE7E0]" />
+          <div className="flex gap-2">
+            <Button size="sm" disabled={busy} onClick={submit}>Raise it</Button>
+            <Button size="sm" variant="ghost" onClick={() => setAdding(false)}>Cancel</Button>
+          </div>
+        </div>
+      ) : (
+        <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
+          <Plus className="w-3.5 h-3.5 mr-1.5" /> Raise a scope change
+        </Button>
+      )}
+
+      {items.length === 0 ? <Empty>No scope changes yet.</Empty> : (
+        <ul className="divide-y divide-gray-100">
+          {items.map((sc) => (
+            <li key={sc.scope_change_id} className="py-3 space-y-1.5">
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm text-gray-800 flex-1">{sc.description}</p>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${DECISION_CHIP[sc.decision]}`}>
+                  {sc.decision}
+                </span>
+              </div>
+              {sc.impact_timeline && <p className="text-[11px] text-gray-500">Timeline: {sc.impact_timeline}</p>}
+              {sc.impact_cost && <p className="text-[11px] text-gray-500">Cost: {sc.impact_cost}</p>}
+              <p className="text-[11px] text-gray-400">Raised by {sc.raised_by_name} · {fmt(sc.created_at)}</p>
+              {sc.decision_reason && <p className="text-[11px] text-gray-500 italic">"{sc.decision_reason}"</p>}
+
+              {/* The four impact fields are free text in Tier 1 and the plan's
+                  own table says "Generated in Tier 4". This drafts them, plus
+                  the two numbers the Senior Partner threshold actually checks
+                  -- free text alone can never trip a threshold. Offered only
+                  while the change is still undecided: analysing one that has
+                  already been approved or rejected changes nothing. */}
+              {canDecide && sc.decision === "pending" && (
+                <div className="pt-1">
+                  <Suggestion
+                    testId={`scope-impact-${sc.scope_change_id}`}
+                    auto={false}
+                    title="Assess the impact"
+                    applyLabel="Save this assessment"
+                    load={() => intelligenceAPI.analyseScopeChange(sc.scope_change_id)}
+                    onApply={async (fields) => {
+                      try {
+                        await deliveryAPI.updateScopeChange(sc.scope_change_id, fields);
+                        toast.success("Impact assessment saved");
+                        onChanged();
+                      } catch (e) {
+                        toast.error(e.response?.data?.detail || "Could not save it");
+                      }
+                    }}
+                  />
+                </div>
+              )}
+
+              {canDecide && sc.decision === "pending" && (
+                <div className="flex items-center gap-2 pt-1">
+                  <input placeholder="Reason (optional)" value={reasonDrafts[sc.scope_change_id] || ""}
+                         onChange={(e) => setReasonDrafts({ ...reasonDrafts, [sc.scope_change_id]: e.target.value })}
+                         className="flex-1 text-xs p-1.5 rounded border border-[#EAE7E0]" />
+                  <button disabled={busy} onClick={() => decide(sc, "approved")}
+                          className="text-xs text-[#1B4332] hover:underline">Approve</button>
+                  <button disabled={busy} onClick={() => decide(sc, "deferred")}
+                          className="text-xs text-gray-500 hover:underline">Defer</button>
+                  <button disabled={busy} onClick={() => decide(sc, "rejected")}
+                          className="text-xs text-red-600 hover:underline">Reject</button>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Decisions & risks -- lightweight logs, no workflow of their own.
+// ---------------------------------------------------------------------------
+function RisksDrawer({ projectId, decisions, risks, onChanged }) {
+  const [section, setSection] = useState("risks");
+  const [busy, setBusy] = useState(false);
+
+  const loadRiskSuggestions = useCallback(
+    () => intelligenceAPI.suggestRisks(projectId), [projectId]
+  );
+  const [decisionForm, setDecisionForm] = useState({ title: "", description: "", rationale: "" });
+  const [riskForm, setRiskForm] = useState({ title: "", description: "", likelihood: "medium", impact: "medium", mitigation: "" });
+  const [addingDecision, setAddingDecision] = useState(false);
+  const [addingRisk, setAddingRisk] = useState(false);
+
+  const addDecision = async () => {
+    if (!decisionForm.title.trim()) return;
+    setBusy(true);
+    try {
+      await deliveryAPI.addDecision(projectId, decisionForm);
+      setDecisionForm({ title: "", description: "", rationale: "" });
+      setAddingDecision(false);
+      onChanged();
+    } catch (e) { toast.error(e.response?.data?.detail || "Could not record it"); }
+    finally { setBusy(false); }
+  };
+
+  const addRisk = async () => {
+    if (!riskForm.title.trim()) return;
+    setBusy(true);
+    try {
+      await deliveryAPI.addRisk(projectId, riskForm);
+      setRiskForm({ title: "", description: "", likelihood: "medium", impact: "medium", mitigation: "" });
+      setAddingRisk(false);
+      onChanged();
+    } catch (e) { toast.error(e.response?.data?.detail || "Could not log it"); }
+    finally { setBusy(false); }
+  };
+
+  const setRiskStatus = async (risk, status) => {
+    setBusy(true);
+    try {
+      await deliveryAPI.updateRisk(risk.risk_id, { status });
+      onChanged();
+    } catch (e) { toast.error(e.response?.data?.detail || "Could not update it"); }
+    finally { setBusy(false); }
+  };
+
+  const RISK_CHIP = {
+    open: "bg-amber-100 text-amber-800",
+    mitigated: "bg-[#1FB58A]/10 text-[#1B4332]",
+    closed: "bg-gray-100 text-gray-500",
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-1 border-b border-gray-100 pb-2">
+        <button onClick={() => setSection("risks")}
+                className={`text-sm px-2 py-1 rounded ${section === "risks" ? "bg-gray-100 text-gray-900" : "text-gray-500"}`}>
+          Risks ({risks.length})
+        </button>
+        <button onClick={() => setSection("decisions")}
+                className={`text-sm px-2 py-1 rounded ${section === "decisions" ? "bg-gray-100 text-gray-900" : "text-gray-500"}`}>
+          Decisions ({decisions.length})
+        </button>
+      </div>
+
+      {section === "risks" ? (
+        <>
+          {/* Risks this project has not written down yet. Fed the existing
+              list so it proposes additions rather than reading the same ones
+              back -- the usual and useless failure of this feature. Applying
+              one fills the form below; logging it is still a save. */}
+          {!addingRisk && (
+            <Suggestion
+              testId="risk-suggestion"
+              auto={false}
+              title="Suggest risks we have not logged"
+              applyLabel="Draft the first"
+              load={loadRiskSuggestions}
+              onApply={(_fields, rec) => {
+                const first = (rec.options || [])[0];
+                if (!first) return;
+                setRiskForm({
+                  title: first.title || "",
+                  description: first.description || "",
+                  likelihood: first.likelihood || "medium",
+                  impact: first.impact || "medium",
+                  mitigation: first.mitigation || "",
+                });
+                setAddingRisk(true);
+              }}
+            />
+          )}
+          {addingRisk ? (
+            <div className="space-y-2 p-3 rounded-lg border border-[#EAE7E0] bg-[#F7F6F3]">
+              <input placeholder="Risk" value={riskForm.title}
+                     onChange={(e) => setRiskForm({ ...riskForm, title: e.target.value })}
+                     className="w-full text-sm p-2 rounded border border-[#EAE7E0]" />
+              <textarea placeholder="Description (optional)" value={riskForm.description}
+                        onChange={(e) => setRiskForm({ ...riskForm, description: e.target.value })}
+                        className="w-full text-sm p-2 rounded border border-[#EAE7E0]" rows={2} />
+              <div className="grid grid-cols-2 gap-2">
+                <select value={riskForm.likelihood} onChange={(e) => setRiskForm({ ...riskForm, likelihood: e.target.value })}
+                        className="text-sm p-2 rounded border border-[#EAE7E0]">
+                  <option value="low">Low likelihood</option>
+                  <option value="medium">Medium likelihood</option>
+                  <option value="high">High likelihood</option>
+                </select>
+                <select value={riskForm.impact} onChange={(e) => setRiskForm({ ...riskForm, impact: e.target.value })}
+                        className="text-sm p-2 rounded border border-[#EAE7E0]">
+                  <option value="low">Low impact</option>
+                  <option value="medium">Medium impact</option>
+                  <option value="high">High impact</option>
+                </select>
+              </div>
+              <input placeholder="Mitigation (optional)" value={riskForm.mitigation}
+                     onChange={(e) => setRiskForm({ ...riskForm, mitigation: e.target.value })}
+                     className="w-full text-sm p-2 rounded border border-[#EAE7E0]" />
+              <div className="flex gap-2">
+                <Button size="sm" disabled={busy} onClick={addRisk}>Log risk</Button>
+                <Button size="sm" variant="ghost" onClick={() => setAddingRisk(false)}>Cancel</Button>
+              </div>
+            </div>
+          ) : (
+            <Button size="sm" variant="outline" onClick={() => setAddingRisk(true)}>
+              <Plus className="w-3.5 h-3.5 mr-1.5" /> Log a risk
+            </Button>
+          )}
+
+          {risks.length === 0 ? <Empty>No risks logged yet.</Empty> : (
+            <ul className="divide-y divide-gray-100">
+              {risks.map((r) => (
+                <li key={r.risk_id} className="py-3 space-y-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm text-gray-800 flex-1">{r.title}</p>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${RISK_CHIP[r.status]}`}>{r.status}</span>
+                  </div>
+                  {r.description && <p className="text-[11px] text-gray-500">{r.description}</p>}
+                  <p className="text-[11px] text-gray-400">{r.likelihood} likelihood · {r.impact} impact</p>
+                  {r.mitigation && <p className="text-[11px] text-gray-500 italic">Mitigation: {r.mitigation}</p>}
+                  {r.status !== "closed" && (
+                    <div className="flex gap-2 pt-0.5">
+                      {r.status === "open" && (
+                        <button disabled={busy} onClick={() => setRiskStatus(r, "mitigated")}
+                                className="text-xs text-[#1B4332] hover:underline">Mark mitigated</button>
+                      )}
+                      <button disabled={busy} onClick={() => setRiskStatus(r, "closed")}
+                              className="text-xs text-gray-500 hover:underline">Close</button>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      ) : (
+        <>
+          {addingDecision ? (
+            <div className="space-y-2 p-3 rounded-lg border border-[#EAE7E0] bg-[#F7F6F3]">
+              <input placeholder="Decision" value={decisionForm.title}
+                     onChange={(e) => setDecisionForm({ ...decisionForm, title: e.target.value })}
+                     className="w-full text-sm p-2 rounded border border-[#EAE7E0]" />
+              <textarea placeholder="Description (optional)" value={decisionForm.description}
+                        onChange={(e) => setDecisionForm({ ...decisionForm, description: e.target.value })}
+                        className="w-full text-sm p-2 rounded border border-[#EAE7E0]" rows={2} />
+              <textarea placeholder="Why (optional)" value={decisionForm.rationale}
+                        onChange={(e) => setDecisionForm({ ...decisionForm, rationale: e.target.value })}
+                        className="w-full text-sm p-2 rounded border border-[#EAE7E0]" rows={2} />
+              <div className="flex gap-2">
+                <Button size="sm" disabled={busy} onClick={addDecision}>Record decision</Button>
+                <Button size="sm" variant="ghost" onClick={() => setAddingDecision(false)}>Cancel</Button>
+              </div>
+            </div>
+          ) : (
+            <Button size="sm" variant="outline" onClick={() => setAddingDecision(true)}>
+              <Plus className="w-3.5 h-3.5 mr-1.5" /> Record a decision
+            </Button>
+          )}
+
+          {decisions.length === 0 ? <Empty>No decisions recorded yet.</Empty> : (
+            <ul className="divide-y divide-gray-100">
+              {decisions.map((d) => (
+                <li key={d.decision_id} className="py-3 space-y-1">
+                  <p className="text-sm text-gray-800">{d.title}</p>
+                  {d.description && <p className="text-[11px] text-gray-500">{d.description}</p>}
+                  {d.rationale && <p className="text-[11px] text-gray-500 italic">Why: {d.rationale}</p>}
+                  <p className="text-[11px] text-gray-400">{d.decided_by_name} · {fmt(d.created_at)}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Blockers (Tier 3) -- what is holding this project up that is not a task.
+// ---------------------------------------------------------------------------
+// A task belongs on the board. This is for the rest: waiting on a client
+// signature, a third-party API, a contract, or another project entirely. The
+// board cannot express the last one at all, since a card belongs to exactly
+// one board.
+//
+// Resolved rather than deleted, because "what held this up" is precisely what
+// the closure report needs later.
+function BlockersDrawer({ projectId, blockers, onChanged }) {
+  const [adding, setAdding] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState({
+    title: "", description: "", kind: "internal", severity: "medium", target_date: "",
+  });
+
+  const open = blockers.filter((b) => b.status === "open");
+  const resolved = blockers.filter((b) => b.status === "resolved");
+
+  const save = async () => {
+    if (!form.title.trim()) { toast.error("A blocker needs a title"); return; }
+    setBusy(true);
+    try {
+      await controlTowerAPI.raiseBlocker(projectId, {
+        ...form,
+        target_date: form.target_date || null,
+      });
+      toast.success("Blocker raised");
+      setForm({ title: "", description: "", kind: "internal", severity: "medium", target_date: "" });
+      setAdding(false);
+      await onChanged();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Could not raise it");
+    } finally { setBusy(false); }
+  };
+
+  const resolve = async (blocker) => {
+    const resolution = window.prompt(
+      `How was "${blocker.title}" resolved?`, ""
+    );
+    // Cancel returns null; an empty string is somebody choosing not to explain,
+    // which is their call and still resolves the blocker.
+    if (resolution === null) return;
+    setBusy(true);
+    try {
+      await controlTowerAPI.resolveBlocker(blocker.blocker_id, resolution);
+      toast.success("Blocker resolved");
+      await onChanged();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Could not resolve it");
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="space-y-4" data-testid="blockers-drawer">
+      <p className="text-xs text-gray-500">
+        What is stopping this project that is not a task on the board — a client
+        who has not come back, a third party, a contract, another project.
+      </p>
+
+      {!adding ? (
+        <Button size="sm" variant="outline" onClick={() => setAdding(true)}
+                data-testid="add-blocker-btn">
+          <Plus className="w-3.5 h-3.5 mr-1.5" /> Raise a blocker
+        </Button>
+      ) : (
+        <div className="rounded-lg border border-[#EAE7E0] bg-[#F7F6F3] p-3 space-y-2">
+          <input
+            autoFocus
+            value={form.title}
+            onChange={(e) => setForm({ ...form, title: e.target.value })}
+            placeholder="What is blocked?"
+            data-testid="blocker-title"
+            className="w-full px-3 py-2 text-sm rounded-lg border border-[#EAE7E0]
+                       bg-white text-gray-900 focus:outline-none focus:border-[#1B4332]"
+          />
+          <textarea
+            rows={2}
+            value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+            placeholder="What has been tried, and what is being waited on (optional)"
+            className="w-full px-3 py-2 text-sm rounded-lg border border-[#EAE7E0]
+                       bg-white text-gray-900 resize-none focus:outline-none focus:border-[#1B4332]"
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <select
+              value={form.kind}
+              onChange={(e) => setForm({ ...form, kind: e.target.value })}
+              data-testid="blocker-kind"
+              className="px-2 py-2 text-sm rounded-lg border border-[#EAE7E0] bg-white text-gray-900"
+            >
+              {BLOCKER_KINDS.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
+            </select>
+            <select
+              value={form.severity}
+              onChange={(e) => setForm({ ...form, severity: e.target.value })}
+              data-testid="blocker-severity"
+              className="px-2 py-2 text-sm rounded-lg border border-[#EAE7E0] bg-white text-gray-900"
+            >
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="critical">Critical — tells the TSD</option>
+            </select>
+          </div>
+          <input
+            type="date"
+            value={form.target_date}
+            onChange={(e) => setForm({ ...form, target_date: e.target.value })}
+            className="w-full px-3 py-2 text-sm rounded-lg border border-[#EAE7E0]
+                       bg-white text-gray-900 focus:outline-none focus:border-[#1B4332]"
+          />
+          <div className="flex gap-2">
+            <Button size="sm" onClick={save} disabled={busy}
+                    className="bg-[#1B4332] hover:bg-[#14342A]" data-testid="save-blocker">
+              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Raise it"}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setAdding(false)} disabled={busy}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {open.length === 0 && resolved.length === 0 && (
+        <Empty>Nothing is blocked.</Empty>
+      )}
+
+      {open.length > 0 && (
+        <div>
+          <p className="text-[10px] font-mono text-gray-400 mb-1.5">
+            OPEN ({open.length})
+          </p>
+          <ul className="space-y-2">
+            {open.map((b) => (
+              <li key={b.blocker_id}
+                  className="rounded-lg border border-[#EAE7E0] bg-white p-3"
+                  data-testid="blocker-row">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900">{b.title}</p>
+                    {b.description && (
+                      <p className="text-xs text-gray-600 mt-0.5 whitespace-pre-wrap">{b.description}</p>
+                    )}
+                    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${BLOCKER_SEVERITY[b.severity]}`}>
+                        {b.severity}
+                      </span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                        {(BLOCKER_KINDS.find((k) => k.key === b.kind) || {}).label || b.kind}
+                      </span>
+                      {b.blocking_project_name && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#1B4332]/10 text-[#1B4332]">
+                          blocked by {b.blocking_project_name}
+                        </span>
+                      )}
+                      {b.target_date && (
+                        <span className="text-[11px] text-gray-400">due {fmt(b.target_date)}</span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-gray-400 mt-1">
+                      {b.raised_by_name} · {fmt(b.created_at)}
+                    </p>
+                  </div>
+                  <Button size="sm" variant="outline" disabled={busy}
+                          onClick={() => resolve(b)}
+                          data-testid={`resolve-blocker-${b.blocker_id}`}
+                          className="shrink-0 h-7 text-[11px]">
+                    Resolve
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {resolved.length > 0 && (
+        <details>
+          <summary className="text-[10px] font-mono text-gray-400 cursor-pointer hover:text-gray-600">
+            RESOLVED ({resolved.length})
+          </summary>
+          <ul className="space-y-1.5 mt-2">
+            {resolved.map((b) => (
+              <li key={b.blocker_id} className="rounded-lg border border-[#EAE7E0] bg-[#F7F6F3] p-2.5">
+                <p className="text-sm text-gray-500 line-through">{b.title}</p>
+                {b.resolution && <p className="text-xs text-gray-600 mt-0.5">{b.resolution}</p>}
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  {b.resolved_by_name} · {fmt(b.resolved_at)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The report (Tier 3) -- everything the project recorded, assembled.
+// ---------------------------------------------------------------------------
+// Nothing here is typed and nothing is generated: every line is a read of a
+// record somebody made at the time, which is the whole argument for having
+// made them. At stage 17 this is the closure report the gate asks for.
+function ReportDrawer({ projectId }) {
+  const [report, setReport] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const loadNarrative = useCallback(
+    () => intelligenceAPI.reportNarrative(projectId), [projectId]
+  );
+
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      try {
+        const r = await controlTowerAPI.report(projectId);
+        if (live) setReport(r);
+      } catch (e) {
+        if (live) toast.error(e.response?.data?.detail || "Could not build the report");
+      } finally {
+        if (live) setLoading(false);
+      }
+    })();
+    return () => { live = false; };
+  }, [projectId]);
+
+  if (loading) {
+    return <div className="flex justify-center py-10"><Loader2 className="w-4 h-4 animate-spin text-[#1B4332]" /></div>;
+  }
+  if (!report) return <Empty>No report available.</Empty>;
+
+  const p = report.project;
+  const Row = ({ label, children }) => (
+    <div className="flex justify-between gap-3 py-1 border-b border-gray-50 last:border-0">
+      <span className="text-[11px] text-gray-500 shrink-0">{label}</span>
+      <span className="text-xs text-gray-900 text-right">{children}</span>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4" data-testid="report-drawer">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-mono text-gray-400">
+            {report.is_closure_report ? "CLOSURE REPORT" : "PROJECT REPORT"}
+          </p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Assembled {fmt(report.generated_at)} from what this project recorded.
+          </p>
+        </div>
+        <Button size="sm" variant="outline" onClick={() => window.print()}
+                className="h-7 text-[11px] shrink-0" data-testid="print-report">
+          <Printer className="w-3 h-3 mr-1" /> Print
+        </Button>
+      </div>
+
+      {/* The paragraph a person would otherwise write by hand at closure.
+          Safe to generate precisely because every figure it summarises is on
+          this same page to check it against. Not fetched on open -- it costs
+          a model call, and most opens of this drawer are to read a number. */}
+      <Suggestion
+        testId="report-narrative"
+        auto={false}
+        title="Write the summary paragraph"
+        load={loadNarrative}
+      />
+
+      <Section title="The project">
+        <Row label="Client">{p.client_name}</Row>
+        <Row label="Reference">{p.ref}</Row>
+        <Row label="Stage">{p.stage}. {p.stage_label}</Row>
+        <Row label="Health">{p.health}{p.health_reason ? ` — ${p.health_reason}` : ""}</Row>
+        <Row label="TSD">{p.tsd_name || "—"}</Row>
+        <Row label="Architect">{p.architect_name || "—"}</Row>
+        <Row label="Pod">{p.pod_size} people</Row>
+        <Row label="Opened">{fmt(p.created_at)}</Row>
+        <Row label="Elapsed">{p.elapsed_days} {p.elapsed_days === 1 ? "day" : "days"}</Row>
+        {p.scope_frozen && <Row label="Scope froze">{fmt(p.scope_frozen_at)}</Row>}
+        {p.completed_at && <Row label="Completed">{fmt(p.completed_at)}</Row>}
+      </Section>
+
+      <Section title={`Requirements (${report.requirements.total})`}>
+        {Object.entries(report.requirements.by_status).map(([status, n]) => (
+          <Row key={status} label={status.replace("_", " ")}>{n}</Row>
+        ))}
+      </Section>
+
+      <Section title="Validation">
+        <Row label="Demo rounds">{report.validation.demo_rounds}</Row>
+        <Row label="Client validated">
+          {report.validation.validated
+            ? `yes, round ${report.validation.validated_round}`
+            : "not yet"}
+        </Row>
+      </Section>
+
+      <Section title={`Scope changes (${report.scope_changes.total})`}>
+        <Row label="Approved">{report.scope_changes.approved}</Row>
+        <Row label="Rejected">{report.scope_changes.rejected}</Row>
+        <Row label="Pending">{report.scope_changes.pending}</Row>
+        <Row label="Moved time or money">{report.scope_changes.material}</Row>
+      </Section>
+
+      <Section title="Delivery">
+        <Row label="Cards on the board">{report.delivery.total_cards}</Row>
+        <Row label="Milestones">
+          {report.delivery.milestones_delivered} of {report.delivery.milestones.length} delivered
+        </Row>
+      </Section>
+
+      <Section title="Governance">
+        <Row label="Decisions recorded">{report.governance.decisions.length}</Row>
+        <Row label="Risks">
+          {report.governance.risks_open} open of {report.governance.risks.length}
+        </Row>
+        <Row label="Blockers">
+          {report.governance.blockers_open} open of {report.governance.blockers.length}
+        </Row>
+        <Row label="Gates forced">{report.governance.forced_gates.length}</Row>
+      </Section>
+
+      {report.governance.forced_gates.length > 0 && (
+        <div className="rounded-lg border border-[#C6A15B]/30 bg-[#C6A15B]/10 p-3">
+          <p className="text-[10px] font-mono text-[#7A6234] mb-1.5">GATES FORCED</p>
+          <ul className="space-y-1.5">
+            {report.governance.forced_gates.map((f, i) => (
+              <li key={i} className="text-xs text-[#6B5730]">
+                <span className="font-medium">{f.to_stage_label}</span> — {f.why}
+                <span className="block text-[11px] text-[#8F7340]">
+                  {f.by_name} · {fmt(f.at)} · unmet: {f.unmet.join(", ") || "not recorded"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <Section title={`Closure (${report.closure.done}/${report.closure.total})`}>
+        {report.closure.checklist.length === 0 ? (
+          <p className="text-xs text-gray-400 italic">No checklist on this project.</p>
+        ) : (
+          <ul className="space-y-0.5">
+            {report.closure.checklist.map((item, i) => (
+              <li key={i} className="flex items-center gap-2 text-xs">
+                <Check className={`w-3 h-3 shrink-0 ${item.done ? "text-[#1FB58A]" : "text-gray-300"}`} />
+                <span className={item.done ? "text-gray-500 line-through" : "text-gray-800"}>
+                  {item.label}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
+
+      <Section title={`Timeline (${report.timeline.length} moves)`}>
+        <ul className="space-y-1">
+          {report.timeline.map((t, i) => (
+            <li key={i} className="flex items-start gap-2 text-xs">
+              <span className="text-gray-400 font-mono text-[10px] shrink-0 mt-0.5 w-12">
+                {t.days_held == null ? "—" : `${t.days_held}d`}
+              </span>
+              <span className="min-w-0">
+                <span className={t.forced ? "text-[#A9834E] font-medium" : "text-gray-800"}>
+                  {t.to_stage_label}{t.forced ? " (forced)" : ""}
+                </span>
+                <span className="block text-[11px] text-gray-400">
+                  {t.by_name} · {fmt(t.at)}{t.why ? ` · ${t.why}` : ""}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </Section>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Traceability (Tier 3) -- which requirement is which card.
+// ---------------------------------------------------------------------------
+// Two questions nothing else in the product answers: a requirement with no
+// card is scope nobody has started, and a card with no requirement is work
+// nobody asked for. Both are worth seeing well before a closure conversation.
+function TraceabilityTab({ projectId }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [linking, setLinking] = useState(null);   // card_id being linked
+  const [busy, setBusy] = useState(false);
+
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      setData(await controlTowerAPI.traceability(projectId));
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Could not load traceability");
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [projectId]);
+
+  const link = async (cardId, requirementId) => {
+    setBusy(true);
+    try {
+      await controlTowerAPI.linkCardRequirement(cardId, requirementId);
+      toast.success(requirementId ? "Card traced" : "Link cleared");
+      setLinking(null);
+      await load(true);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Could not link it");
+    } finally { setBusy(false); }
+  };
+
+  if (loading) {
+    return <div className="flex justify-center py-12"><Loader2 className="w-5 h-5 animate-spin text-[#1B4332]" /></div>;
+  }
+  if (!data) return null;
+
+  const s = data.summary;
+  if (s.requirements === 0) {
+    return <Empty>No requirements yet, so there is nothing to trace. They are added on the Product tab.</Empty>;
+  }
+
+  return (
+    <div className="space-y-5" data-testid="traceability-tab">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Stat label="Coverage" value={`${s.coverage_pct}%`}
+              hint={`${s.covered} of ${s.requirements} have a card`} />
+        <Stat label="Delivered" value={s.delivered}
+              hint="every card done" />
+        <Stat label="Not started" value={s.uncovered} warn={s.uncovered > 0}
+              hint="no card exists" />
+        <Stat label="Unasked-for" value={s.unlinked_cards} warn={s.unlinked_cards > 0}
+              hint="cards with no requirement" />
+      </div>
+
+      <Section title="Requirements and the cards that deliver them">
+        <ul className="space-y-2">
+          {data.requirements.map((r) => (
+            <li key={r.requirement_id}
+                className="rounded-lg border border-[#EAE7E0] bg-white p-3"
+                data-testid="trace-requirement">
+              <div className="flex items-start gap-2">
+                <span className="text-[10px] font-mono text-gray-400 mt-0.5 shrink-0 w-10">
+                  {r.req_ref}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-gray-900">{r.description}</p>
+                  {r.cards.length === 0 ? (
+                    <p className="text-[11px] text-amber-700 mt-1 flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" />
+                      Nothing on the board delivers this yet.
+                    </p>
+                  ) : (
+                    <ul className="mt-1.5 space-y-1">
+                      {r.cards.map((c) => (
+                        <li key={c.card_id} className="flex items-center gap-2 text-xs">
+                          <Check className={`w-3 h-3 shrink-0 ${c.done ? "text-[#1FB58A]" : "text-gray-300"}`} />
+                          <span className={c.done ? "text-gray-500" : "text-gray-800"}>{c.title}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                            {c.board_title}
+                          </span>
+                          <button
+                            onClick={() => link(c.card_id, null)}
+                            disabled={busy}
+                            title="Clear this link"
+                            className="text-gray-300 hover:text-red-600 ml-auto"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                {r.all_done && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#1FB58A]/10 text-[#1B4332] shrink-0">
+                    delivered
+                  </span>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </Section>
+
+      {data.unlinked_cards.length > 0 && (
+        <Section title={`Cards no requirement asked for (${data.unlinked_cards.length})`}>
+          <p className="text-xs text-gray-500 mb-2">
+            Most of these are chores, spikes and fixes, which is fine — not every card
+            traces to a requirement. Link the ones that do.
+          </p>
+          <ul className="space-y-1.5">
+            {data.unlinked_cards.map((c) => (
+              <li key={c.card_id}
+                  className="rounded-lg border border-[#EAE7E0] bg-white p-2.5"
+                  data-testid="trace-unlinked-card">
+                <div className="flex items-center gap-2">
+                  <Check className={`w-3 h-3 shrink-0 ${c.done ? "text-[#1FB58A]" : "text-gray-300"}`} />
+                  <span className="text-sm text-gray-800 min-w-0 truncate">{c.title}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 shrink-0">
+                    {c.board_title}
+                  </span>
+                  <div className="ml-auto shrink-0">
+                    {linking === c.card_id ? (
+                      <select
+                        autoFocus
+                        disabled={busy}
+                        defaultValue=""
+                        onChange={(e) => e.target.value && link(c.card_id, e.target.value)}
+                        onBlur={() => setLinking(null)}
+                        data-testid="trace-link-select"
+                        className="text-xs px-2 py-1 rounded-lg border border-[#EAE7E0] bg-white text-gray-900 max-w-[240px]"
+                      >
+                        <option value="">Trace to…</option>
+                        {data.requirements.map((r) => (
+                          <option key={r.requirement_id} value={r.requirement_id}>
+                            {r.req_ref} — {r.description.slice(0, 60)}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <button
+                        onClick={() => setLinking(c.card_id)}
+                        data-testid={`trace-link-${c.card_id}`}
+                        className="text-[11px] text-[#1B4332] hover:underline flex items-center gap-1"
+                      >
+                        <Link2 className="w-3 h-3" /> Trace
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Closure checklist -- seeded on every project, checked off item by item.
+// ---------------------------------------------------------------------------
+function ClosureDrawer({ projectId, checklist, canEdit, onChanged }) {
+  const [busy, setBusy] = useState(false);
+
+  const toggle = async (item, index) => {
+    setBusy(true);
+    try {
+      await deliveryAPI.toggleClosureItem(projectId, index, !item.done);
+      onChanged();
+    } catch (e) { toast.error(e.response?.data?.detail || "Could not update it"); }
+    finally { setBusy(false); }
+  };
+
+  if (!checklist?.length) return <Empty>No closure checklist on this project.</Empty>;
+  const done = checklist.filter((c) => c.done).length;
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-gray-500">{done} of {checklist.length} complete. Stage 17 waits for all of them.</p>
+      <ul className="space-y-1">
+        {checklist.map((item, i) => (
+          <li key={i} className="flex items-start gap-2 py-1.5">
+            <button onClick={() => canEdit && toggle(item, i)} disabled={!canEdit || busy}
+                    className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center shrink-0
+                      ${item.done ? "bg-[#1B4332] border-[#1B4332]" : "border-gray-300"}`}>
+              {item.done && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+            </button>
+            <div>
+              <p className={`text-sm ${item.done ? "text-gray-400 line-through" : "text-gray-800"}`}>{item.label}</p>
+              {item.done && item.done_by && (
+                <p className="text-[11px] text-gray-400">{item.done_by} · {fmt(item.done_at)}</p>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Talent requirements and contract staffing (§8) -- stage 12+ only.
+// ---------------------------------------------------------------------------
+const ASSIGNMENT_CHIP = {
+  shortlisted: "bg-gray-100 text-gray-700", interview: "bg-blue-50 text-blue-700",
+  selected: "bg-indigo-50 text-indigo-700", offered: "bg-[#C6A15B]/15 text-[#8F7340]",
+  accepted: "bg-[#1FB58A]/10 text-[#1B4332]", contracting: "bg-[#1FB58A]/10 text-[#1B4332]",
+  contracted: "bg-[#1FB58A]/15 text-[#14342A]", deployed: "bg-[#1B4332] text-white",
+  declined: "bg-red-50 text-red-700", withdrawn: "bg-red-50 text-red-700",
+  not_signed: "bg-red-50 text-red-700", ended: "bg-gray-100 text-gray-500",
+};
+
+function TalentDrawer({ projectId, stage, requirements, assignments, canManage, onChanged }) {
+  const [adding, setAdding] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState({ role_title: "", seniority: "", quantity: 1, engagement_type: "contract", justification: "" });
+
+  const eligible = (stage || 0) >= 12;
+
+  const raise = async () => {
+    if (!form.role_title.trim() || !form.justification.trim()) {
+      toast.error("Role and justification are required"); return;
+    }
+    setBusy(true);
+    try {
+      await deliveryAPI.raiseTalentRequirement(projectId, { ...form, skills: [] });
+      setForm({ role_title: "", seniority: "", quantity: 1, engagement_type: "contract", justification: "" });
+      setAdding(false);
+      onChanged();
+      toast.success("Talent requirement raised");
+    } catch (e) { toast.error(e.response?.data?.detail || "Could not raise it"); }
+    finally { setBusy(false); }
+  };
+
+  const confirm = async (req) => {
+    setBusy(true);
+    try { await deliveryAPI.confirmTalentRequirement(req.requirement_id); onChanged(); toast.success("Requirement confirmed"); }
+    catch (e) { toast.error(e.response?.data?.detail || "Could not confirm it"); }
+    finally { setBusy(false); }
+  };
+
+  // One primary next-step action per assignment, matching the state machine
+  // in talent_staffing.py, rather than exposing every endpoint as a button.
+  const NEXT_ACTION = {
+    shortlisted: { label: "Move to interview", run: (a) => deliveryAPI.advanceAssignment(a.assignment_id) },
+    interview: { label: "Mark selected", run: (a) => deliveryAPI.advanceAssignment(a.assignment_id) },
+    selected: { label: "Send offer", run: (a) => deliveryAPI.offerAssignment(a.assignment_id) },
+    offered: { label: "Mark accepted", run: (a) => deliveryAPI.acceptAssignment(a.assignment_id) },
+    accepted: { label: "Start contracting", run: (a) => deliveryAPI.contractAssignment(a.assignment_id, {}) },
+    contracting: { label: "Mark signed", run: (a) => deliveryAPI.signAssignment(a.assignment_id) },
+    contracted: { label: "Deploy to pod", run: (a) => deliveryAPI.deployAssignment(a.assignment_id) },
+  };
+
+  const act = async (a) => {
+    const action = NEXT_ACTION[a.status];
+    if (!action) return;
+    setBusy(true);
+    try { await action.run(a); onChanged(); }
+    catch (e) { toast.error(e.response?.data?.detail || "Could not do that"); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="space-y-4">
+      {!eligible && (
+        <div className="flex items-start gap-2 p-3 rounded-lg bg-[#C6A15B]/10 border border-[#C6A15B]/30">
+          <AlertTriangle className="w-4 h-4 text-[#8F7340] mt-0.5 shrink-0" />
+          <p className="text-xs text-[#6B5730]">
+            Talent can only be raised from stage 12, after client validation. Note the need on the
+            project for now and raise it once this stage is reached.
+          </p>
+        </div>
+      )}
+
+      {eligible && (adding ? (
+        <div className="space-y-2 p-3 rounded-lg border border-[#EAE7E0] bg-[#F7F6F3]">
+          <input placeholder="Role title" value={form.role_title}
+                 onChange={(e) => setForm({ ...form, role_title: e.target.value })}
+                 className="w-full text-sm p-2 rounded border border-[#EAE7E0]" />
+          <div className="grid grid-cols-2 gap-2">
+            <input placeholder="Seniority" value={form.seniority}
+                   onChange={(e) => setForm({ ...form, seniority: e.target.value })}
+                   className="text-sm p-2 rounded border border-[#EAE7E0]" />
+            <input type="number" min="1" placeholder="Quantity" value={form.quantity}
+                   onChange={(e) => setForm({ ...form, quantity: parseInt(e.target.value) || 1 })}
+                   className="text-sm p-2 rounded border border-[#EAE7E0]" />
+          </div>
+          <select value={form.engagement_type} onChange={(e) => setForm({ ...form, engagement_type: e.target.value })}
+                  className="w-full text-sm p-2 rounded border border-[#EAE7E0]">
+            <option value="contract">Contract</option>
+            <option value="internal">Internal</option>
+          </select>
+          <textarea placeholder="Why this project needs it" value={form.justification}
+                    onChange={(e) => setForm({ ...form, justification: e.target.value })}
+                    className="w-full text-sm p-2 rounded border border-[#EAE7E0]" rows={2} />
+          <div className="flex gap-2">
+            <Button size="sm" disabled={busy} onClick={raise}>Raise requirement</Button>
+            <Button size="sm" variant="ghost" onClick={() => setAdding(false)}>Cancel</Button>
+          </div>
+        </div>
+      ) : (
+        <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
+          <Plus className="w-3.5 h-3.5 mr-1.5" /> Raise a talent requirement
+        </Button>
+      ))}
+
+      {requirements.length === 0 ? <Empty>No talent requirements yet.</Empty> : (
+        <ul className="space-y-3">
+          {requirements.map((req) => {
+            const reqAssignments = assignments.filter((a) => a.requirement_id === req.requirement_id);
+            return (
+              <li key={req.requirement_id} className="p-3 rounded-lg border border-[#EAE7E0]">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">
+                      {req.quantity}x {req.role_title} {req.seniority && `· ${req.seniority}`}
+                    </p>
+                    <p className="text-[11px] text-gray-500">{req.filled_count || 0} of {req.quantity} filled</p>
+                  </div>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 shrink-0">{req.status}</span>
+                </div>
+                <p className="text-[11px] text-gray-500 mt-1">{req.justification}</p>
+                {req.status === "draft" && canManage && (
+                  <Button size="sm" className="mt-2" disabled={busy} onClick={() => confirm(req)}>Confirm</Button>
+                )}
+                {reqAssignments.length > 0 && (
+                  <ul className="mt-2 space-y-1.5 border-t border-gray-100 pt-2">
+                    {reqAssignments.map((a) => (
+                      <li key={a.assignment_id} className="flex items-center justify-between gap-2 text-xs">
+                        <span className="text-gray-700">{a.talent_name}</span>
+                        <div className="flex items-center gap-2">
+                          <span className={`px-1.5 py-0.5 rounded-full ${ASSIGNMENT_CHIP[a.status] || "bg-gray-100 text-gray-600"}`}>
+                            {a.status.replace(/_/g, " ")}
+                          </span>
+                          {canManage && NEXT_ACTION[a.status] && (
+                            <button disabled={busy} onClick={() => act(a)} className="text-[#1B4332] hover:underline">
+                              {NEXT_ACTION[a.status].label}
+                            </button>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -1366,54 +2702,301 @@ function PodSection({ project, canManage, onChanged }) {
   );
 }
 
+// The Build tab listed milestones but had no way to create one -- the API
+// (`POST /flow/milestones`) has always existed; nothing in the workspace
+// called it. Fields match MilestoneCreate exactly: `milestone_name`, not
+// `title` -- the old read-only list quietly read the wrong field and never
+// showed a name for anything.
+function MilestonesSection({ projectId, milestones, canManage, onChanged }) {
+  const [adding, setAdding] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState({ milestone_name: "", deliverable: "", target_date: "", payment_percent: "" });
+  // Held per milestone so attaching a file does not refetch the whole
+  // workspace and collapse the Build tab under the reader.
+  const [deliverables, setDeliverables] = useState({});
+
+  const deliverablesFor = (m) => deliverables[m.milestone_id] ?? (m.deliverables || []);
+
+  const submit = async () => {
+    if (!form.milestone_name.trim()) { toast.error("Name the milestone"); return; }
+    setBusy(true);
+    try {
+      await flowAPI.createMilestone({
+        project_id: projectId,
+        milestone_name: form.milestone_name.trim(),
+        deliverable: form.deliverable.trim(),
+        target_date: form.target_date || null,
+        payment_percent: form.payment_percent ? Number(form.payment_percent) : 0,
+      });
+      toast.success("Milestone added");
+      setForm({ milestone_name: "", deliverable: "", target_date: "", payment_percent: "" });
+      setAdding(false);
+      onChanged();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Could not add it");
+    } finally { setBusy(false); }
+  };
+
+  const deliver = async (m) => {
+    setBusy(true);
+    try {
+      await flowAPI.deliverMilestone(m.milestone_id);
+      toast.success("Marked delivered");
+      onChanged();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Could not update it");
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <Section
+      title="Milestones"
+      action={canManage && !adding && (
+        <Button size="sm" variant="outline" onClick={() => setAdding(true)} data-testid="add-milestone-btn">
+          <Plus className="w-3.5 h-3.5 mr-1" />Add
+        </Button>
+      )}
+    >
+      {adding && (
+        <div className="space-y-2 p-3 mb-3 rounded-lg border border-[#EAE7E0] bg-[#F7F6F3]">
+          <input placeholder="Milestone name" value={form.milestone_name}
+                 onChange={(e) => setForm({ ...form, milestone_name: e.target.value })}
+                 data-testid="milestone-name-input"
+                 className="w-full text-sm p-2 rounded border border-[#EAE7E0] bg-white" />
+          <input placeholder="Deliverable (optional)" value={form.deliverable}
+                 onChange={(e) => setForm({ ...form, deliverable: e.target.value })}
+                 className="w-full text-sm p-2 rounded border border-[#EAE7E0] bg-white" />
+          <div className="grid grid-cols-2 gap-2">
+            <input type="date" value={form.target_date}
+                   onChange={(e) => setForm({ ...form, target_date: e.target.value })}
+                   className="text-sm p-2 rounded border border-[#EAE7E0] bg-white" />
+            <input type="number" min="0" max="100" placeholder="Payment %" value={form.payment_percent}
+                   onChange={(e) => setForm({ ...form, payment_percent: e.target.value })}
+                   className="text-sm p-2 rounded border border-[#EAE7E0] bg-white" />
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" disabled={busy} onClick={submit} data-testid="save-milestone-btn">Save</Button>
+            <Button size="sm" variant="ghost" onClick={() => setAdding(false)}>Cancel</Button>
+          </div>
+        </div>
+      )}
+
+      {milestones.length === 0
+        ? <Empty>No milestones yet.</Empty>
+        : (
+          <ul className="divide-y divide-gray-100">
+            {milestones.map((m) => (
+              <li key={m.milestone_id} className="py-2 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <span className={m.delivered_date ? "text-gray-400 line-through" : "text-gray-800"}>
+                      {m.milestone_name}
+                    </span>
+                    {m.deliverable && <p className="text-[11px] text-gray-500">{m.deliverable}</p>}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs text-gray-500">{fmt(m.target_date)}</span>
+                    {canManage && !m.delivered_date && (
+                      <button disabled={busy} onClick={() => deliver(m)}
+                              data-testid={`deliver-milestone-${m.milestone_id}`}
+                              className="text-xs text-[#1B4332] hover:underline">
+                        Mark delivered
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {/* The deliverable itself, on the milestone it satisfies. The
+                    text field above names what is owed; this is the thing. */}
+                <div className="mt-1.5">
+                  <AttachmentStrip
+                    testId={`milestone-files-${m.milestone_id}`}
+                    attachments={deliverablesFor(m)}
+                    label="Attach the deliverable"
+                    disabled={!canManage}
+                    onUpload={async (file) => {
+                      const a = await deliveryAPI.attachDeliverable(m.milestone_id, file);
+                      setDeliverables((prev) => ({
+                        ...prev, [m.milestone_id]: [...deliverablesFor(m), a],
+                      }));
+                      return a;
+                    }}
+                    onRemove={async (attachmentId) => {
+                      await deliveryAPI.removeDeliverable(m.milestone_id, attachmentId);
+                      setDeliverables((prev) => ({
+                        ...prev,
+                        [m.milestone_id]: deliverablesFor(m).filter((x) => x.attachment_id !== attachmentId),
+                      }));
+                    }}
+                  />
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+    </Section>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Client contacts
 // ---------------------------------------------------------------------------
+const BLANK_CONTACT = {
+  full_name: "", title: "", email: "", phone: "", whatsapp: "",
+  birthday: "", strength: "warm", notes: "",
+};
+
 function ContactsDrawer({ projectId, clientName }) {
   const [contacts, setContacts] = useState(null);
+  const [adding, setAdding] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState(BLANK_CONTACT);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        setContacts(await flowAPI.projectContacts(projectId));
-      } catch {
-        setContacts([]);
-      }
-    })();
+  const load = useCallback(async () => {
+    try {
+      setContacts(await flowAPI.projectContacts(projectId));
+    } catch {
+      setContacts([]);
+    }
   }, [projectId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const save = async () => {
+    if (!form.full_name.trim()) { toast.error("The contact needs a name"); return; }
+    setBusy(true);
+    try {
+      await flowAPI.createContact({
+        ...form,
+        full_name: form.full_name.trim(),
+        // Matched to the client by name, which is how this project finds its
+        // contacts in the first place.
+        client_name: clientName || "",
+        // Recorded so the contact can be traced back to the engagement that
+        // produced them.
+        project_id: projectId,
+      });
+      toast.success(`${form.full_name.trim()} added to ${clientName || "this client"}`);
+      setForm(BLANK_CONTACT);
+      setAdding(false);
+      await load();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Could not add that contact");
+    } finally { setBusy(false); }
+  };
 
   if (contacts === null) {
     return <div className="flex justify-center py-6"><Loader2 className="w-4 h-4 animate-spin text-[#1B4332]" /></div>;
   }
 
   const rows = Array.isArray(contacts) ? contacts : (contacts.contacts || []);
+  const field = "w-full px-3 py-2 text-sm rounded-lg border border-[#EAE7E0] bg-white text-gray-900 focus:outline-none focus:border-[#1B4332]";
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="contacts-drawer">
       <p className="text-xs text-gray-500">
         The people at {clientName || "this client"}. Contact details are restricted, so
         some fields may not be shown to you.
       </p>
+
+      {/* Added here rather than by sending somebody to the contacts section.
+          Leaving the project to record who you just spoke to means losing the
+          project, and the client is already known -- there was nothing to go
+          and look up. */}
+      {!adding ? (
+        <Button size="sm" variant="outline" onClick={() => setAdding(true)}
+                data-testid="add-contact-inline">
+          <Plus className="w-3.5 h-3.5 mr-1.5" /> Add a contact
+        </Button>
+      ) : (
+        <div className="rounded-lg border border-[#EAE7E0] bg-[#F7F6F3] p-3 space-y-2">
+          <p className="text-[11px] text-gray-500">
+            Recorded against <b>{clientName || "this client"}</b>, so it shows on their
+            other projects too.
+          </p>
+          <input
+            autoFocus
+            value={form.full_name}
+            onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+            placeholder="Full name"
+            data-testid="contact-name"
+            className={field}
+          />
+          <input
+            value={form.title}
+            onChange={(e) => setForm({ ...form, title: e.target.value })}
+            placeholder="Their role (optional)"
+            className={field}
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              placeholder="Email"
+              data-testid="contact-email"
+              className={field}
+            />
+            <input
+              value={form.phone}
+              onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              placeholder="Phone"
+              className={field}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              value={form.birthday}
+              onChange={(e) => setForm({ ...form, birthday: e.target.value })}
+              placeholder="Birthday (DD-MM)"
+              className={field}
+            />
+            <select
+              value={form.strength}
+              onChange={(e) => setForm({ ...form, strength: e.target.value })}
+              className={field}
+            >
+              <option value="cold">Cold</option>
+              <option value="warm">Warm</option>
+              <option value="strong">Strong</option>
+              <option value="champion">Champion</option>
+            </select>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={save} disabled={busy}
+                    className="bg-[#1B4332] hover:bg-[#14342A]" data-testid="save-contact">
+              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Add contact"}
+            </Button>
+            <Button size="sm" variant="outline" disabled={busy}
+                    onClick={() => { setAdding(false); setForm(BLANK_CONTACT); }}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
 
       {rows.length === 0 ? (
         <Empty>Nobody recorded for this client yet.</Empty>
       ) : (
         <ul className="divide-y divide-gray-100">
           {rows.map((c) => (
-            <li key={c.contact_id || c.id} className="py-3">
-              <p className="text-sm font-medium text-gray-900">{c.name}</p>
-              {c.role && <p className="text-[11px] text-gray-500">{c.role}</p>}
+            <li key={c.contact_id || c.id} className="py-3" data-testid="contact-row">
+              {/* `full_name` and `title` are what a contact actually stores.
+                  This read `name` and `role`, which no contact has ever
+                  carried, so every row rendered blank. */}
+              <p className="text-sm font-medium text-gray-900">
+                {c.full_name || c.name || "Unnamed contact"}
+              </p>
+              {(c.title || c.role) && (
+                <p className="text-[11px] text-gray-500">{c.title || c.role}</p>
+              )}
               {c.email && <p className="text-xs text-gray-600">{c.email}</p>}
               {c.phone && <p className="text-xs text-gray-600">{c.phone}</p>}
+              {c.birthday && (
+                <p className="text-[11px] text-pink-700 mt-0.5">Birthday {c.birthday}</p>
+              )}
             </li>
           ))}
         </ul>
       )}
-
-      <a href="/flow/contacts"
-         className="inline-block text-sm text-[#1B4332] hover:underline">
-        Manage contacts
-      </a>
     </div>
   );
 }

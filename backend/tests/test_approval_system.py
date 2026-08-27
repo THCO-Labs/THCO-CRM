@@ -6,6 +6,12 @@ Tests for approval queue, stats, actions, and workflow integration
 import pytest
 import requests
 import os
+# Credentials come from the environment. This file used to carry the
+# super admin's real password as a literal, in a tracked file, which
+# meant anybody with repository access had it.
+TEST_ADMIN_EMAIL = os.environ.get('TEST_ADMIN_EMAIL', '')
+TEST_ADMIN_PASSWORD = os.environ.get('TEST_ADMIN_PASSWORD', '')
+
 import time
 import uuid
 
@@ -13,8 +19,8 @@ import uuid
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 # Test credentials
-TEST_EMAIL = "joshua@thcohq.com"
-TEST_PASSWORD = "THCOAdmin2024!"
+TEST_EMAIL = TEST_ADMIN_EMAIL
+TEST_PASSWORD = TEST_ADMIN_PASSWORD
 
 
 class TestApprovalStats:

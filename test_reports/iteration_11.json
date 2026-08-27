@@ -41,7 +41,7 @@
   },
   "test_credentials": {
     "email": "joshua@thcohq.com",
-    "password": "THCOAdmin2024!",
+    "password": "<redacted>",
     "role": "super_admin"
   },
   "seed_data_creation": "Test conversations created for testing (auto-cleaned)",

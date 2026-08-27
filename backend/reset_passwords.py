@@ -1,12 +1,23 @@
 """Reset all local user passwords to a common test password so everyone can log in."""
 
 import asyncio
+import os
 import bcrypt
 from motor.motor_asyncio import AsyncIOMotorClient
 
 LOCAL_URL = "mongodb://localhost:27017"
 DB_NAME = "thco_crm"
-TEST_PASSWORD = "THCOAdmin2024!"
+# Never a literal. This script rewrites *every* password in the database,
+# and the value it used was committed to the repository -- which made it
+# the known password of every account, including the super admin, in any
+# environment where this had ever been run.
+TEST_PASSWORD = os.environ.get("SEED_TEST_PASSWORD")
+if not TEST_PASSWORD:
+    raise SystemExit(
+        "Set SEED_TEST_PASSWORD to the password you want. It is deliberately
+"
+        "not defaulted: this rewrites every password in the database."
+    )
 
 async def reset():
     client = AsyncIOMotorClient(LOCAL_URL)

@@ -90,21 +90,29 @@ export default function AddBoard({ onCreate, existingTitles = [], permissions = 
         )}
       </PopoverTrigger>
 
+      {/* The template list is taller than the space under the trigger when the
+          board strip sits low on the page, and the popover was simply running
+          off the bottom of the window -- the last templates and "Add Custom
+          Board" could not be reached at all. Radix measures the room it
+          actually has and publishes it as --radix-popover-content-available-
+          height; bounding the popover by that and scrolling inside keeps every
+          option reachable wherever the trigger happens to be. */}
       <PopoverContent
-        className="w-72 p-1.5 bg-white border border-[#EAE7E0] shadow-lg"
+        className="w-72 p-1.5 bg-white border border-[#EAE7E0] shadow-lg flex flex-col overflow-hidden max-h-[var(--radix-popover-content-available-height)]"
         align="start"
+        collisionPadding={12}
       >
         {!customMode ? (
-          <div data-testid="add-board-dropdown">
+          <div className="flex flex-col min-h-0" data-testid="add-board-dropdown">
             <p className="px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
               <LayoutGrid className="w-3 h-3" />
               Board Templates
             </p>
 
-            {/* Fixed-height, internally scrollable — the popover itself (and
-                the page behind it) never grows as more templates are added. */}
+            {/* Internally scrollable, and free to shrink below its preferred
+                height when the popover is bounded by the viewport. */}
             <div
-              className="max-h-64 overflow-y-auto overscroll-contain scroll-smooth pr-0.5 [scrollbar-width:thin] [scrollbar-color:#D8D3C7_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-[#D8D3C7] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent"
+              className="flex-1 min-h-0 max-h-64 overflow-y-auto overscroll-contain scroll-smooth pr-0.5 [scrollbar-width:thin] [scrollbar-color:#D8D3C7_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-[#D8D3C7] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent"
               data-testid="add-board-template-list"
             >
               {allTemplates.map((title) => {
@@ -127,8 +135,9 @@ export default function AddBoard({ onCreate, existingTitles = [], permissions = 
               })}
             </div>
 
-            {/* Add custom — pinned outside the scroll region */}
-            <div className="border-t border-[#EAE7E0] mt-1 pt-1">
+            {/* Add custom — pinned outside the scroll region, so it stays
+                reachable however short the list is squeezed. */}
+            <div className="shrink-0 border-t border-[#EAE7E0] mt-1 pt-1">
               <button
                 onClick={() => setCustomMode(true)}
                 data-testid="add-board-custom"

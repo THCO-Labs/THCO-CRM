@@ -78,7 +78,7 @@
   },
   "test_credentials": {
     "admin_email": "joshua@thcohq.com",
-    "admin_password": "THCOAdmin2024!"
+    "admin_password": "<redacted>"
   },
   "seed_data_creation": "Test assessments created: radio_test_38a9ad88@example.com (completed with Hybrid preference), playwright_test_9f484a17@example.com (in progress)",
   "retest_needed": false,

@@ -23,9 +23,28 @@ logger = logging.getLogger(__name__)
 # Notification kinds. Kept as constants so the UI can branch on them without
 # matching against prose that might later be reworded.
 ADDED_TO_PROJECT = "added_to_project"
+# Being made the TSD or the Architect of a project. Distinct from
+# ADDED_TO_PROJECT because it is not the same event: a pod member is given
+# work, these two are given the project.
+PROJECT_ROLE_ASSIGNED = "project_role_assigned"
 ASSIGNED_TO_TASK = "assigned_to_task"
 REMOVED_FROM_PROJECT = "removed_from_project"
 MADE_UNIT_HEAD = "made_unit_head"
+TALENT_REQUIREMENT_CONFIRMED = "talent_requirement_confirmed"
+TALENT_REQUIREMENT_REOPENED = "talent_requirement_reopened"
+TALENT_CONTRACTING_STARTED = "talent_contracting_started"
+TALENT_WITHDRAWN = "talent_withdrawn"
+SCOPE_CHANGE_DECIDED = "scope_change_decided"
+SCOPE_CHANGE_IMPACT_ALERT = "scope_change_impact_alert"
+CONTRACT_EXPIRING = "contract_expiring"
+CONTRACT_ENDED = "contract_ended"
+# The TSD telling the Senior Partner where they are with a project they were
+# handed: received, acknowledged, or accepted.
+TSD_ACKNOWLEDGEMENT = "tsd_acknowledgement"
+
+# Kept as a literal rather than imported from `permissions` so this module has
+# no dependency on it; the value is asserted against it in `permissions` tests.
+SENIOR_PARTNER_ROLE = "senior_partner"
 
 
 def _now() -> str:
@@ -79,7 +98,7 @@ def _project_email_html(person_name: str, project: Dict[str, Any], actor_name: s
     )
     return f"""
     <div style="font-family:Inter,Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;background:#0C0F13;border-radius:12px;color:#E8E6F0">
-      <div style="font-size:22px;font-weight:700;color:#C6A15B;margin-bottom:4px">THCO Control Room</div>
+      <div style="font-size:22px;font-weight:700;color:#C6A15B;margin-bottom:4px">Crowther Delivery OS</div>
       <p style="color:#9AA0AB;margin:0 0 18px">Hello, <strong style="color:#fff">{person_name}</strong></p>
       <p style="color:#E8E6F0">
         <strong style="color:#fff">{actor_name}</strong> has added you to a project.
@@ -105,7 +124,7 @@ def _project_removal_email_html(person_name: str, project: Dict[str, Any], actor
     )
     return f"""
     <div style="font-family:Inter,Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;background:#0C0F13;border-radius:12px;color:#E8E6F0">
-      <div style="font-size:22px;font-weight:700;color:#C6A15B;margin-bottom:4px">THCO Control Room</div>
+      <div style="font-size:22px;font-weight:700;color:#C6A15B;margin-bottom:4px">Crowther Delivery OS</div>
       <p style="color:#9AA0AB;margin:0 0 18px">Hello, <strong style="color:#fff">{person_name}</strong></p>
       <p style="color:#E8E6F0">
         <strong style="color:#fff">{actor_name}</strong> has removed you from a project.
@@ -118,6 +137,113 @@ def _project_removal_email_html(person_name: str, project: Dict[str, Any], actor
       <p style="color:#6B7280;font-size:12px;margin-top:18px">No action is needed from you.</p>
     </div>
     """
+
+
+def _role_email_html(person_name: str, role_label: str, project: Dict[str, Any],
+                     actor_name: str, link: str, duty: str) -> str:
+    name = project.get("name") or "a project"
+    client = project.get("client_name_snapshot") or ""
+    client_line = (
+        f'<p style="margin:4px 0;color:#9AA0AB">Client<br>'
+        f'<strong style="color:#fff">{client}</strong></p>'
+        if client else ""
+    )
+    return f"""
+    <div style="font-family:Inter,Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;background:#0C0F13;border-radius:12px;color:#E8E6F0">
+      <div style="font-size:22px;font-weight:700;color:#C6A15B;margin-bottom:4px">Crowther Delivery OS</div>
+      <p style="color:#9AA0AB;margin:0 0 18px">Hello, <strong style="color:#fff">{person_name}</strong></p>
+      <p style="color:#E8E6F0">
+        <strong style="color:#fff">{actor_name}</strong> has made you the
+        <strong style="color:#1FB58A">{role_label}</strong> on a project.
+      </p>
+      <div style="background:#161B22;border:1px solid #2a2f38;border-radius:10px;padding:16px;margin:16px 0">
+        <p style="margin:4px 0;color:#9AA0AB">Project<br><strong style="color:#fff">{name}</strong></p>
+        {client_line}
+      </div>
+      <p style="color:#9AA0AB;font-size:13px">{duty}</p>
+      <a href="{link}" style="display:inline-block;background:#1FB58A;color:#0C0F13;font-weight:700;padding:12px 22px;border-radius:8px;text-decoration:none">Open the project</a>
+      <p style="color:#6B7280;font-size:12px;margin-top:18px">Or copy this link into your browser: {link}</p>
+    </div>
+    """
+
+
+# What each role is actually being handed. A notification that says only
+# "you are the TSD" tells somebody their title; these say what is now theirs
+# to do, which is the part they need at the moment of being told.
+ROLE_DUTY = {
+    "tsd": "You now own this client and this project's state, and you move it "
+           "through every stage of the pipeline.",
+    "architect": "You now own this project's architecture, and you advance it "
+                 "through the stages you own: architecture, demo, build and QA.",
+}
+
+
+async def notify_project_role(
+    db,
+    project: Dict[str, Any],
+    person: Dict[str, Any],
+    role: str,
+    actor: Dict[str, Any],
+) -> bool:
+    """Tell somebody they have been made the TSD or the Architect of a project.
+
+    Being handed a project is the single most consequential thing that happens
+    to a person in this system, and until now it happened in silence: the
+    project record changed and nobody told them. Pod members were notified;
+    the two people actually accountable for the project were not.
+
+    Returns whether a notification was written. Never notifies somebody who
+    assigned themselves, and never raises — a delivery failure must not roll
+    back the assignment that has already been made.
+    """
+    uid = (person or {}).get("user_id")
+    if not uid:
+        return False
+    actor_id = (actor or {}).get("user_id")
+    if uid == actor_id:
+        return False
+
+    role_label = "TSD" if role == "tsd" else "Solution Architect"
+    actor_name = (actor or {}).get("name") or "An administrator"
+    project_name = project.get("name") or "a project"
+    duty = ROLE_DUTY.get(role, "")
+    link = f"{_app_url()}/flow/projects/{project.get('id')}"
+
+    try:
+        await create(
+            db,
+            user_id=uid,
+            kind=PROJECT_ROLE_ASSIGNED,
+            title=f"You are the {role_label} on {project_name}",
+            body=f"{actor_name} assigned you. {duty}",
+            link=f"/flow/projects/{project.get('id')}",
+            actor_id=actor_id or "",
+            actor_name=actor_name,
+            entity_type="project",
+            entity_id=project.get("id") or "",
+        )
+    except Exception as exc:
+        logger.warning("Could not record role notification for %s: %s", uid, exc)
+        return False
+
+    email = (person or {}).get("email")
+    if email:
+        try:
+            from services import send_email
+
+            await send_email(
+                to=email,
+                subject=f"You are the {role_label} on {project_name}",
+                html=_role_email_html(
+                    (person or {}).get("name") or "there",
+                    role_label, project, actor_name, link, duty,
+                ),
+            )
+        except Exception as exc:
+            # In-app already succeeded; email is the softer channel and its
+            # failure should never surface as the assignment failing.
+            logger.warning("Could not email role notification to %s: %s", email, exc)
+    return True
 
 
 async def notify_added_to_project(
@@ -243,7 +369,7 @@ def _task_email_html(person_name: str, card_title: str, project_name: str,
                      board_title: str, actor_name: str, link: str) -> str:
     return f"""
     <div style="font-family:Inter,Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;background:#0C0F13;border-radius:12px;color:#E8E6F0">
-      <div style="font-size:22px;font-weight:700;color:#C6A15B;margin-bottom:4px">THCO Control Room</div>
+      <div style="font-size:22px;font-weight:700;color:#C6A15B;margin-bottom:4px">Crowther Delivery OS</div>
       <p style="color:#9AA0AB;margin:0 0 18px">Hello, <strong style="color:#fff">{person_name}</strong></p>
       <p style="color:#E8E6F0">
         <strong style="color:#fff">{actor_name}</strong> has assigned you a task.
@@ -332,6 +458,122 @@ async def notify_made_unit_head(db, person: Dict[str, Any], unit_slug: str,
         entity_type="unit",
         entity_id=unit_slug,
     )
+
+
+async def function_role_recipients(db, function_roles: List[str]) -> List[Dict[str, Any]]:
+    """Active accounts to notify for these function roles.
+
+    With one fallback that matters: **if nobody holds `senior_partner`, the
+    super admins stand in.** Several of the most important alerts in this
+    system are addressed to the Senior Partner — a forced gate, a project
+    going red, a scope change that moved time or money, a TSD accepting a
+    project. Until somebody is actually granted that function role, every one
+    of those resolved to an empty list and was silently delivered to nobody,
+    which is a worse failure than a misdirected message because nothing
+    reports it.
+
+    The substitution is sound rather than a guess: the Senior Partner holds
+    the super admin account here. It applies only when the role is genuinely
+    unheld, so granting it to a real person takes over immediately.
+    """
+    fields = {"_id": 0, "user_id": 1, "name": 1, "email": 1}
+    people = await db.users.find(
+        {"function_role": {"$in": function_roles}, "status": "active"}, fields
+    ).to_list(200)
+    if people or SENIOR_PARTNER_ROLE not in function_roles:
+        return people
+
+    fallback = await db.users.find(
+        {"role": "super_admin", "status": "active"}, fields
+    ).to_list(50)
+    if fallback:
+        logger.info(
+            "No senior_partner function role is held; routing to %d super admin(s) instead.",
+            len(fallback),
+        )
+    return fallback
+
+
+async def notify_function_role_holders(
+    db,
+    *,
+    function_roles: List[str],
+    kind: str,
+    title: str,
+    reason: str,
+    link: str,
+    entity_type: str,
+    entity_id: str,
+    actor: Optional[Dict[str, Any]] = None,
+) -> int:
+    """Tell every active person holding one of these function roles.
+
+    The routing rule (SPEC §37): notify only the people this actually
+    affects -- resolved by what someone does, `function_role`, never a
+    broadcast to everyone with a login -- and every notification carries the
+    reason, a link to the entity it's about, and reads as something to act
+    on rather than an unexplained ping. `reason` is folded into `body`
+    instead of a separate field so every caller is forced to supply one
+    rather than leaving it blank.
+    """
+    actor_id = (actor or {}).get("user_id")
+    actor_name = (actor or {}).get("name") or "Crowther OS"
+    people = await function_role_recipients(db, function_roles)
+
+    sent = 0
+    for person in people:
+        uid = person.get("user_id")
+        if not uid or uid == actor_id:
+            continue
+        await create(
+            db,
+            user_id=uid,
+            kind=kind,
+            title=title,
+            body=reason,
+            link=link,
+            actor_id=actor_id or "",
+            actor_name=actor_name,
+            entity_type=entity_type,
+            entity_id=entity_id,
+        )
+        sent += 1
+    return sent
+
+
+async def notify_user_ids(
+    db,
+    *,
+    user_ids: List[str],
+    kind: str,
+    title: str,
+    reason: str,
+    link: str,
+    entity_type: str,
+    entity_id: str,
+    actor: Optional[Dict[str, Any]] = None,
+) -> int:
+    """The same routing rule as `notify_function_role_holders`, for a specific
+    named set of people (e.g. one project's architect) rather than a whole
+    function role."""
+    actor_id = (actor or {}).get("user_id")
+    actor_name = (actor or {}).get("name") or "Crowther OS"
+    sent = 0
+    for uid in {u for u in user_ids if u and u != actor_id}:
+        await create(
+            db,
+            user_id=uid,
+            kind=kind,
+            title=title,
+            body=reason,
+            link=link,
+            actor_id=actor_id or "",
+            actor_name=actor_name,
+            entity_type=entity_type,
+            entity_id=entity_id,
+        )
+        sent += 1
+    return sent
 
 
 async def unread_count(db, user_id: str) -> int:

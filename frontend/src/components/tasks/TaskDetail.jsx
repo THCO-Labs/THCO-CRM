@@ -1,5 +1,6 @@
 import { X, AlignLeft, Calendar, Flag, Tag, Users, Paperclip, Image as ImageIcon } from "lucide-react";
 import CardAttachments from "./CardAttachments";
+import CardComments from "./CardComments";
 import ThumbnailPicker from "./ThumbnailPicker";
 
 /**
@@ -184,6 +185,14 @@ export default function TaskDetail({ card, boardTitle, onClose, canEdit = false,
           <Section icon={Paperclip} title="Attachments">
             <CardAttachments cardId={card.card_id} canEdit={canEdit} />
           </Section>
+
+          {/* Anybody on the project can comment -- the person doing the work
+              is usually not the person who wrote the card, and progress and
+              blockers were previously said somewhere the project cannot see.
+              Last, because it is the part that grows. */}
+          <div className="pt-1">
+            <CardComments cardId={card.card_id} canEdit={canEdit} />
+          </div>
         </div>
       </div>
     </div>

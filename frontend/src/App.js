@@ -44,6 +44,7 @@ const ITAndTools = lazy(() => import("./pages/ITAndTools"));
 // Crowther OS — Project Management System (12-stage pipeline)
 const FlowDashboard = lazy(() => import("./pages/flow/FlowDashboard"));
 const FlowBoard = lazy(() => import("./pages/flow/FlowBoard"));
+const ControlTower = lazy(() => import("./pages/flow/ControlTower"));
 const FlowProjects = lazy(() => import("./pages/flow/FlowProjects"));
 const FlowNewProject = lazy(() => import("./pages/flow/FlowNewProject"));
 const FlowProjectDetail = lazy(() => import("./pages/flow/FlowProjectDetail"));
@@ -412,7 +413,7 @@ const AppRouter = () => {
       } />
 
       <Route path="/admin/business-units" element={
-        <ProtectedRoute access="admin">
+        <ProtectedRoute access="user-admin">
           <BusinessUnitsAdmin />
         </ProtectedRoute>
       } />
@@ -555,6 +556,7 @@ const AppRouter = () => {
       {/* Crowther OS — Project Management System (12-stage pipeline) */}
       <Route path="/flow" element={<ProtectedRoute unit="flow"><FlowDashboard /></ProtectedRoute>} />
       <Route path="/flow/board" element={<ProtectedRoute unit="flow"><FlowBoard /></ProtectedRoute>} />
+      <Route path="/flow/control-tower" element={<ProtectedRoute unit="flow"><ControlTower /></ProtectedRoute>} />
       <Route path="/flow/projects" element={<ProtectedRoute unit="flow"><FlowProjects /></ProtectedRoute>} />
       <Route path="/flow/projects/new" element={<ProtectedRoute unit="flow"><FlowNewProject /></ProtectedRoute>} />
       <Route path="/flow/projects/:id" element={<ProtectedRoute unit="flow"><FlowProjectDetail /></ProtectedRoute>} />

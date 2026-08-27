@@ -37,7 +37,7 @@ export default function EmptyState({ onCreateBoard, permissions = READ_ONLY_PERM
         </>
       ) : (
         <p className="text-sm text-gray-500 max-w-sm leading-relaxed">
-          This project doesn't have any boards yet. A Project Coordinator can add them.
+          This project doesn't have any boards yet. Its TSD or Solution Architect can add them, and they appear automatically once the project reaches Engineering and Build.
         </p>
       )}
     </div>

@@ -25,20 +25,9 @@ import {
 } from "../components/ui/select";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "../components/ui/breadcrumb";
 import { toast } from "sonner";
-import { flowforgeAPI } from "../lib/api";
+import { flowforgeAPI, unitsAPI } from "../lib/api";
 
 // Unit options
-const UNIT_OPTIONS = [
-  { value: "all", label: "All Units" },
-  { value: "talent", label: "Talent & Delivery" },
-  { value: "sales", label: "Sales & Business Dev" },
-  { value: "marketing", label: "Marketing & Brand" },
-  { value: "advisory", label: "Advisory & Consulting" },
-  { value: "technology", label: "Technology & Build" },
-  { value: "operations", label: "Operations & Finance" },
-  { value: "academy", label: "Academy & Learning" },
-  { value: "client-delivery", label: "Client Delivery" },
-];
 
 // Format relative time
 const formatRelativeTime = (dateString) => {
@@ -139,6 +128,24 @@ const WorkflowInventory = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [unitFilter, setUnitFilter] = useState("all");
+  // Which units actually exist. Hardcoding them meant a deleted unit
+  // stayed in this filter forever, selectable and always empty.
+  const [unitOptions, setUnitOptions] = useState([{ value: "all", label: "All Units" }]);
+
+  useEffect(() => {
+    let live = true;
+    unitsAPI.list()
+      .then((rows) => {
+        if (!live) return;
+        setUnitOptions([
+          { value: "all", label: "All Units" },
+          ...(rows || []).filter((u) => !u.hidden)
+            .map((u) => ({ value: u.slug, label: u.name || u.slug })),
+        ]);
+      })
+      .catch(() => { /* the filter stays at "All Units" only */ });
+    return () => { live = false; };
+  }, []);
   const [lastSyncTime, setLastSyncTime] = useState(null);
 
   // Load workflows
@@ -292,7 +299,7 @@ const WorkflowInventory = () => {
             <SelectValue placeholder="Filter by unit" />
           </SelectTrigger>
           <SelectContent>
-            {UNIT_OPTIONS.map(opt => (
+            {unitOptions.map(opt => (
               <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
             ))}
           </SelectContent>

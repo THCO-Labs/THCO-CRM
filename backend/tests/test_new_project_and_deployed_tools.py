@@ -1,11 +1,17 @@
 """Regression: NewProjectForm multi-file upload + DeployedTools list endpoint."""
 import os
+# Credentials come from the environment. This file used to carry the
+# super admin's real password as a literal, in a tracked file, which
+# meant anybody with repository access had it.
+TEST_ADMIN_EMAIL = os.environ.get('TEST_ADMIN_EMAIL', '')
+TEST_ADMIN_PASSWORD = os.environ.get('TEST_ADMIN_PASSWORD', '')
+
 import io
 import requests
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://executive-decks.preview.emergentagent.com").rstrip("/")
-EMAIL = "joshua@thcohq.com"
-PASSWORD = "THCOAdmin2024!"
+EMAIL = TEST_ADMIN_EMAIL
+PASSWORD = TEST_ADMIN_PASSWORD
 
 UNITS = ["thco-hr", "technology", "client-delivery", "sales", "marketing",
          "advisory", "operations", "academy", "it-tools"]

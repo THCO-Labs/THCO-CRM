@@ -14,8 +14,14 @@ import {
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
 import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { unitsAPI } from "../lib/api";
 
-const UNITS = [
+// Curated look for the units that predate Business Units Admin. Which units
+// actually exist comes from the database -- this only supplies the icon and
+// the gradient. Rendering this list directly meant a unit an administrator
+// had deleted or hidden was still offered here.
+const UNIT_STYLE = [
   { 
     name: "Talent & Delivery", 
     slug: "talent", 
@@ -86,6 +92,41 @@ const UNITS = [
 
 const UnitSelectionModal = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
+  const [units, setUnits] = useState([]);
+
+  // Fetched when the dialog opens rather than on mount: this sits behind a
+  // floating button on every page, and loading units for a dialog nobody has
+  // opened is a request per page view for nothing.
+  useEffect(() => {
+    if (!isOpen) return;
+    let live = true;
+    (async () => {
+      try {
+        const rows = await unitsAPI.list();
+        if (!live) return;
+        const styleFor = new Map(UNIT_STYLE.map((u) => [u.slug, u]));
+        setUnits(
+          (rows || [])
+            .filter((u) => !u.hidden)
+            .map((u) => {
+              const style = styleFor.get(u.slug);
+              return {
+                slug: u.slug,
+                name: u.name || u.slug,
+                icon: style?.icon || Building2,
+                gradient: style?.gradient
+                  || "bg-gradient-to-br from-[#1B4332] to-[#2D6A4F]",
+              };
+            })
+        );
+      } catch {
+        // A unit list we cannot load should show as empty rather than as the
+        // wrong list -- offering a deleted unit is worse than offering none.
+        if (live) setUnits([]);
+      }
+    })();
+    return () => { live = false; };
+  }, [isOpen]);
 
   const handleUnitSelect = (unit) => {
     onClose();
@@ -105,7 +146,12 @@ const UnitSelectionModal = ({ isOpen, onClose }) => {
         </DialogHeader>
 
         <div className="p-6 grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[60vh] overflow-y-auto" data-testid="unit-selection-grid">
-          {UNITS.map((unit) => {
+          {units.length === 0 && (
+            <p className="col-span-full text-sm text-gray-400 py-6 text-center">
+              No units available.
+            </p>
+          )}
+          {units.map((unit) => {
             const Icon = unit.icon;
             return (
               <button

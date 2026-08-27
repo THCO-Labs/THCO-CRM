@@ -18,7 +18,7 @@
   },
   "passed_tests": [
     "Backend API health check",
-    "Admin login with seeded credentials (joshua@thcohq.com / THCOAdmin2024!)",
+    "Admin login with seeded credentials (joshua@thcohq.com / <redacted>)",
     "Dashboard loading with welcome message and 8 business unit cards",
     "Talent unit navigation and tool access",
     "AI Candidate Sourcing form submission",

@@ -72,7 +72,9 @@ def set_db(database):
 # Constants
 # ---------------------------------------------------------------------------
 # Predefined board titles shown in the "Add another board" dropdown.
-# "QA Review" intentionally appears only once.
+# "QA Review" intentionally appears only once. "Design QA" sits between
+# "Ready For Merge" and "Done" per CROWTHER_MIGRATION_PLAN.md §10.2 -- it was
+# named in the stage 13 playbook copy but never actually offered as a column.
 DEFAULT_BOARD_TITLES = [
     "UI/UX Tasks",
     "Dependencies",
@@ -81,6 +83,7 @@ DEFAULT_BOARD_TITLES = [
     "Backend Todo",
     "QA Review",
     "Ready For Merge",
+    "Design QA",
     "Done",
 ]
 
@@ -128,6 +131,13 @@ class CardCreate(BaseModel):
     labels: List[LabelRef] = []
     assignees: List[AssigneeRef] = []
     due_date: Optional[str] = None
+    # Optional traceability back to the requirement this card delivers
+    # (CROWTHER_MIGRATION_PLAN.md §13, Tier 3). Optional on purpose: most cards
+    # are chores, spikes and fixes that no requirement will ever name, and
+    # demanding a link would only get a wrong one. Validated and normally set
+    # via `PATCH /control-tower/cards/{id}/requirement`, which also checks the
+    # requirement belongs to this card's project.
+    requirement_id: Optional[str] = None
 
 
 class CardUpdate(BaseModel):
@@ -137,6 +147,7 @@ class CardUpdate(BaseModel):
     labels: Optional[List[LabelRef]] = None
     assignees: Optional[List[AssigneeRef]] = None
     due_date: Optional[str] = None
+    requirement_id: Optional[str] = None
 
 
 class CardPosition(BaseModel):
@@ -225,7 +236,7 @@ async def _require_coordinator(request: Request) -> dict:
     if not _is_coordinator(user):
         raise HTTPException(
             status_code=403,
-            detail="Only a project manager or an administrator can manage labels",
+            detail="Only this project's TSD, its architect, or an administrator can manage labels",
         )
     return user
 
@@ -300,17 +311,21 @@ async def _project_or_404(project_id: Optional[str]) -> dict:
 
 
 async def _require_board_manager(request: Request, project_id: Optional[str]) -> tuple:
-    """For changing a board's shape: the project's unit head, or an admin.
+    """For changing a board's shape: the project's TSD, its architect, or an admin.
 
-    Boards used to be gated on the delivery-coordinator flag alone, which no
-    unit head carries -- so the person now responsible for a project could
-    open it and then find its board read-only.
+    The board is the technical build, so its shape is the architect's; the TSD
+    keeps it too because they own the project and should not have to find the
+    architect to fix a column. Both create boards, not only administrators.
+
+    Boards used to be gated on the delivery-coordinator flag alone, which
+    neither of them carries -- so the people actually responsible for a project
+    could open it and find its board read-only.
     """
     user = await _current(request)
     project = await _project_or_404(project_id)
     permissions.require(
         permissions.can_manage_boards(user, project),
-        "Only this project's project manager or an administrator can change its boards",
+        "Only this project's TSD, its architect, or an administrator can change its boards",
     )
     return user, project
 
@@ -376,14 +391,16 @@ async def projects_summary(request: Request):
     # this matches on the column's name rather than on a status field it does
     # not have.
     done_counts = {}
-    done_boards = await db.boards.find(
+    # Was reading `boards`/`cards`, which nothing writes to -- this always
+    # returned zero regardless of how much work was actually done.
+    done_boards = await db.task_boards.find(
         {"title": {"$regex": r"^(done|complete[d]?)$", "$options": "i"}},
         {"_id": 0, "board_id": 1, "project_id": 1},
     ).to_list(500)
     done_board_ids = [b["board_id"] for b in done_boards]
     if done_board_ids:
         by_board = {b["board_id"]: b["project_id"] for b in done_boards}
-        async for c in db.cards.aggregate([
+        async for c in db.task_cards.aggregate([
             {"$match": {"board_id": {"$in": done_board_ids}}},
             {"$group": {"_id": "$board_id", "count": {"$sum": 1}}},
         ]):
@@ -460,13 +477,132 @@ async def projects_summary(request: Request):
             "tsd_name": p.get("tsd_name"),
             "project_manager_name": p.get("project_manager_name"),
             # Who may shape this board, sent so the UI reaches the same verdict
-            # the server does. Managing a project means you started it or you
-            # manage it -- running its unit is not enough.
+            # the server does.
+            #
+            # `tsd_id` and `architect_id` are the current fields and were
+            # missing here: the server let a project's TSD add a column while
+            # the interface, unable to see who the TSD was, showed them a
+            # read-only board. The legacy `project_manager_*` keys are still
+            # sent for rows the migration has not rewritten.
             "created_by": p.get("created_by"),
+            "tsd_id": p.get("tsd_id"),
+            "architect_id": p.get("architect_id"),
+            "collaborator_ids": p.get("collaborator_ids") or [],
             "project_manager_id": p.get("project_manager_id"),
             "project_manager_ids": p.get("project_manager_ids") or [],
         })
     return out
+
+
+# A card is not "done" by a flag; it is done because somebody dragged it into
+# the Done column, which is how the board has always worked. So the only place
+# that fact lives is the title of the board the card currently sits in.
+DONE_BOARD_TITLES = {"done"}
+
+
+@router.get("/cards/mine")
+async def my_cards(request: Request, limit: int = 8):
+    """The caller's own assigned work, with the counts a dashboard needs.
+
+    The dashboard used to be a grid of links to business units -- navigation
+    dressed as content, and no answer at all to "what do I owe anyone today".
+    This is that answer for everybody who is not looking at the portfolio:
+    what is assigned to me, what is late, what lands this week.
+
+    Scoped twice on purpose. Assignment is the first filter, but a card also
+    belongs to a project, and somebody taken off a project should stop seeing
+    its work even if an old assignment was never cleared -- so the project
+    scope filter is applied as well.
+    """
+    user = await _current(request)
+    uid = user.get("user_id")
+
+    cards = await db.task_cards.find(
+        {"assignees.user_id": uid}, {"_id": 0}
+    ).to_list(2000)
+    if not cards:
+        return {"cards": [], "open": 0, "overdue": 0, "due_this_week": 0, "done": 0}
+
+    # Which of those projects this person is still entitled to see.
+    scope = permissions.project_scope_filter(user)
+    if scope:
+        allowed = {
+            p["id"]
+            for p in await db.projects.find(scope, {"_id": 0, "id": 1}).to_list(1000)
+        }
+        cards = [c for c in cards if not c.get("project_id") or c.get("project_id") in allowed]
+
+    boards = {
+        b["board_id"]: b
+        for b in await db.task_boards.find(
+            {"board_id": {"$in": list({c.get("board_id") for c in cards})}},
+            {"_id": 0, "board_id": 1, "title": 1, "project_id": 1, "project_name": 1},
+        ).to_list(2000)
+    }
+
+    now = datetime.now(timezone.utc)
+    week_out = now.timestamp() + 7 * 86400
+
+    open_rows, done_count, overdue, due_week = [], 0, 0, 0
+    for card in cards:
+        board = boards.get(card.get("board_id")) or {}
+        if (board.get("title") or "").strip().lower() in DONE_BOARD_TITLES:
+            done_count += 1
+            continue
+
+        due = _due_timestamp(card.get("due_date"))
+        if due is not None:
+            if due < now.timestamp():
+                overdue += 1
+            elif due <= week_out:
+                due_week += 1
+
+        open_rows.append({
+            "card_id": card.get("card_id"),
+            "title": card.get("title"),
+            "priority": card.get("priority") or "medium",
+            "due_date": card.get("due_date"),
+            "board_title": board.get("title") or "",
+            "project_id": card.get("project_id") or board.get("project_id"),
+            "project_name": board.get("project_name") or "",
+            "_due": due,
+        })
+
+    # Soonest first, and anything without a date after everything that has one:
+    # a card nobody dated is not more urgent than one that is late today.
+    open_rows.sort(key=lambda r: (r["_due"] is None, r["_due"] or 0))
+    for row in open_rows:
+        row.pop("_due", None)
+
+    return {
+        "cards": open_rows[: max(0, limit)],
+        "open": len(open_rows),
+        "overdue": overdue,
+        "due_this_week": due_week,
+        "done": done_count,
+    }
+
+
+def _due_timestamp(value) -> Optional[float]:
+    """Seconds since the epoch for a stored due date, or None.
+
+    Due dates arrive from the picker as ISO datetimes and from milestones as
+    plain dates, and older rows can carry a trailing "Z" that
+    `fromisoformat` refused before 3.11. A date with no time is treated as the
+    end of that day, so a task due today is not already late this morning.
+    """
+    if not value or not isinstance(value, str):
+        return None
+    raw = value.strip().replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if len(raw) <= 10:
+        parsed = parsed.replace(hour=23, minute=59, second=59)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.timestamp()
 
 
 # ---------------------------------------------------------------------------
@@ -704,6 +840,94 @@ async def list_boards(request: Request, project_id: str):
                 c["attachment_count"] = s["count"] if s else 0
                 c["preview_attachment_id"] = s["preview"] if s else None
     return boards
+
+
+async def seed_default_boards(project_id: str, project_name: str, owner_id: str, owner_name: str) -> None:
+    """Give a project its board the moment it reaches Engineering and Build.
+
+    CROWTHER_MIGRATION_PLAN.md §10.3: "The board is created when the project
+    enters stage 13, seeded with the default columns plus Design QA. It is
+    not created earlier, because an empty board on a project at stage 4 is
+    noise." That was the plan; nothing ever called it, so every project
+    reaching stage 13 got no board at all until someone manually added all
+    eight columns, in order, spelling each title exactly right for the
+    `board_build_clear` / `board_qa_clear` gates to recognise them.
+
+    Idempotent: does nothing if this project already has any board, so
+    moving back into stage 13 later never creates a duplicate set.
+    """
+    if await db.task_boards.count_documents({"project_id": project_id}, limit=1):
+        return
+    now = now_iso()
+    for position, title in enumerate(DEFAULT_BOARD_TITLES):
+        await db.task_boards.insert_one({
+            "board_id": f"board_{uuid.uuid4().hex[:12]}",
+            "project_id": project_id,
+            "project_name": project_name,
+            "title": title,
+            "owner_id": owner_id,
+            "owner_name": owner_name,
+            "position": position,
+            "created_at": now,
+            "updated_at": now,
+        })
+
+    # Milestones agreed at stage 12 become cards the moment the board exists.
+    # Without this the board opens empty on a project that already has a
+    # delivery plan, and somebody retypes what was agreed a stage ago.
+    await seed_milestone_cards(project_id, owner_id, owner_name)
+
+
+async def seed_milestone_cards(project_id: str, owner_id: str, owner_name: str) -> int:
+    """Put a card on the backlog for every milestone that has not got one.
+
+    Idempotent by `milestone_id` on the card, so calling it again after a new
+    milestone is added tops the board up rather than duplicating what is there.
+    """
+    backlog = await db.task_boards.find_one(
+        {"project_id": project_id, "title": "Backlog"}, {"_id": 0, "board_id": 1}
+    )
+    if not backlog:
+        return 0
+
+    milestones = await db.milestones.find(
+        {"project_id": project_id},
+        {"_id": 0, "milestone_id": 1, "milestone_name": 1, "deliverable": 1, "target_date": 1},
+    ).sort("target_date", 1).to_list(200)
+    if not milestones:
+        return 0
+
+    existing = set(await db.task_cards.distinct(
+        "milestone_id", {"project_id": project_id, "milestone_id": {"$ne": None}}
+    ))
+    position = await db.task_cards.count_documents({"board_id": backlog["board_id"]})
+    created = 0
+
+    for milestone in milestones:
+        mid = milestone.get("milestone_id")
+        if not mid or mid in existing:
+            continue
+        await db.task_cards.insert_one({
+            "card_id": f"card_{uuid.uuid4().hex[:12]}",
+            "board_id": backlog["board_id"],
+            "project_id": project_id,
+            "owner_id": owner_id,
+            "title": milestone.get("milestone_name") or "Milestone",
+            "description": milestone.get("deliverable") or "",
+            "priority": "high",
+            "labels": [],
+            "assignees": [],
+            "due_date": milestone.get("target_date"),
+            # What ties the card back to the milestone it delivers, and what
+            # keeps this idempotent.
+            "milestone_id": mid,
+            "position": position,
+            "created_at": now_iso(),
+            "updated_at": now_iso(),
+        })
+        position += 1
+        created += 1
+    return created
 
 
 @router.post("/boards")
@@ -1035,6 +1259,98 @@ async def reorder_shared(share_token: str, data: SharedReorderRequest):
 
 
 # ---------------------------------------------------------------------------
+# Card comments
+# ---------------------------------------------------------------------------
+# Anybody on the project may comment, which is the point: the person doing a
+# piece of work is usually not the person who wrote the card, and until now
+# they had nowhere to say "blocked on the staging key" except a chat app the
+# project cannot see. Kept in their own collection for the same reason as
+# attachments -- a board load reads every card and should not drag a thread
+# of discussion along with each one.
+COMMENT_FIELDS = {
+    "_id": 0, "comment_id": 1, "card_id": 1, "body": 1, "created_at": 1,
+    "edited_at": 1, "author_id": 1, "author_name": 1,
+}
+
+
+class CommentIn(BaseModel):
+    body: str
+
+
+@router.get("/cards/{card_id}/comments")
+async def list_comments(card_id: str, request: Request):
+    card = await db.task_cards.find_one({"card_id": card_id}, {"_id": 0, "project_id": 1})
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    await _require_board_user(request, card.get("project_id"))
+    return await db.task_comments.find(
+        {"card_id": card_id}, COMMENT_FIELDS
+    ).sort("created_at", 1).to_list(500)
+
+
+@router.post("/cards/{card_id}/comments")
+async def add_comment(card_id: str, data: CommentIn, request: Request):
+    """Comment on a card. Anybody working on the project."""
+    card = await db.task_cards.find_one({"card_id": card_id}, {"_id": 0, "project_id": 1, "title": 1})
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    user, _ = await _require_board_user(request, card.get("project_id"))
+
+    body = (data.body or "").strip()
+    if not body:
+        raise HTTPException(status_code=400, detail="A comment needs something in it")
+
+    doc = {
+        "comment_id": f"cmt_{uuid.uuid4().hex[:12]}",
+        "card_id": card_id,
+        "project_id": card.get("project_id"),
+        "body": body,
+        "author_id": user.get("user_id"),
+        "author_name": user.get("name"),
+        "created_at": now_iso(),
+        "edited_at": None,
+    }
+    await db.task_comments.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@router.patch("/comments/{comment_id}")
+async def edit_comment(comment_id: str, data: CommentIn, request: Request):
+    """Edit your own comment. Only your own -- correcting somebody else's
+    words in place would make the thread unreadable as a record."""
+    comment = await db.task_comments.find_one({"comment_id": comment_id}, {"_id": 0})
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    user, _ = await _require_board_user(request, comment.get("project_id"))
+    if comment.get("author_id") != user.get("user_id") and not permissions.is_admin(user):
+        raise HTTPException(status_code=403, detail="You can only edit your own comment")
+
+    body = (data.body or "").strip()
+    if not body:
+        raise HTTPException(status_code=400, detail="A comment needs something in it")
+    await db.task_comments.update_one(
+        {"comment_id": comment_id},
+        {"$set": {"body": body, "edited_at": now_iso()}},
+    )
+    return await db.task_comments.find_one({"comment_id": comment_id}, COMMENT_FIELDS)
+
+
+@router.delete("/comments/{comment_id}")
+async def delete_comment(comment_id: str, request: Request):
+    comment = await db.task_comments.find_one({"comment_id": comment_id}, {"_id": 0})
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    user, project = await _require_board_user(request, comment.get("project_id"))
+    # Your own, or somebody who runs the project clearing up.
+    if (comment.get("author_id") != user.get("user_id")
+            and not permissions.can_manage_boards(user, project)):
+        raise HTTPException(status_code=403, detail="You can only delete your own comment")
+    await db.task_comments.delete_one({"comment_id": comment_id})
+    return {"deleted": True}
+
+
+# ---------------------------------------------------------------------------
 # Attachments
 # ---------------------------------------------------------------------------
 # A card may carry as many attachments as the work needs; nothing limits the
@@ -1146,6 +1462,42 @@ async def upload_thumbnail(request: Request, file: UploadFile = File(...)):
     }
     await db.task_thumbnails.insert_one(doc)
     return {k: doc[k] for k in doc if k in THUMBNAIL_FIELDS and k != "_id"}
+
+
+@router.delete("/thumbnails/{thumbnail_id}")
+async def delete_thumbnail(thumbnail_id: str, request: Request):
+    """Remove an image from the pool for good.
+
+    Claiming and releasing were the only operations that existed -- a picture
+    nobody wanted was still stuck in the shared pool forever, showing up in
+    every other project and task's picker with no way to get rid of it. This
+    is the missing third option. Whoever uploaded it may remove it; so may an
+    administrator, since the pool is shared and a mistaken upload is everyone's
+    problem until somebody with reach can clear it.
+
+    A claimed thumbnail is released first -- deleting out from under whichever
+    card or project currently shows it would leave a `thumbnail_id` pointing
+    at nothing.
+    """
+    user = await _current(request)
+    doc = await db.task_thumbnails.find_one({"thumbnail_id": thumbnail_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Thumbnail not found")
+    permissions.require(
+        permissions.is_admin(user) or doc.get("uploaded_by_id") == user.get("user_id"),
+        "Only the person who added this picture, or an administrator, can remove it",
+    )
+
+    claimed_by = doc.get("claimed_by")
+    if claimed_by:
+        unset = {"thumbnail_id": ""}
+        if claimed_by.startswith("card_"):
+            await db.task_cards.update_many({"card_id": claimed_by}, {"$unset": unset})
+        else:
+            await db.projects.update_many({"id": claimed_by}, {"$unset": unset})
+
+    await db.task_thumbnails.delete_one({"thumbnail_id": thumbnail_id})
+    return {"deleted": True}
 
 
 @router.get("/thumbnails/{thumbnail_id}/image")

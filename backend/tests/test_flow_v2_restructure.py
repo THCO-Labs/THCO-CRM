@@ -11,6 +11,12 @@ Covers:
 - Dashboard new field names (in_build_count + build_status_counts, no pending_contracts)
 """
 import os
+# Credentials come from the environment. This file used to carry the
+# super admin's real password as a literal, in a tracked file, which
+# meant anybody with repository access had it.
+TEST_ADMIN_EMAIL = os.environ.get('TEST_ADMIN_EMAIL', '')
+TEST_ADMIN_PASSWORD = os.environ.get('TEST_ADMIN_PASSWORD', '')
+
 import uuid
 import pytest
 import requests
@@ -30,8 +36,8 @@ def _load_backend_url():
 
 
 BASE_URL = _load_backend_url()
-ADMIN_EMAIL = "joshua@thcohq.com"
-ADMIN_PASSWORD = "THCOAdmin2024!"
+ADMIN_EMAIL = TEST_ADMIN_EMAIL
+ADMIN_PASSWORD = TEST_ADMIN_PASSWORD
 
 
 @pytest.fixture(scope="session")

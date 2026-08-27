@@ -1841,3 +1841,41 @@ parameters are typed `str` so Mongo operator payloads cannot widen a query;
 service; disabling or deleting an account ends its sessions immediately —
 though a row edited straight in Mongo is not felt for up to
 `AUTH_CACHE_SECONDS`, so nobody should be deactivating people with a shell.
+
+
+### Deployed — 27 August 2026
+
+`eea361d` is live: the metrics dashboard, the in-place control tower, the
+per-function views, and the security work from the readiness review. Verified
+against production rather than assumed:
+
+| Check | Before | After |
+|---|---|---|
+| `/version` | `0b30dcc` | `eea361d` |
+| Security headers | none | nosniff, DENY, referrer, permissions, HSTS |
+| `/openapi.json` | served the full schema | not served |
+| `/THCO_Executive_Portal_PRD.md` | downloadable, with the password in it | SPA fallback, credential gone |
+| New endpoints, anonymous | n/a | 401 |
+| Login brute force | unlimited | 429 at attempt 9 |
+
+**The deploy was blocked for six hours by a GitHub Actions billing lock on the
+THCO-Labs organisation**, not by anything in the code — the job failed in 2-5
+seconds without ever starting a runner. Worth recognising the signature: a
+sub-10-second failure with `The job was not started` is an account problem, so
+do not go looking in the workflow.
+
+Two things about the rollout worth keeping:
+
+- **Verify the deploy against production, not against the workflow's green
+  tick.** The pipeline already waits for the commit sha to be the one serving,
+  which is why the earlier "deployed but still serving the old build" failure
+  cannot recur, but the security posture is only proven by asking production
+  for the headers.
+- **Testing the login throttle from your own machine throttles your own
+  address for `LOGIN_WINDOW_SECONDS`.** Harmless, and it clears itself, but do
+  not do it minutes before somebody needs to sign in.
+
+**Still outstanding, and this is not fixed by the deploy:** the super admin
+password is in git history and remains valid in production. Rotate it. The
+deploy removed the publicly downloadable copy, which was the worst of the
+exposure, but anybody with a clone still has the value.

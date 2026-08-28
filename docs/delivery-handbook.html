@@ -1,0 +1,1297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  Crowther OS Delivery Handbook.
+
+  Open this file in any browser -- it is self-contained apart from the Google
+  Fonts link, and degrades to system fonts without a network. The tick boxes
+  save to that browser's localStorage and nowhere else, so two people reading
+  it keep separate progress and nobody can clear anybody else's.
+
+  It lived only as a Claude artifact until 28 August 2026, which meant it was
+  private to one account and invisible to everyone else. It belongs in the
+  repository with the code it describes.
+-->
+<title>Crowther OS Delivery Handbook</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --ground: #F7F6F3;
+    --surface: #FFFFFF;
+    --surface-2: #FBFAF7;
+    --ink: #182420;
+    --ink-soft: #3A423E;
+    --muted: #6B7570;
+    --line: #E4E0D8;
+    --line-strong: #D3CDBF;
+    --forest: #1B4332;
+    --forest-ink: #14342A;
+    --seafoam: #1FB58A;
+    --seafoam-wash: #1FB58A14;
+    --gold: #A9834E;
+    --gold-wash: #A9834E1A;
+    --red: #B3423A;
+    --red-wash: #B3423A14;
+    --radius: 10px;
+    --font-display: 'Fraunces', Georgia, 'Iowan Old Style', serif;
+    --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0C0F13;
+      --surface: #12171B;
+      --surface-2: #161C21;
+      --ink: #E8E6DF;
+      --ink-soft: #C7CBC7;
+      --muted: #8A9490;
+      --line: #232B27;
+      --line-strong: #303A34;
+      --forest: #2D6A4F;
+      --forest-ink: #BFE3D2;
+      --seafoam: #2DD4BF;
+      --seafoam-wash: #2DD4BF1F;
+      --gold: #C6A15B;
+      --gold-wash: #C6A15B22;
+      --red: #E2867D;
+      --red-wash: #E2867D1F;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0C0F13;
+    --surface: #12171B;
+    --surface-2: #161C21;
+    --ink: #E8E6DF;
+    --ink-soft: #C7CBC7;
+    --muted: #8A9490;
+    --line: #232B27;
+    --line-strong: #303A34;
+    --forest: #2D6A4F;
+    --forest-ink: #BFE3D2;
+    --seafoam: #2DD4BF;
+    --seafoam-wash: #2DD4BF1F;
+    --gold: #C6A15B;
+    --gold-wash: #C6A15B22;
+    --red: #E2867D;
+    --red-wash: #E2867D1F;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.6;
+  }
+  ::selection { background: var(--seafoam-wash); }
+
+  h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; color: var(--ink); margin: 0; }
+  code, .mono { font-family: var(--font-mono); }
+  a { color: var(--forest); }
+  :root[data-theme="dark"] a, @media (prefers-color-scheme: dark) { }
+
+  .shell { display: grid; grid-template-columns: 260px minmax(0,1fr); gap: 0; max-width: 1180px; margin: 0 auto; }
+
+  /* ---------- Masthead ---------- */
+  .masthead {
+    grid-column: 1 / -1;
+    padding: 48px clamp(20px, 4vw, 56px) 28px;
+    border-bottom: 1px solid var(--line);
+  }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--gold);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .eyebrow .rule { width: 28px; height: 1px; background: var(--gold); opacity: .6; }
+  .masthead h1 { font-size: clamp(28px, 4vw, 38px); font-weight: 600; letter-spacing: -0.01em; }
+  .masthead p.lede { max-width: 62ch; color: var(--ink-soft); margin-top: 12px; font-size: 15.5px; }
+  .masthead .meta-row { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 20px; }
+  .meta-chip { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 7px; }
+  .meta-chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--seafoam); }
+  .progress-wrap { margin-top: 22px; max-width: 520px; }
+  .progress-track { height: 6px; border-radius: 4px; background: var(--line); overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, var(--seafoam), var(--forest)); width: 0%; transition: width .4s ease; border-radius: 4px; }
+  .progress-label { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); margin-top: 6px; display: flex; justify-content: space-between; }
+  .reset-btn {
+    font-family: var(--font-mono); font-size: 11px; color: var(--muted); background: none; border: 1px solid var(--line-strong);
+    border-radius: 6px; padding: 5px 10px; cursor: pointer; margin-top: 14px;
+  }
+  .reset-btn:hover { color: var(--red); border-color: var(--red); }
+
+  /* ---------- Rail ---------- */
+  .rail {
+    position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
+    padding: 28px 16px 60px 28px; border-right: 1px solid var(--line);
+    scrollbar-width: thin;
+  }
+  .rail-phase { margin-bottom: 22px; }
+  .rail-phase-label {
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--muted); padding-left: 26px; margin-bottom: 8px; display: block;
+  }
+  .rail-stage {
+    display: flex; align-items: center; gap: 10px; padding: 5px 6px 5px 2px; border-radius: 7px;
+    text-decoration: none; color: var(--ink-soft); font-size: 12.5px; position: relative;
+  }
+  .rail-stage:hover { background: var(--surface-2); }
+  .rail-stage .num {
+    width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--line-strong); background: var(--surface);
+    display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 10px;
+    color: var(--muted); flex-shrink: 0; transition: all .2s;
+  }
+  .rail-stage.done .num { background: var(--seafoam); border-color: var(--seafoam); color: #06231C; }
+  .rail-stage .connector { position: absolute; left: 11px; top: 26px; width: 1.5px; height: 14px; background: var(--line-strong); }
+  .rail-stage:last-child .connector { display: none; }
+  .rail-cross {
+    display: flex; align-items: center; gap: 10px; padding: 5px 6px; border-radius: 7px; color: var(--ink-soft);
+    font-size: 12.5px; text-decoration: none;
+  }
+  .rail-cross:hover { background: var(--surface-2); }
+  .rail-cross .diamond {
+    width: 14px; height: 14px; border-radius: 3px; transform: rotate(45deg); border: 1.5px solid var(--gold);
+    background: var(--surface); flex-shrink: 0; margin: 0 3px;
+  }
+  .rail-cross.done .diamond { background: var(--gold); }
+
+  /* ---------- Main column ---------- */
+  main { padding: 28px clamp(16px, 3vw, 44px) 100px; min-width: 0; }
+  .phase-divider {
+    display: flex; align-items: center; gap: 14px; margin: 44px 0 22px; scroll-margin-top: 20px;
+  }
+  .phase-divider:first-child { margin-top: 4px; }
+  .phase-divider .tag {
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--surface); background: var(--forest); padding: 4px 11px; border-radius: 5px; white-space: nowrap;
+  }
+  .phase-divider .line { flex: 1; height: 1px; background: var(--line-strong); }
+
+  .stage-card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    margin-bottom: 14px; scroll-margin-top: 20px; overflow: hidden;
+  }
+  .stage-card > summary {
+    list-style: none; cursor: pointer; padding: 18px 22px; display: flex; align-items: center; gap: 16px;
+  }
+  .stage-card > summary::-webkit-details-marker { display: none; }
+  .stage-card .stage-num {
+    font-family: var(--font-mono); font-size: 12px; color: var(--muted); width: 30px; flex-shrink: 0;
+  }
+  .stage-card .stage-title { flex: 1; min-width: 0; }
+  .stage-card .stage-title h3 { font-size: 17px; font-weight: 600; }
+  .stage-card .stage-owner { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .stage-card .caret { color: var(--muted); transition: transform .2s; flex-shrink: 0; }
+  .stage-card[open] .caret { transform: rotate(90deg); }
+  .stage-card .stage-check {
+    width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--line-strong); flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 12px; color: transparent;
+  }
+  .stage-card .stage-check.complete { background: var(--seafoam); border-color: var(--seafoam); color: #06231C; }
+  .stage-body { padding: 0 22px 22px; border-top: 1px solid var(--line); }
+  .stage-body > * + * { margin-top: 18px; }
+
+  .next-line {
+    font-size: 14.5px; color: var(--ink-soft); padding: 12px 14px; background: var(--surface-2);
+    border-left: 2px solid var(--seafoam); border-radius: 0 6px 6px 0; margin-top: 16px !important;
+  }
+
+  h4.block-label {
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 8px;
+  }
+
+  .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
+  .steps li { display: flex; gap: 10px; font-size: 14px; color: var(--ink); }
+  .steps li .si {
+    font-family: var(--font-mono); font-size: 11px; color: var(--forest-ink); background: var(--seafoam-wash);
+    width: 19px; height: 19px; border-radius: 5px; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; margin-top: 1px;
+  }
+  .steps code { background: var(--surface-2); border: 1px solid var(--line); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+
+  .gate-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+  .gate-item {
+    display: flex; align-items: flex-start; gap: 10px; font-size: 13.5px; padding: 8px 10px;
+    border: 1px solid var(--line); border-radius: 7px; background: var(--surface-2);
+  }
+  .gate-item input[type="checkbox"] {
+    appearance: none; width: 17px; height: 17px; border-radius: 5px; border: 1.5px solid var(--line-strong);
+    background: var(--surface); flex-shrink: 0; margin-top: 1px; cursor: pointer; position: relative;
+  }
+  .gate-item input[type="checkbox"]:checked { background: var(--seafoam); border-color: var(--seafoam); }
+  .gate-item input[type="checkbox"]:checked::after {
+    content: "✓"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; color: #06231C;
+  }
+  .gate-item .g-label { flex: 1; }
+  .gate-item .g-auto {
+    font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); display: block; margin-top: 2px;
+  }
+  .gate-item .g-judgement { font-size: 10.5px; color: var(--gold); font-style: italic; }
+
+  .verify-box {
+    border: 1px dashed var(--line-strong); border-radius: 7px; padding: 12px 14px; font-size: 13px;
+  }
+  .verify-box .vt { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--forest); margin-bottom: 6px; }
+  :root[data-theme="dark"] .verify-box .vt, @media (prefers-color-scheme:dark){ }
+
+  .callout {
+    border-radius: 7px; padding: 12px 14px; font-size: 13.5px; border: 1px solid;
+  }
+  .callout.warn { background: var(--gold-wash); border-color: var(--gold); color: var(--ink); }
+  .callout.gap { background: var(--red-wash); border-color: var(--red); color: var(--ink); }
+  .callout .ct { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 4px; display: block; }
+  .callout.warn .ct { color: var(--gold); }
+  .callout.gap .ct { color: var(--red); }
+
+  .cross-section .stage-card > summary { }
+  .cross-section .stage-card .stage-num { color: var(--gold); }
+
+  /* ---------- Plain-English primer + role cards ---------- */
+  .prose-card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 20px 22px; margin-bottom: 14px; scroll-margin-top: 20px;
+  }
+  .prose-card h3 { font-size: 18px; font-weight: 600; margin-bottom: 3px; }
+  .prose-card .sub { font-size: 12.5px; color: var(--muted); margin-bottom: 14px; }
+  .prose-card p { font-size: 14px; color: var(--ink-soft); margin: 0 0 10px; max-width: 68ch; }
+  .prose-card p:last-child { margin-bottom: 0; }
+
+  .tier-badge {
+    display: inline-block; font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em;
+    text-transform: uppercase; padding: 3px 9px; border-radius: 20px; margin-bottom: 8px;
+  }
+  .tier-2 { background: var(--seafoam-wash); color: var(--forest-ink); }
+  .tier-3 { background: var(--gold-wash); color: var(--gold); }
+  .tier-4 { background: var(--red-wash); color: var(--red); }
+
+  .plain-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .plain-list li { display: flex; gap: 11px; font-size: 14px; color: var(--ink); }
+  .plain-list li .marker {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--seafoam);
+    flex-shrink: 0; margin-top: 7px;
+  }
+  .plain-list li b { color: var(--ink); }
+  .plain-list li span.detail { display: block; color: var(--muted); font-size: 13px; margin-top: 1px; }
+
+  /* Role cards — the numbered order is real: it is the order things happen. */
+  .role-step { display: flex; gap: 13px; padding: 11px 0; border-top: 1px solid var(--line); }
+  .role-step:first-of-type { border-top: none; padding-top: 4px; }
+  .role-step .n {
+    font-family: var(--font-mono); font-size: 11px; color: var(--surface);
+    background: var(--forest); width: 22px; height: 22px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px;
+  }
+  .role-step .body { flex: 1; min-width: 0; }
+  .role-step .body strong { display: block; font-size: 14px; color: var(--ink); margin-bottom: 2px; }
+  .role-step .body span { font-size: 13px; color: var(--ink-soft); }
+
+  .can-cannot { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; margin-top: 16px; }
+  @media (max-width: 620px) { .can-cannot { grid-template-columns: 1fr; } }
+  .can-cannot > div { border-radius: 8px; padding: 13px 15px; border: 1px solid; }
+  .can-box { background: var(--seafoam-wash); border-color: var(--seafoam); }
+  .cannot-box { background: var(--red-wash); border-color: var(--red); }
+  .can-cannot h4 {
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+    margin-bottom: 7px;
+  }
+  .can-box h4 { color: var(--forest-ink); }
+  .cannot-box h4 { color: var(--red); }
+  .can-cannot ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+  .can-cannot li { font-size: 13px; color: var(--ink); }
+
+  /* Who gets told what — a table because it is a lookup, not a narrative. */
+  .matrix-wrap { overflow-x: auto; margin-top: 4px; }
+  table.matrix { border-collapse: collapse; width: 100%; font-size: 13px; min-width: 520px; }
+  table.matrix th, table.matrix td {
+    text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line);
+  }
+  table.matrix th {
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--muted); font-weight: 500;
+  }
+  table.matrix td:first-child { color: var(--ink); }
+  table.matrix .yes { color: var(--forest-ink); font-weight: 600; }
+  table.matrix .no { color: var(--muted); }
+  :root:not([data-theme="light"]) table.matrix .yes { color: var(--seafoam); }
+  :root[data-theme="dark"] table.matrix .yes { color: var(--seafoam); }
+
+  footer.colophon {
+    padding: 30px clamp(16px,3vw,44px) 60px; color: var(--muted); font-size: 12.5px; border-top: 1px solid var(--line); margin-top: 30px;
+  }
+
+  @media (max-width: 860px) {
+    .shell { grid-template-columns: 1fr; }
+    .rail { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--line); padding: 20px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .progress-fill, .caret { transition: none; }
+  }
+</style>
+
+<div class="masthead">
+  <div class="eyebrow"><span class="rule"></span>CROWTHER OS &middot; DELIVERY HANDBOOK</div>
+  <h1>Running a project, intake to closure</h1>
+  <p class="lede">What the system does, what your role is expected to do when a project reaches you, and how to test all of it. Written for everyone in the delivery flow &mdash; the Senior Partner, TSDs, Solution Architects and administrators &mdash; not only for whoever is doing the QA.</p>
+  <div class="meta-row">
+    <span class="meta-chip"><span class="dot"></span>17 stages &middot; 6 phases</span>
+    <span class="meta-chip"><span class="dot" style="background:var(--gold)"></span>Roles &middot; what to do when it lands</span>
+    <span class="meta-chip"><span class="dot" style="background:var(--muted)"></span>local: localhost:3000 / :8000</span>
+  </div>
+  <p class="lede" style="margin-top:14px;font-size:13px">
+    <b>Start here if you are new to it:</b> read <b>What was built</b> for the plain-English version, then <b>your own role card</b>. The seventeen stage cards are the detail underneath; the test sections at the bottom are for whoever is checking the build.
+    <br><br>
+    <b>One naming change:</b> there are no Project Managers any more. The role is the <b>TSD</b> &mdash; the same person, the same ownership, a name that matches what the job actually is. Anywhere you still see &ldquo;PM&rdquo;, it means TSD.
+  </p>
+  <div class="progress-wrap">
+    <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="progress-label"><span id="progressText">0 of 0 checks done</span><span>saved in this browser</span></div>
+  </div>
+  <button class="reset-btn" id="resetBtn">Reset all checks</button>
+</div>
+
+<div class="shell">
+  <nav class="rail" id="rail" aria-label="Stage navigator"></nav>
+  <main id="main"></main>
+</div>
+
+<footer class="colophon">
+  Written against the running system rather than the plan: gate labels and conditions are quoted as the code defines them, and every UI step names a control that exists. Where something is deliberately restricted &mdash; who may name an architect, who may override a gate &mdash; the restriction is the design, not an oversight. Checkboxes are saved in your own browser and nowhere else.
+</footer>
+
+<script>
+const PHASES = [
+  { key: "intake", label: "Intake", accent: "#4C5B6B" },
+  { key: "definition", label: "Definition", accent: "#1FB58A" },
+  { key: "design", label: "Design", accent: "#2D6A4F" },
+  { key: "validation", label: "Validation", accent: "#C6A15B" },
+  { key: "delivery", label: "Delivery", accent: "#1B4332" },
+  { key: "close", label: "Close", accent: "#14342A" },
+];
+
+// One entry per stage. gates mirror STAGE_GATES exactly (label + auto key,
+// null = human judgement). steps are the concrete UI path verified against
+// NewProjectForm.jsx / ProjectWorkspace.jsx / flow.py today.
+const STAGES = [
+  {
+    n: 1, key: "intake", phase: "intake", owner: "Commercial",
+    title: "Client Project Intake",
+    next: "Capture the client's objective and everything already said, then hand it to delivery.",
+    gates: [
+      { label: "Project form submitted with client and outcome", auto: "has_outcome" },
+      { label: "Source information attached (brief, transcript or document)", auto: "has_source" },
+    ],
+    steps: [
+      'From the Dashboard or <code>/flow</code>, click <b>New Project</b>.',
+      'Fill <b>Project Name</b> and <b>Client Name</b> &mdash; both required.',
+      'Fill <b>Desired outcome</b> &mdash; required, and is exactly what satisfies <code>has_outcome</code>.',
+      'Satisfy <code>has_source</code> one of three ways: paste text under <b>The brief as received</b>, add a conversation under <b>Conversations so far</b> (paste text or upload a <code>.txt/.md/.pdf/.docx/.doc</code> file &mdash; text is extracted automatically), or attach a file under <b>Documents</b>.',
+      'Optionally set <b>Select TSD</b> now &mdash; it settles stage 2 immediately and this project skips straight to stage 3 on creation. Leave it to test stage 2 separately.',
+      'Submit. Confirm the project lands at stage 1 and appears in <code>/flow/projects</code>.',
+    ],
+    verify: 'GET <code>/api/flow/projects/{id}/gate</code> &rarr; both conditions <code>satisfied: true</code>, <code>can_advance: true</code>.',
+  },
+  {
+    n: 2, key: "tsd_assignment", phase: "intake", owner: "Senior Partner",
+    title: "TSD Assignment",
+    next: "Name the TSD who will own this client and this project.",
+    gates: [ { label: "TSD selected", auto: "has_tsd" } ],
+    steps: [
+      'Skip this stage entirely if a TSD was already chosen at intake &mdash; the project opens directly at stage 3.',
+      'Otherwise, click the <b>Advance</b> button (project page or the pipeline board) to move stage 1&rarr;2. The confirmation dialog (<code>StructuredStageModal</code>) shows a <b>TSD</b> field for this specific target stage &mdash; every active person, TSD-holders labelled, and the Advance button stays disabled until one is chosen.',
+      'Choosing one and submitting stamps <code>tsd_id</code>/<code>tsd_name</code> onto the project as part of that same 1&rarr;2 move &mdash; the project lands directly at stage 2 already carrying its TSD, so the gate is satisfied on arrival.',
+      'The 2&rarr;3 move itself carries a second refusal as a backstop, in case a TSD is ever missing here some other way: <i>&ldquo;Name the TSD before the project moves to them.&rdquo;</i>',
+    ],
+  },
+  {
+    n: 3, key: "tsd_receives", phase: "intake", owner: "TSD",
+    title: "TSD Receives Project",
+    next: "TSD reads the source material and accepts ownership.",
+    gates: [
+      { label: "TSD has reviewed the source information", auto: null },
+      { label: "TSD accepts ownership of the project", auto: "tsd_accepted" },
+    ],
+    steps: [
+      'Sign in as the named TSD (or an admin). Open the project &mdash; the <b>Overview</b> tab shows the desired outcome and any Product Brief.',
+      'Under the project title there is a panel with three buttons: <b>Received</b>, <b>Acknowledged</b>, <b>Accepted</b>. Press <b>Received</b> straight away &mdash; the Senior Partner is told immediately, in-app and by email.',
+      'Read the brief and any transcripts under the <b>Documents</b> drawer, then press <b>Acknowledged</b>.',
+      'Press <b>Accepted</b> when you are taking the project on. Add a note if there is something the Senior Partner should know with it.',
+      'Confirm the gate: before accepting, <b>TSD accepts ownership</b> reads unsatisfied and the project cannot advance. After accepting, it clears.',
+    ],
+    verify: 'This used to be a tick somebody gave themselves, with nothing behind it. It is now a real condition &mdash; only an outright <b>Accepted</b> satisfies it. <b>Received</b> and <b>Acknowledged</b> tell the Senior Partner where you are without committing you.',
+  },
+  {
+    n: 4, key: "discovery", phase: "definition", owner: "TSD",
+    title: "TSD Intake and Discovery",
+    next: "Talk to the client, fill the gaps, and write down what they actually need.",
+    gates: [
+      { label: "Client context understood and recorded", auto: null },
+      { label: "At least three requirements captured", auto: "has_requirements" },
+      { label: "Open questions listed or resolved", auto: null },
+    ],
+    steps: [
+      'Open the project&rsquo;s <b>Product</b> tab.',
+      'Under <b>Requirements</b>, add at least three &mdash; each needs a description; category/priority/status default sensibly.',
+      'Requirements before stage 11 (Validation) are freely editable; this refusal only starts once scope freezes, so there\'s nothing special to unlock here.',
+    ],
+    verify: 'GET the gate for this project &mdash; <code>has_requirements</code> flips true once <code>requirements.count_documents &gt;= 3</code> for this project.',
+  },
+  {
+    n: 5, key: "product_definition", phase: "definition", owner: "TSD",
+    title: "Product Definition and Outcome Brief",
+    next: "Turn discovery into a Product Brief the client would recognise as their problem.",
+    gates: [
+      { label: "Product Brief exists", auto: "has_product_brief" },
+      { label: "Problem and outcomes defined", auto: null },
+      { label: "Success metrics defined", auto: null },
+      { label: "Scope boundaries set", auto: null },
+    ],
+    steps: [
+      'Still on the <b>Product</b> tab, open the <b>Product Brief</b> section and start a new version.',
+      'Fill at minimum <b>Problem</b> (required); <b>Outcomes</b>, <b>Success metrics</b>, <b>In scope</b>, <b>Out of scope</b>, <b>Assumptions</b> are all there and worth filling for a real test.',
+      'Save. A brief is versioned and never overwritten &mdash; saving again creates v2, not an edit.',
+    ],
+    verify: '<code>has_product_brief</code> is just &ldquo;does at least one exist&rdquo; &mdash; <code>product_briefs.count_documents &gt; 0</code>.',
+  },
+  {
+    n: 6, key: "request_architect", phase: "design", owner: "Senior Partner",
+    title: "Request Solution Architect",
+    next: "Request a Solution Architect. The Senior Partner selects; this stage waits for them.",
+    gates: [ { label: "Senior Partner has selected the Solution Architect", auto: "has_architect" } ],
+    steps: [
+      'As the TSD, on the project page, click <b>Request an architect</b> in the Next Step panel.',
+      'Switch to a Senior Partner account (or <code>super_admin</code>/<code>mini_admin</code>, which the panel also treats as the Senior Partner view). The panel now shows <b>Choose the Solution Architect</b> with a list of engineers carrying <code>can_architect</code>.',
+      'If the list is empty: an administrator has to grant <code>can_architect</code> on an engineer&rsquo;s account first &mdash; there\'s no candidate to select otherwise.',
+      'Click <b>Select</b> next to a name. This advances the stage immediately &mdash; there is no separate confirm step, by design: the wait is the point, and it should end the moment the block clears.',
+    ],
+    verify: 'Project now carries <code>architect_id</code>/<code>architect_name</code>; stage reads 7.',
+  },
+  {
+    n: 7, key: "scoping", phase: "design", owner: "TSD",
+    title: "Product Discovery and Scoping",
+    next: "Architect, designer and TSD turn the brief into a scoped, feasible product.",
+    gates: [
+      { label: "At least three requirements captured", auto: "has_requirements" },
+      { label: "User journeys defined", auto: "has_journeys" },
+      { label: "Technical feasibility validated", auto: null },
+      { label: "Integrations and data needs identified", auto: null },
+    ],
+    steps: [
+      'Requirements gate is almost certainly already satisfied from stage 4 &mdash; add more if the scope grew.',
+      'On the <b>Product</b> tab, add at least one entry under <b>User Journeys</b> (title, persona, steps).',
+      'The two judgement conditions have no UI control &mdash; note them in a requirement description or the brief, then advance.',
+    ],
+  },
+  {
+    n: 8, key: "architecture", phase: "design", owner: "Solution Architect",
+    title: "Solution Architecture",
+    next: "Solution Architect uploads the architecture.",
+    gates: [
+      { label: "Architecture document uploaded", auto: "has_architecture" },
+      { label: "Technical decisions recorded", auto: null },
+      { label: "Solution Architect confirms the architecture is ready", auto: null },
+    ],
+    steps: [
+      'Open the <b>Architecture</b> drawer (icon rail, top of the project page).',
+      'Only this project&rsquo;s named architect sees the upload control &mdash; everyone else sees &ldquo;Only this project&rsquo;s Solution Architect uploads its architecture.&rdquo;',
+      'Upload a <code>.md/.txt/.pdf/.png/.jpg/.svg/.drawio</code> file. Markdown is what the product actually expects to receive.',
+      'Log at least one entry in the <b>Decisions &amp; risks</b> drawer to cover the &ldquo;technical decisions recorded&rdquo; judgement call.',
+    ],
+    verify: '<code>architecture_documents.count_documents &gt; 0</code> for the project.',
+  },
+  {
+    n: 9, key: "demo", phase: "validation", owner: "Solution Architect",
+    title: "Mockup and Demo",
+    next: "Build something tangible and show it to the client.",
+    gates: [
+      { label: "Demo round created with materials", auto: "has_demo_materials" },
+      { label: "Demo held with the client", auto: "demo_held" },
+    ],
+    steps: [
+      'Open the <b>Demos</b> drawer and create round 1.',
+      'Attach materials either way: paste a prototype link, or upload a file &mdash; both count toward <code>has_demo_materials</code>.',
+      'Click <b>Mark held</b> once the demo has actually happened with the client.',
+    ],
+    gap: '10 and 9 form a loop (&#167;9.3): declining or wanting changes at stage 10 sends the project back here as round 2, no reason required for that specific backward move. Worth testing the loop at least once, not just the straight path.',
+  },
+  {
+    n: 10, key: "feedback", phase: "validation", owner: "TSD",
+    title: "Client Feedback and Iteration",
+    next: "Capture what the client said and decide whether to iterate or take it to validation.",
+    gates: [
+      { label: "Client feedback captured against this demo round", auto: "has_feedback" },
+      { label: "Feedback classified and impact understood", auto: null },
+      { label: "Artefacts updated where the feedback required it", auto: null },
+    ],
+    steps: [
+      'Open the <b>Client feedback</b> drawer and capture what was said &mdash; only this project&rsquo;s TSD can.',
+      'Classify it by hand: <code>within_scope</code>, <code>scope_change</code>, <code>question</code>, or <code>rejected</code>. Before the scope freeze (still true here, freeze is stage 11) a <code>scope_change</code> classification just edits the requirement set directly.',
+      'Decide the outcome on the relevant demo round, back in the <b>Demos</b> drawer: <b>Needs another round</b> loops to stage 9 (round 2); <b>Client validated</b> clears the way to stage 11; <b>Client declined</b> sets the project status to <code>lost</code>.',
+    ],
+  },
+  {
+    n: 11, key: "validation", phase: "validation", owner: "TSD",
+    title: "Validation and Readiness",
+    next: "Get the client to validate. Scope freezes the moment they do.",
+    gates: [
+      { label: "Client has validated the direction", auto: "demo_validated" },
+      { label: "Final scope confirmed", auto: null },
+      { label: "Acceptance criteria confirmed", auto: null },
+    ],
+    steps: [
+      'Confirm at least one demo round carries outcome <code>validated</code> (set in stage 10).',
+      'Advance to stage 12. Watch for the amber notice above the gate checklist: <i>&ldquo;Validating freezes scope. After this, a new or changed requirement becomes a scope change with a decision behind it.&rdquo;</i>',
+    ],
+    verify: 'After the move: project now carries <code>scope_frozen: true</code>, <code>scope_frozen_at</code>, <code>validated_at</code>, and <code>client_status: "validated"</code>. Try editing a requirement directly now &mdash; it should refuse with <i>&ldquo;Scope is frozen for this project. Raise a scope change instead.&rdquo;</i> That refusal is the thing to actually prove works.',
+  },
+  {
+    n: 12, key: "delivery_prep", phase: "delivery", owner: "TSD",
+    title: "Delivery Preparation and Pod Formation",
+    next: "Form the pod, set the milestones, and raise any talent you need.",
+    gates: [
+      { label: "Pod formed", auto: "has_pod" },
+      { label: "Milestones defined", auto: "has_milestones" },
+      { label: "Talent requirements raised where needed", auto: null },
+      { label: "Delivery plan agreed", auto: null },
+    ],
+    steps: [
+      'On the <b>Build</b> tab, add at least one internal pod member under the pod section.',
+      'This is also the first stage talent requirements are allowed at all (&#167;8, DECISION 4) &mdash; open the <b>Talent</b> drawer, raise a requirement (role, seniority, quantity, engagement type, justification), then confirm it as the TSD. See the cross-cutting section below for sourcing it all the way to deployed.',
+      'Still on the <b>Build</b> tab, click <b>Add</b> on the Milestones section: name it, optionally a deliverable, a target date and a payment %. Save.',
+      'Click <b>Mark delivered</b> on one to confirm that path too &mdash; it should show struck through with a delivered date once done.',
+    ],
+  },
+  {
+    n: 13, key: "build", phase: "delivery", owner: "Solution Architect",
+    title: "Engineering and Build",
+    next: "Build it. Work is tracked on the project board.",
+    gates: [
+      { label: "Build work complete on the board", auto: "board_build_clear" },
+      { label: "Technical documentation updated", auto: null },
+    ],
+    steps: [
+      'Moving into this stage auto-creates the board: nine columns &mdash; UI/UX Tasks, Dependencies, Backlog, Frontend Todo, Backend Todo, QA Review, Ready For Merge, Design QA, Done &mdash; seeded once, idempotently.',
+      'From the <b>Build</b> tab, follow <b>Open the board</b> to <code>/tasks?project=&#123;id&#125;</code>.',
+      'Add a card to any column that isn\'t QA Review or Done. Reload the gate &mdash; <code>board_build_clear</code> should now read <code>false</code> and block advancing.',
+      'Drag that card into QA Review or Done (or delete it). Gate should flip back to <code>true</code>.',
+    ],
+    verify: 'This is the exact bug fixed this session &mdash; confirm it actually toggles, don\'t just assume it. GET the gate before and after moving the card.',
+  },
+  {
+    n: 14, key: "qa", phase: "delivery", owner: "Solution Architect",
+    title: "QA and Testing",
+    next: "Test it against the acceptance criteria and clear the QA Review column.",
+    gates: [
+      { label: "QA Review column clear", auto: "board_qa_clear" },
+      { label: "Acceptance criteria tested", auto: null },
+      { label: "Readiness decision recorded", auto: null },
+    ],
+    steps: [
+      'Put a card in the <b>QA Review</b> column specifically. Confirm <code>board_qa_clear</code> reads <code>false</code>.',
+      'Move it to <b>Design QA</b> or <b>Done</b>. Confirm the gate clears.',
+      'Record the readiness call as a decision in the <b>Decisions &amp; risks</b> drawer.',
+    ],
+  },
+  {
+    n: 15, key: "acceptance", phase: "close", owner: "TSD",
+    title: "Client Acceptance and UAT",
+    next: "Client tests it themselves and accepts.",
+    gates: [
+      { label: "Client acceptance received", auto: null },
+      { label: "Outstanding acceptance issues resolved", auto: null },
+    ],
+    steps: [
+      'Both conditions are judgement calls. Log the client&rsquo;s acceptance as client feedback or a decision so there\'s a record, then advance.',
+    ],
+  },
+  {
+    n: 16, key: "handover", phase: "close", owner: "TSD",
+    title: "Handover",
+    next: "Hand it over so the client can run it without us.",
+    gates: [
+      { label: "Knowledge transfer complete", auto: null },
+      { label: "Handover documentation delivered", auto: null },
+      { label: "Operational readiness confirmed", auto: null },
+    ],
+    steps: [
+      'Upload handover documentation via the <b>Documents</b> drawer.',
+      'All three conditions are judgement calls with no data check &mdash; confirm each with whoever ran the handover, then advance.',
+    ],
+  },
+  {
+    n: 17, key: "closure", phase: "close", owner: "TSD",
+    title: "Project Closure",
+    next: "Close it out and write down what we learned.",
+    gates: [
+      { label: "Closure checklist complete", auto: "closure_complete" },
+      { label: "Closure report produced", auto: null },
+    ],
+    steps: [
+      'Open the <b>Closure checklist</b> drawer. Ten items, seeded when the project was created: Client deliverables complete, Client acceptance received, QA complete, Documentation complete, Technical handover complete, Contract obligations complete, Talent assignments closed, Outstanding issues resolved, Closure report produced, Lessons learned captured.',
+      'Check each one off &mdash; every checkbox is a real API call (<code>PATCH /flow/projects/&#123;id&#125;/closure-checklist/&#123;index&#125;</code>), stamped with who and when.',
+      'Confirm <code>closure_complete</code> only flips true once literally all ten are checked &mdash; try advancing with nine checked first and confirm it still blocks.',
+      'This is the last stage: the Next Step panel should now read &ldquo;This project is closed.&rdquo;',
+    ],
+    verify: 'Project now carries <code>completed_at</code>.',
+  },
+];
+
+const CROSS = [
+  {
+    key: "talent", title: "Talent requirement &rarr; deployed pod member",
+    gate: "Full state machine, &#167;8",
+    steps: [
+      'With the project at stage 12+: in the <b>Talent</b> drawer, raise a requirement and confirm it as the TSD &mdash; every active <code>talent_sd</code> account gets notified.',
+      'As TalentSD, source a candidate from the internal database against the requirement &mdash; creates an assignment in <code>shortlisted</code>.',
+      'Walk it through <b>Move to interview</b> &rarr; <b>Mark selected</b> &rarr; <b>Send offer</b> &rarr; <b>Mark accepted</b> &rarr; <b>Start contracting</b> (notifies People &amp; Ops) &rarr; <b>Mark signed</b> &rarr; <b>Deploy to pod</b>.',
+      'Deploying creates (or reuses) a real user account with <code>function_role: engineer</code>, <code>employment_type: contract</code>, and adds them to the project&rsquo;s pod &mdash; confirm they now appear on the Build tab and the requirement shows <code>1 of N filled</code>.',
+      'Test one failure branch too: <b>Decline</b> an offer with a reason &mdash; confirm the requirement reopens (<code>attempt_count</code> increments) and TalentSD is notified.',
+    ],
+  },
+  {
+    key: "overalloc", title: "Pod over-allocation warning",
+    gate: "GET /api/delivery/talent/over-allocated",
+    steps: [
+      'Deploy the same person onto two projects&rsquo; pods with <code>allocation_pct</code> summing past 100 between them.',
+      'Call the endpoint as an admin &mdash; confirm that person appears with <code>total_pct &gt; 100</code> and both projects listed.',
+    ],
+  },
+  {
+    key: "scopechange", title: "Scope change after freeze",
+    gate: "&#167;9.4, threshold notify",
+    steps: [
+      'On a project past stage 11 (scope frozen), open the <b>Scope changes</b> drawer and raise one with a timeline or cost impact.',
+      'As the TSD, <b>Approve</b> it &mdash; confirm it mints a new requirement with <code>status: committed</code>, <code>source_type: scope_change</code>.',
+      'Raise a second one with enough impact to cross the threshold (&gt;2 days or &gt;5%) and approve it &mdash; a Senior Partner should be notified, not asked. Confirm via their notifications, not just the API response.',
+      'Raise a third and <b>Reject</b> it &mdash; confirm it stays visible on the project rather than disappearing.',
+    ],
+  },
+  {
+    key: "decisionsrisks", title: "Decisions &amp; risks log",
+    gate: "No gate &mdash; always available",
+    steps: [
+      'Log one decision and one risk on any project, any stage.',
+      'Move the risk from <code>open</code> to <code>mitigated</code>, then to <code>closed</code>, confirming the action buttons change at each state.',
+    ],
+  },
+  {
+    key: "contractexpiry", title: "Contract expiry sweep",
+    gate: "Scheduled job: contract-expiry-sweep",
+    steps: [
+      'Set a test account to <code>employment_type: contract</code> with <code>contract_end</code> 3 days out.',
+      'Run the job by hand: <code>POST /internal/run-scheduled-job?job=contract-expiry-sweep</code>.',
+      'Confirm People &amp; Ops gets notified and <code>contract_flagged_at</code> is stamped &mdash; then set <code>contract_end</code> to today and re-run: confirm the account is disabled, pod rows closed, and any deployed assignment ends with reason <code>contract_ended</code>.',
+    ],
+  },
+  {
+    key: "units", title: "Business units: hide, reorder, HR access",
+    gate: "Admin-only, no stage",
+    steps: [
+      'As HR or a mini_admin (not just super_admin), open <b>Business Units Admin</b> &mdash; confirm the page and its API calls succeed.',
+      'Hide a unit; confirm it disappears from the sidebar and dashboard grid for everyone, but still lists (marked Hidden) in the admin screen.',
+      'Drag two units to reorder them; confirm the sidebar order matches after a reload.',
+      'Delete a unit, then restart the backend; confirm it does not come back.',
+    ],
+  },
+];
+
+// ---------------------------------------------------------------------------
+// What was built, in plain English
+// ---------------------------------------------------------------------------
+// No jargon, no file names. Somebody who has never seen the code should be able
+// to read this and know what changed about their working day.
+const PRIMER = [
+  {
+    key: "tier2", tier: 2, title: "Delivery mechanics",
+    sub: "The machinery a project needs once it is real",
+    lede: "Tier 1 made a project travel from a client conversation to closure. Tier 2 is everything delivery actually needs on the way.",
+    points: [
+      ["Talent and contracts, end to end",
+       "Raise a need for a person, source a candidate, interview, offer, contract, and deploy them onto the pod — all in one place, with the right people told at each step."],
+      ["Contracts stop quietly expiring",
+       "People &amp; Operations is warned seven days before a contractor's contract ends. If it is not renewed, access closes on the day rather than months later."],
+      ["Scope changes became decisions, not edits",
+       "Once the client has validated the direction, a new request can no longer be quietly typed into the requirements. It becomes a scope change somebody decides on, with a record. If it moves the timeline by more than two days or the cost by more than 5%, the Senior Partner is told automatically."],
+      ["Decisions, risks and a closure checklist",
+       "Lightweight logs, and ten closure items a project must genuinely complete before it can be called done."],
+      ["Notifications go to the person affected",
+       "Not a broadcast. Each one says what happened, why you are getting it, and links to the thing it is about."],
+    ],
+  },
+  {
+    key: "tier3", tier: 3, title: "Control and visibility",
+    sub: "Seeing across everything at once",
+    lede: "Tier 1 and 2 are about running one project. Tier 3 is about not having to open seventeen of them to find out how the work is going.",
+    points: [
+      ["The Control Tower",
+       "Every project as one row: what stage, who owns it, how long since it moved, what is blocking it, how far through closure it is."],
+      ["&ldquo;Needs attention&rdquo;",
+       "Only the things somebody has to act on, worst first — a project gone red, a gate someone overrode, a scope change that moved money, a project waiting on the Senior Partner, an overdue milestone. A screen that lists everything tells you nothing."],
+      ["Blockers",
+       "What is holding a project up that is not a task on the board: a client who has not come back, a third party, a contract, another project. These had nowhere to live before."],
+      ["Traceability",
+       "Which agreed requirement each piece of work delivers. It answers two questions nothing else could: what did we agree that nobody has started, and what are we building that nobody asked for."],
+      ["Reports that write themselves",
+       "The project report — and at the end, the closure report — is assembled from records people already made at the time. Nobody types it up afterwards."],
+      ["Search that goes inside projects",
+       "Not just names. It reaches requirements, decisions, risks, what the client said, and the text of uploaded briefs and transcripts."],
+    ],
+  },
+  {
+    key: "tier4", tier: 4, title: "Intelligence",
+    sub: "Suggestions, never decisions",
+    lede: "Tier 4 puts suggestions inside panels that already exist. It never adds a screen and it never decides anything. Every suggestion is something a person then accepts, edits or ignores.",
+    points: [
+      ["Half of it needs no AI at all",
+       "Choosing a TSD, choosing an architect and reading a project's health are ranking problems over records the system already keeps — who is loaded, who knows this client, what is blocked. Those work today, cost nothing, and show you the reasoning so you can check it."],
+      ["Every suggestion says where it came from",
+       "<b>From your records</b> means it was worked out from real, checkable data. <b>Drafted by AI</b> means a language model wrote it and it can be wrong. You should trust those two differently, so the system never blurs them."],
+      ["It fills the form. You save it.",
+       "Accepting a suggestion fills in the same form you would have typed. Nothing is written to a project until you press save — and the same permission checks apply either way."],
+      ["The parts that need an AI key",
+       "Drafting the impact of a scope change, suggesting risks nobody has logged, pulling requirements out of a transcript, and writing the closure summary. These wait until a working AI key is configured; everything else carries on without one."],
+    ],
+  },
+];
+
+// ---------------------------------------------------------------------------
+// What your role does when a project reaches you
+// ---------------------------------------------------------------------------
+const ROLES = [
+  {
+    key: "role-tsd", title: "You are the TSD on a project",
+    sub: "You own the client, the project's state, and its progress through every stage",
+    lede: "You will hear about it twice: a notification in the bell at the top of the screen, and an email. The project appears on your dashboard straight away.",
+    steps: [
+      ["Say you have it", "Open the project. Under the title there are three buttons: <b>Received</b>, <b>Acknowledged</b>, <b>Accepted</b>. Each one tells the Senior Partner immediately, so press <b>Received</b> as soon as you see it rather than waiting until you have read everything."],
+      ["Read what came with it", "The Overview tab has what the client asked for. The <b>Documents</b> drawer has the brief and any call transcripts. There is no separate briefing pack — this is it, and it stays current."],
+      ["Accept it", "<b>Accepted</b> is the one that commits you, and it is what allows the project to move past stage 3. Add a note if there is something the Senior Partner should know."],
+      ["Discovery and the Product Brief", "Stages 4 and 5. Capture at least three requirements on the <b>Product</b> tab, then write the Product Brief. The brief is versioned — saving again creates a new version rather than overwriting the old one."],
+      ["Ask for an architect", "Stage 6. Press <b>Request an architect</b>. Only the Senior Partner can name one, and this is the single point in the whole flow that waits on them."],
+      ["Demo, feedback, validation", "Stages 9 to 11. Attach what the client will be shown, mark it held, capture what they said, and record the outcome. <b>Client validated</b> is the moment scope freezes."],
+      ["Form the pod and set milestones", "Stage 12, on the <b>Build</b> tab. From here you can also raise talent requirements if you need people."],
+      ["Close it out", "Stage 17. Work through the ten closure items. The <b>Report</b> drawer assembles the closure report from what the project already recorded."],
+    ],
+    can: [
+      "Move the project through <b>every</b> stage, including ones the Senior Partner owns — so nothing stalls while they are busy",
+      "Set project health (anything other than green needs a reason, and red tells the Senior Partner)",
+      "Approve, reject or defer scope changes",
+      "Override a gate that is not met — it is recorded and the Senior Partner is told",
+      "Capture client feedback — you are the single channel for anything the client says",
+    ],
+    cannot: [
+      "Name the Solution Architect — that is the Senior Partner&rsquo;s alone",
+      "Start a brand new project, unless the Senior Partner has granted you that specifically",
+      "Change a requirement&rsquo;s wording once scope is frozen — raise a scope change instead",
+    ],
+  },
+  {
+    key: "role-architect", title: "You are the Solution Architect on a project",
+    sub: "You own the technical shape of it, and you move it through your own stages yourself",
+    lede: "You are told the moment the Senior Partner names you — bell and email. You read the same requirements, journeys, brief and transcripts everyone else reads; there is deliberately no separate architect briefing, because a copy goes stale.",
+    steps: [
+      ["Read the project", "Overview and <b>Product</b> tabs for what has been agreed. <b>Documents</b> for the brief and transcripts. <b>Decisions &amp; risks</b> for anything already flagged."],
+      ["Upload the architecture", "Stage 8, the <b>Architecture</b> drawer. Only you can — it belongs to the person accountable for it. Markdown is what the product expects, but PDFs and images are accepted."],
+      ["Record your technical decisions", "The <b>Decisions &amp; risks</b> drawer. This is what makes the architecture readable to somebody who joins later."],
+      ["Advance your own stage", "When the work of your stage is done, press <b>Advance</b> yourself. You do not need to ask the TSD to click it for you."],
+      ["Build and QA", "Stages 13 and 14. The board is created automatically when the project reaches build, with nine columns including Design QA. Its shape is yours to change."],
+      ["Raise the people you need", "The <b>Talent</b> drawer, from stage 12 onwards. You raise the requirement; the TSD confirms it."],
+    ],
+    can: [
+      "Advance the four stages you own: <b>Solution Architecture</b>, <b>Mockup and Demo</b>, <b>Engineering and Build</b>, <b>QA and Testing</b>",
+      "Upload and version the architecture",
+      "Change the board&rsquo;s columns and structure",
+      "Raise talent requirements",
+      "Record decisions and risks",
+    ],
+    cannot: [
+      "Move a stage that is not one of yours — ask the TSD",
+      "Move a project <i>backwards</i> — that is a correction to project state, and it is the TSD&rsquo;s",
+      "Override a gate that is not met — ask the TSD, who is accountable for the whole project",
+      "Name yourself, or anyone else, as architect",
+    ],
+  },
+  {
+    key: "role-sp", title: "You are the Senior Partner",
+    sub: "One reserved decision, and everything else is oversight",
+    lede: "The system is built so you sit on the critical path exactly once, on purpose, and are otherwise told rather than asked.",
+    steps: [
+      ["Open the project", "Only you and administrators can start a new project. You can hand that to a named TSD when you are going to be unavailable — it is a per-person setting on their account, and you can take it back."],
+      ["Name the architect", "Stage 6, and it is yours alone. No TSD and no architect can do this. The project waits here until you act, which is deliberate."],
+      ["Watch the Control Tower", "<b>Crowther OS &rarr; Control Tower</b> opens on <b>Needs attention</b>: only the things that need somebody, worst first."],
+      ["Read what you are told", "You are informed, not asked, about: a TSD receiving or accepting a project, a gate being overridden, a project going red, and an approved scope change that moved time or money."],
+    ],
+    can: [
+      "Advance any project through any stage",
+      "Override a gate that is not met",
+      "Name the Solution Architect &mdash; <b>only you</b>",
+      "Start new projects, and grant that to individual TSDs",
+    ],
+    cannot: [
+      "Nothing in the delivery flow is withheld from you &mdash; the limits above exist to protect other people&rsquo;s ownership, not yours",
+    ],
+  },
+];
+
+// Who is told what, without having to read three role cards to find out.
+const TOLD_MATRIX = {
+  head: ["What happens", "Senior Partner", "TSD", "Architect", "Pod"],
+  rows: [
+    ["You are made TSD of a project", "—", "yes", "—", "—"],
+    ["You are named Solution Architect", "—", "—", "yes", "—"],
+    ["You are added to the pod", "—", "—", "—", "yes"],
+    ["TSD receives / acknowledges / accepts", "yes", "—", "—", "—"],
+    ["A gate is overridden", "yes", "—", "—", "—"],
+    ["A project goes red", "yes", "—", "—", "—"],
+    ["Scope change moves time or money", "yes", "—", "—", "—"],
+    ["A critical blocker is raised", "—", "yes", "—", "—"],
+    ["Talent requirement confirmed", "—", "—", "yes", "—"],
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// Tier 3 and Tier 4 test procedures
+// ---------------------------------------------------------------------------
+// Same shape as CROSS so they render and persist identically.
+const TIER3 = [
+  {
+    key: "t3-tower", title: "Control Tower &mdash; the portfolio view",
+    gate: "Crowther OS &rarr; Control Tower &rarr; Portfolio",
+    steps: [
+      'Open <b>Crowther OS &rarr; Control Tower</b>. It should open on <b>Needs attention</b>, not on a list of everything.',
+      'Switch to <b>Portfolio</b>. Confirm every project you are entitled to see appears as one row, with its stage, owner, and how many days since it last moved.',
+      'Click the <b>Red</b>, <b>Blocked</b>, <b>Stalled</b> and <b>Overdue</b> numbers along the top. Each should filter the rows beneath it, and the count should match the number of rows shown.',
+      'Tick <b>Include closed projects</b>. Projects at stage 17 should appear; untick and they should go again.',
+      'Filter by a phase chip. Confirm the rows match the phase and that clearing the filter restores the full list.',
+      'Sign in as somebody who is not an administrator. They should see only their own projects &mdash; the same scoping the rest of the app uses.',
+    ],
+  },
+  {
+    key: "t3-exceptions", title: "Needs attention &mdash; the exception view",
+    gate: "Only what somebody must act on",
+    steps: [
+      'On a test project, set health to <b>Red</b> with a reason. It should appear at the top of <b>Needs attention</b> within one refresh.',
+      'Raise a <b>critical</b> blocker on the same project. Confirm it appears <i>below</i> red health &mdash; the list is ordered worst-first, and red health outranks a blocker.',
+      'Resolve the blocker. It should disappear from the list while red health stays.',
+      'Confirm every row names the project, its stage, its TSD, how long ago, and has an <b>Open</b> button that goes to the project.',
+      'Use the filter chips at the top to show one kind at a time.',
+      'On a clean project with nothing wrong, confirm the view says so plainly rather than showing an empty box.',
+    ],
+    note: 'A gate that was overridden shows here for 30 days, then stops. That is deliberate: nothing ever "resolves" an override, so without a cut-off the list would grow forever and become unreadable. After that it stays in the project&rsquo;s history and its report.',
+  },
+  {
+    key: "t3-blockers", title: "Blockers",
+    gate: "Project page &rarr; the &#9940; icon",
+    steps: [
+      'Open a project and click the <b>Blockers</b> icon in the row of icons above the tabs.',
+      'Raise one. Give it a kind (internal, waiting on client, third party, dependency) and a severity.',
+      'Set severity to <b>Critical</b> and confirm the project&rsquo;s TSD receives a notification.',
+      'Confirm the drawer stays open after saving and the new blocker appears immediately.',
+      'Resolve it with a note. It should move to <b>Resolved</b> rather than disappearing &mdash; what held a project up is exactly what the closure report needs later.',
+      'Check the Control Tower shows the open blocker on that project&rsquo;s row, and that the count drops when you resolve it.',
+    ],
+  },
+  {
+    key: "t3-trace", title: "Traceability &mdash; agreed versus built",
+    gate: "Project page &rarr; Traceability tab",
+    steps: [
+      'Open a project that has requirements and a board with some cards.',
+      'Open the <b>Traceability</b> tab. Four numbers at the top: coverage, delivered, not started, and cards nobody asked for.',
+      'Find a card under <b>Cards no requirement asked for</b> and press <b>Trace</b>. Pick a requirement from the list.',
+      'Confirm the card moves up under that requirement and the coverage percentage rises.',
+      'Move that card into the <b>Done</b> column on the board, come back, and confirm the requirement now reads <b>delivered</b>.',
+      'Confirm a requirement with no card at all is called out as not started.',
+    ],
+    note: 'Not every card should trace to a requirement &mdash; chores, spikes and fixes legitimately do not. The point is to see the ones that <i>should</i>.',
+  },
+  {
+    key: "t3-report", title: "The project and closure report",
+    gate: "Project page &rarr; the scroll icon",
+    steps: [
+      'Open the <b>Report</b> drawer on a project that has been running for a while.',
+      'Check the timeline: every stage move, who made it, when, how many days it sat there, and whether any gate was overridden.',
+      'Confirm the requirement, demo, scope-change, milestone, risk and blocker counts match what the project actually holds.',
+      'Open the same drawer on a project at stage 17. The heading should read <b>Closure report</b> rather than Project report.',
+      'Press <b>Print</b> and confirm it prints legibly.',
+    ],
+  },
+  {
+    key: "t3-search", title: "Search across projects",
+    gate: "Control Tower &rarr; Search",
+    steps: [
+      'Search for a word you know appears in a <b>requirement</b> &mdash; confirm it is found and the project is named.',
+      'Search for a word from something a <b>client said</b> (captured in Client feedback).',
+      'Search for a word that only appears <i>inside an uploaded brief or transcript</i>. This is the one worth testing: it should still be found, with a short snippet around the match.',
+      'Use the type filters to narrow to one kind of result.',
+      'Type a single character &mdash; it should ask for more rather than searching.',
+    ],
+  },
+];
+
+const TIER4 = [
+  {
+    key: "t4-status", title: "Is the intelligence layer on?",
+    gate: "Check this first — it explains everything else",
+    steps: [
+      'Open any suggestion panel. If no AI key is configured, it will say so plainly and name exactly what to set &mdash; that is expected behaviour, not a fault.',
+      'The four <b>from your records</b> suggestions work with no AI key at all. The four <b>drafted by AI</b> ones need a working key.',
+      'If a panel says the key was rejected, the key is present but expired or revoked. Replace it and restart the backend.',
+    ],
+    note: 'Every suggestion is labelled with where it came from. <b>From your records</b> = worked out from real data you can check. <b>Drafted by AI</b> = a language model wrote it and it can be wrong. Treat them differently.',
+  },
+  {
+    key: "t4-people", title: "Who should own this? (works with no AI key)",
+    gate: "TSD at stage 2, Architect at stage 6",
+    steps: [
+      'Advance a project from stage 1 to 2. In the dialog, next to the TSD dropdown, a suggestion appears.',
+      'Check the reasoning it gives: whether that person has done the role before, whether they have worked with <i>this client</i>, and how many live projects they already carry.',
+      'Press <b>Choose them</b> and confirm it selects that person in the dropdown &mdash; and that nothing is saved until you submit the move.',
+      'At stage 6, as the Senior Partner, check the architect suggestion. Press <b>Highlight</b> and confirm the suggested person is marked in the list &mdash; you still choose.',
+      'Confirm the confidence reads <b>low</b> when two candidates are closely matched. That is more useful than a confident guess.',
+    ],
+  },
+  {
+    key: "t4-health", title: "What colour is this project really? (works with no AI key)",
+    gate: "Project page → click the health pill",
+    steps: [
+      'Click the health pill at the top of a project. A suggestion appears above the colour buttons.',
+      'Read its reasoning &mdash; open blockers and their severity, overdue milestones, days since the project moved, undecided scope changes.',
+      'Press <b>Fill this in</b>. Confirm it selects the suggested colour and writes the reason into the box.',
+      'Confirm <b>nothing is saved</b> until you press Save. Change the colour by hand first and confirm your choice wins.',
+      'The useful case: find a project the system thinks is amber while its header still says green. That disagreement is the whole point of the feature.',
+    ],
+    note: 'This never sets health by itself. Health is the TSD&rsquo;s call, deliberately, and that has not changed.',
+  },
+  {
+    key: "t4-nextstep", title: "What does this project need next? (works with no AI key)",
+    gate: "Hover a stage marker → What does this project need?",
+    steps: [
+      'Hover the stage marker on the lifecycle line to open the panel, then move onto the panel itself &mdash; it should stay open.',
+      'Press <b>What does this project need?</b>.',
+      'Confirm the answer is about <i>this</i> project &mdash; what its gate is still missing, who owns that, how long it has been waiting &mdash; and not just the generic stage description above it.',
+    ],
+  },
+  {
+    key: "t4-ai", title: "The parts that need an AI key",
+    gate: "Scope changes, risks, transcripts, report summary",
+    steps: [
+      '<b>Scope change impact:</b> raise a scope change, then press <b>Assess the impact</b>. It drafts the four impact fields plus the numbers the Senior Partner threshold checks. Press save and confirm they are written; confirm you can edit them first.',
+      '<b>Risk suggestions:</b> in <b>Decisions &amp; risks</b>, press <b>Suggest risks we have not logged</b>. Confirm it proposes risks specific to the project and does not repeat ones already recorded.',
+      '<b>Transcript to requirements:</b> paste a call transcript and confirm it extracts only what the client actually asked for &mdash; anything ambiguous should come back as an open question, not an invented requirement.',
+      '<b>Report summary:</b> in the <b>Report</b> drawer, press <b>Write the summary paragraph</b>. Check every figure it quotes against the numbers on the same page.',
+      'With no key configured, confirm each of these says so clearly instead of failing silently or showing an empty box.',
+    ],
+  },
+];
+
+// ---------- render ----------
+const main = document.getElementById('main');
+const rail = document.getElementById('rail');
+
+function stageId(n) { return 'stage-' + n; }
+function crossId(k) { return 'cross-' + k; }
+
+function gateHtml(g, stageN) {
+  const id = `g-${stageN}-${g.auto || g.label.replace(/\W+/g,'_')}`;
+  return `<li class="gate-item">
+    <input type="checkbox" data-store="${id}" />
+    <div class="g-label">${g.label}
+      ${g.auto ? `<span class="g-auto">auto: ${g.auto}</span>` : `<span class="g-judgement">your judgement &mdash; never blocks</span>`}
+    </div>
+  </li>`;
+}
+
+function stepsHtml(steps) {
+  return `<ol class="steps">${steps.map((s,i)=>`<li><span class="si">${i+1}</span><span>${s}</span></li>`).join('')}</ol>`;
+}
+
+let railHtml = '';
+let mainHtml = '';
+let phaseSeen = {};
+
+STAGES.forEach((s, idx) => {
+  const phase = PHASES.find(p => p.key === s.phase);
+  if (!phaseSeen[s.phase]) {
+    phaseSeen[s.phase] = true;
+    railHtml += `<div class="rail-phase"><span class="rail-phase-label">${phase.label}</span>`;
+    mainHtml += `<div class="phase-divider" id="phase-${s.phase}"><span class="tag" style="background:${phase.accent}">${phase.label}</span><span class="line"></span></div>`;
+  }
+  railHtml += `<a href="#${stageId(s.n)}" class="rail-stage" data-stage="${s.n}"><span class="num">${s.n}</span>${s.title}<span class="connector"></span></a>`;
+  if (idx > 0 && STAGES[idx-1].phase !== s.phase) { /* phase div already closed implicitly by next open */ }
+
+  mainHtml += `<details class="stage-card" id="${stageId(s.n)}" data-stage="${s.n}">
+    <summary>
+      <span class="stage-num">${String(s.n).padStart(2,'0')}</span>
+      <div class="stage-title"><h3>${s.title}</h3><div class="stage-owner">Owner &middot; ${s.owner}</div></div>
+      <span class="stage-check" data-stagecheck="${s.n}"></span>
+      <span class="caret">&#10148;</span>
+    </summary>
+    <div class="stage-body">
+      <p class="next-line">${s.next}</p>
+      <div>
+        <h4 class="block-label">Do this</h4>
+        ${stepsHtml(s.steps)}
+      </div>
+      <div>
+        <h4 class="block-label">Gate &mdash; must be true to leave this stage</h4>
+        <ul class="gate-list">${s.gates.map(g => gateHtml(g, s.n)).join('')}</ul>
+      </div>
+      ${s.verify ? `<div class="verify-box"><span class="vt">Verify</span>${s.verify}</div>` : ''}
+      ${s.gap ? `<div class="callout gap"><span class="ct">Known gap</span>${s.gap}</div>` : ''}
+    </div>
+  </details>`;
+});
+// close phase groups in rail
+railHtml += '</div>';
+// fix: wrap properly (simple re-split by phase groups)
+(function fixRail(){
+  let out = '';
+  let cur = null;
+  PHASES.forEach(p => {
+    const group = STAGES.filter(s => s.phase === p.key);
+    if (!group.length) return;
+    out += `<div class="rail-phase"><span class="rail-phase-label">${p.label}</span>`;
+    group.forEach(s => {
+      out += `<a href="#${stageId(s.n)}" class="rail-stage" data-stage="${s.n}"><span class="num">${s.n}</span>${s.title}<span class="connector"></span></a>`;
+    });
+    out += `</div>`;
+  });
+  railHtml = out;
+})();
+
+let crossRail = `<div class="rail-phase"><span class="rail-phase-label">Cross-cutting</span>`;
+let crossMain = `<div class="phase-divider"><span class="tag" style="background:var(--gold);color:#241C0E">Not part of the stage sequence</span><span class="line"></span></div><div class="cross-section">`;
+CROSS.forEach(c => {
+  crossRail += `<a href="#${crossId(c.key)}" class="rail-cross" data-cross="${c.key}"><span class="diamond"></span>${c.title.replace(/&rarr;|&mdash;|&amp;/g, m => ({'&rarr;':'→','&mdash;':'—','&amp;':'&'}[m]))}</a>`;
+  crossMain += `<details class="stage-card" id="${crossId(c.key)}" data-cross="${c.key}">
+    <summary>
+      <span class="stage-num">&#9670;</span>
+      <div class="stage-title"><h3>${c.title}</h3><div class="stage-owner">${c.gate}</div></div>
+      <span class="stage-check" data-crosscheck="${c.key}"></span>
+      <span class="caret">&#10148;</span>
+    </summary>
+    <div class="stage-body">
+      <div><h4 class="block-label">Do this</h4>${stepsHtml(c.steps)}</div>
+    </div>
+  </details>`;
+});
+crossRail += `</div>`;
+crossMain += `</div>`;
+
+// ---------- primer, roles, and the tier test groups ----------
+// The primer and role cards carry no checkboxes: they are things to read, not
+// things to tick, and giving them a progress bar would imply otherwise.
+function primerHtml(p) {
+  return `<div class="prose-card" id="${p.key}">
+    <span class="tier-badge tier-${p.tier}">Tier ${p.tier}</span>
+    <h3>${p.title}</h3>
+    <div class="sub">${p.sub}</div>
+    <p>${p.lede}</p>
+    <ul class="plain-list">
+      ${p.points.map(([head, detail]) => `<li><span class="marker"></span><span>
+        <b>${head}</b><span class="detail">${detail}</span>
+      </span></li>`).join('')}
+    </ul>
+  </div>`;
+}
+
+function roleHtml(r) {
+  return `<div class="prose-card" id="${r.key}">
+    <h3>${r.title}</h3>
+    <div class="sub">${r.sub}</div>
+    <p>${r.lede}</p>
+    <div style="margin-top:14px">
+      ${r.steps.map(([head, detail], i) => `<div class="role-step">
+        <span class="n">${i + 1}</span>
+        <span class="body"><strong>${head}</strong><span>${detail}</span></span>
+      </div>`).join('')}
+    </div>
+    <div class="can-cannot">
+      <div class="can-box">
+        <h4>You can</h4>
+        <ul>${r.can.map(x => `<li>${x}</li>`).join('')}</ul>
+      </div>
+      <div class="cannot-box">
+        <h4>You cannot</h4>
+        <ul>${r.cannot.map(x => `<li>${x}</li>`).join('')}</ul>
+      </div>
+    </div>
+  </div>`;
+}
+
+function matrixHtml(m) {
+  const cell = (v) => v === 'yes'
+    ? '<span class="yes">told</span>'
+    : '<span class="no">&mdash;</span>';
+  return `<div class="prose-card" id="who-is-told">
+    <h3>Who gets told what</h3>
+    <div class="sub">Every notification arrives in the bell and, where it matters, by email</div>
+    <div class="matrix-wrap">
+      <table class="matrix">
+        <thead><tr>${m.head.map(h => `<th>${h}</th>`).join('')}</tr></thead>
+        <tbody>
+          ${m.rows.map(r => `<tr>
+            <td>${r[0]}</td>${r.slice(1).map(v => `<td>${cell(v)}</td>`).join('')}
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+// Tier 3 / Tier 4 checks render exactly like the cross-cutting ones, so they
+// tick, persist and count toward progress the same way.
+function checkGroup(items, label, accent, railLabel) {
+  let railOut = `<div class="rail-phase"><span class="rail-phase-label">${railLabel}</span>`;
+  let mainOut = `<div class="phase-divider"><span class="tag" style="background:${accent}">${label}</span><span class="line"></span></div><div class="cross-section">`;
+  items.forEach(c => {
+    const plain = c.title.replace(/&rarr;|&mdash;|&amp;|&#9940;/g,
+      m => ({ '&rarr;': '→', '&mdash;': '—', '&amp;': '&', '&#9940;': '' }[m]));
+    railOut += `<a href="#${crossId(c.key)}" class="rail-cross" data-cross="${c.key}"><span class="diamond"></span>${plain}</a>`;
+    mainOut += `<details class="stage-card" id="${crossId(c.key)}" data-cross="${c.key}">
+      <summary>
+        <span class="stage-num">&#9670;</span>
+        <div class="stage-title"><h3>${c.title}</h3><div class="stage-owner">${c.gate}</div></div>
+        <span class="stage-check" data-crosscheck="${c.key}"></span>
+        <span class="caret">&#10148;</span>
+      </summary>
+      <div class="stage-body">
+        <div><h4 class="block-label">Do this</h4>${stepsHtml(c.steps)}</div>
+        ${c.note ? `<div class="callout warn"><span class="ct">Worth knowing</span>${c.note}</div>` : ''}
+      </div>
+    </details>`;
+  });
+  railOut += `</div>`;
+  mainOut += `</div>`;
+  return [railOut, mainOut];
+}
+
+const primerMain =
+  `<div class="phase-divider" id="primer"><span class="tag" style="background:var(--forest)">What was built</span><span class="line"></span></div>`
+  + PRIMER.map(primerHtml).join('');
+const primerRail =
+  `<div class="rail-phase"><span class="rail-phase-label">What was built</span>`
+  + PRIMER.map(p => `<a href="#${p.key}" class="rail-cross"><span class="diamond"></span>Tier ${p.tier} &middot; ${p.title}</a>`).join('')
+  + `</div>`;
+
+const rolesMain =
+  `<div class="phase-divider" id="roles"><span class="tag" style="background:var(--gold);color:#241C0E">When a project reaches you</span><span class="line"></span></div>`
+  + ROLES.map(roleHtml).join('') + matrixHtml(TOLD_MATRIX);
+const rolesRail =
+  `<div class="rail-phase"><span class="rail-phase-label">Your role</span>`
+  + ROLES.map(r => `<a href="#${r.key}" class="rail-cross"><span class="diamond"></span>${r.title.replace('You are the ', '').replace('You are ', '')}</a>`).join('')
+  + `<a href="#who-is-told" class="rail-cross"><span class="diamond"></span>Who gets told what</a>`
+  + `</div>`;
+
+const [t3Rail, t3Main] = checkGroup(TIER3, 'Tier 3 — control and visibility', 'var(--gold)', 'Tier 3 tests');
+const [t4Rail, t4Main] = checkGroup(TIER4, 'Tier 4 — intelligence', 'var(--red)', 'Tier 4 tests');
+
+// Read-first, then the detail, then the checks.
+rail.innerHTML = primerRail + rolesRail + railHtml + crossRail + t3Rail + t4Rail;
+main.innerHTML = primerMain + rolesMain + mainHtml + crossMain + t3Main + t4Main;
+
+// ---------- checkbox persistence + progress ----------
+const STORE_KEY = 'crowther-os-runbook-v1';
+function loadStore() { try { return JSON.parse(localStorage.getItem(STORE_KEY) || '{}'); } catch(e) { return {}; } }
+function saveStore(store) { localStorage.setItem(STORE_KEY, JSON.stringify(store)); }
+let store = loadStore();
+
+function allCheckboxesForStage(n) {
+  return Array.from(document.querySelectorAll(`#${stageId(n)} input[type="checkbox"]`));
+}
+
+function updateStageBadge(n) {
+  const boxes = allCheckboxesForStage(n);
+  const badge = document.querySelector(`[data-stagecheck="${n}"]`);
+  const railDot = document.querySelector(`.rail-stage[data-stage="${n}"] .num`);
+  const done = boxes.length > 0 && boxes.every(b => b.checked);
+  if (badge) { badge.classList.toggle('complete', done); badge.textContent = done ? '✓' : ''; }
+  if (railDot) railDot.parentElement.classList.toggle('done', done);
+}
+function updateCrossBadge(k) {
+  const badge = document.querySelector(`[data-crosscheck="${k}"]`);
+  const railDot = document.querySelector(`.rail-cross[data-cross="${k}"]`);
+  const done = store[`cross-done-${k}`] === true;
+  if (badge) { badge.classList.toggle('complete', done); badge.textContent = done ? '✓' : ''; }
+  if (railDot) railDot.classList.toggle('done', done);
+}
+
+function updateProgress() {
+  const all = Array.from(document.querySelectorAll('input[type="checkbox"][data-store]'));
+  const checked = all.filter(b => b.checked).length;
+  const pct = all.length ? Math.round((checked/all.length)*100) : 0;
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressText').textContent = `${checked} of ${all.length} checks done`;
+}
+
+document.querySelectorAll('input[type="checkbox"][data-store]').forEach(box => {
+  const id = box.getAttribute('data-store');
+  box.checked = !!store[id];
+  box.addEventListener('change', () => {
+    store[id] = box.checked;
+    saveStore(store);
+    const card = box.closest('.stage-card');
+    if (card && card.dataset.stage) updateStageBadge(Number(card.dataset.stage));
+    updateProgress();
+  });
+});
+
+// Cross-cutting items: mark the whole block done via a click on its badge dot (simple toggle)
+document.querySelectorAll('[data-crosscheck]').forEach(badge => {
+  badge.style.cursor = 'pointer';
+  badge.title = 'Click to mark this check as done';
+  badge.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const k = badge.getAttribute('data-crosscheck');
+    store[`cross-done-${k}`] = !(store[`cross-done-${k}`] === true);
+    saveStore(store);
+    updateCrossBadge(k);
+  });
+});
+
+// Cross-cutting, Tier 3 and Tier 4 all tick the same way, so they are counted
+// together rather than each maintaining its own list.
+const ALL_CHECK_GROUPS = [...CROSS, ...TIER3, ...TIER4];
+
+STAGES.forEach(s => updateStageBadge(s.n));
+ALL_CHECK_GROUPS.forEach(c => updateCrossBadge(c.key));
+updateProgress();
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  if (!confirm('Clear every checked box in this runbook?')) return;
+  store = {};
+  saveStore(store);
+  document.querySelectorAll('input[type="checkbox"][data-store]').forEach(b => b.checked = false);
+  STAGES.forEach(s => updateStageBadge(s.n));
+  ALL_CHECK_GROUPS.forEach(c => updateCrossBadge(c.key));
+  updateProgress();
+});
+
+// Smooth-scroll + auto-expand on rail click
+document.querySelectorAll('.rail-stage, .rail-cross').forEach(link => {
+  link.addEventListener('click', (e) => {
+    e.preventDefault();
+    const targetId = link.getAttribute('href').slice(1);
+    const el = document.getElementById(targetId);
+    if (el) {
+      el.open = true;
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+});
+</script>
+</body>
+</html>

@@ -1915,3 +1915,50 @@ different colleagues on one address -> no lockout; nine guesses at one account
 **The general lesson, because it will recur:** a rate limit keyed on something
 users share is a rate limit on the whole group. Before choosing a threshold,
 ask what else sits behind that key.
+
+
+### Two defects found in a client demo — 29 August 2026
+
+Both mine, both shipped, both found by Victor in front of a client rather
+than by me. Fixed in `eb6188c`.
+
+**The gate fix links never worked, except on a cold page load.** An unmet
+condition renders a link to where you satisfy it. The effect that reads
+`?tab=` / `?drawer=` keyed on `[projectId]` — but every one of those links
+sits in the next-step panel *on the project page itself*, so following one is
+a same-project navigation: the id does not change, the effect never re-runs,
+the URL gains a `?drawer=` and nothing opens. The parameter was not even
+cleared afterwards, because the cleanup lived in the same effect. `?edit=1`
+on `FlowProjectDetail` had the identical flaw.
+
+Fixed by watching the query string instead, and clearing it through the
+router rather than `history.replaceState` so React Router's location cannot
+drift from the address bar. Following a link from the advance dialog now also
+closes that dialog — it opens a drawer on the page underneath, so leaving the
+modal up meant landing on the thing you asked for with a modal over it.
+
+**The rule:** an effect that reacts to the URL must depend on the URL. Keying
+it to a route *param* means it only fires when that param changes, which for
+a same-page link is never.
+
+**A Super Admin could not create a project.** The dashboard wrapped all five
+of its calls in a catch returning null, `authAPI.getMe()` included.
+`canCreateProjects(null)` is false, so one failed identity request — a cold
+container, a timeout, a single bad response — rendered a complete,
+healthy-looking dashboard with the New Project button silently absent and
+nothing on screen to say why. Intermittent, which is why it passed every
+check I ran and then failed in a demo.
+
+**The rule, and it is the more important one:** a panel may fail soft;
+**identity may not**. Never decide a permission from an identity fetch that
+did not arrive — without a user we do not know what this person may do, and
+guessing "nothing" is still a guess. Identity is now awaited on its own,
+retried once, and its failure is an explicit error with a retry. The other
+four calls still fail soft, correctly: none of them decides anybody's rights.
+
+**Why neither was caught.** The security suite covers the API; both of these
+were entirely in the browser, and **the frontend has no test harness at all**
+— `@testing-library/react` is not installed and there is no `setupTests.js`.
+Every front-end check in this project has been a person clicking. That is the
+gap that let both of these reach a demo, and it is worth closing before the
+next feature, not after.

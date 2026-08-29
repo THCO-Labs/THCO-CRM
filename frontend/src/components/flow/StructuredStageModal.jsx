@@ -39,7 +39,7 @@ const Field = ({ label, hint, children }) => (
   </div>
 );
 
-const ConditionRow = ({ condition, project }) => {
+const ConditionRow = ({ condition, project, onNavigateAway }) => {
   const { satisfied, label } = condition;
   const icon =
     satisfied === true ? <Check className="w-3.5 h-3.5 text-[#1FB58A]" />
@@ -49,6 +49,11 @@ const ConditionRow = ({ condition, project }) => {
   // An unmet condition that has somewhere to be fixed becomes a link there.
   // Being told what is missing and left to find where to put it is the part
   // that wastes people's time.
+  //
+  // Following one closes this dialog. The link opens a drawer or a tab on the
+  // page underneath, so leaving the dialog up means landing on the thing you
+  // asked for with a modal sitting over it -- which reads as the link having
+  // half-worked.
   const fix = project ? fixFor(condition) : null;
   const href = fix && !fix.blockedByOther ? fixHref(project.id, fix) : null;
 
@@ -65,6 +70,7 @@ const ConditionRow = ({ condition, project }) => {
             {href ? (
               <Link
                 to={href}
+                onClick={onNavigateAway}
                 className="text-[11px] text-[#1B4332] underline underline-offset-2
                            hover:text-[#14342A] inline-flex items-center gap-1"
                 data-testid={`fix-${condition.auto}`}
@@ -216,7 +222,12 @@ const StructuredStageModal = ({ targetStage, project, me, saving, onCancel, onSu
                       </p>
                       <ul className="rounded-lg border border-[#EAE7E0] px-3 py-2">
                         {gate.conditions.map((c) => (
-                          <ConditionRow key={c.label} condition={c} project={project} />
+                          <ConditionRow
+                            key={c.label}
+                            condition={c}
+                            project={project}
+                            onNavigateAway={onCancel}
+                          />
                         ))}
                       </ul>
                     </div>

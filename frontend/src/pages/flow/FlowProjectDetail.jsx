@@ -20,7 +20,7 @@ import PodResponse from "../../components/flow/PodResponse";
 export default function FlowProjectDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [project, setProject] = useState(null);
   const [gate, setGate] = useState(null);
   const [me, setMe] = useState(null);
@@ -95,12 +95,24 @@ export default function FlowProjectDetail() {
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
 
-  // Arriving from the projects list's edit action opens the form directly,
-  // rather than landing on the page and having to find the button.
+  // Arriving from the projects list's edit action -- or from the "Edit the
+  // project details" link on an unmet `has_outcome` gate -- opens the form
+  // directly, rather than landing on the page and having to find the button.
+  //
+  // Watches the query string as well as the project. The gate link is on this
+  // same page, so clicking it changes only the search string; an effect
+  // depending on `project` alone never fired and the link did nothing. The
+  // parameter is cleared once acted on, so closing the form and refreshing
+  // does not immediately reopen it.
   useEffect(() => {
-    if (project && searchParams.get("edit") === "1" && !editing) openEdit();
+    if (!project || editing) return;
+    if (searchParams.get("edit") !== "1") return;
+    openEdit();
+    const rest = new URLSearchParams(searchParams);
+    rest.delete("edit");
+    setSearchParams(rest, { replace: true });
     /* eslint-disable-next-line */
-  }, [project]);
+  }, [project, searchParams]);
 
   // Who works on this project. A unit head (or an administrator) adds and
   // removes people at any time; everybody else sees the list read-only.

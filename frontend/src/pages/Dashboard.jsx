@@ -78,6 +78,9 @@ const Dashboard = () => {
   const [myWork, setMyWork] = useState(null);
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
+  // Identity could not be established. Not a panel problem -- the page cannot
+  // safely decide what this person may do, so it says so instead of guessing.
+  const [failed, setFailed] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   // { view, filter } while the control tower is open in place, else null.
   const [tower, setTower] = useState(null);
@@ -89,11 +92,39 @@ const Dashboard = () => {
   const { trackAction } = useAnalytics();
 
   const load = async () => {
-    // Each panel fails on its own. A dashboard that renders nothing because
-    // one of five calls returned 403 is worse than one missing a panel.
+    setFailed(false);
+
+    // A panel may fail soft. **Identity may not.**
+    //
+    // Every one of these was wrapped in a catch that returned null, identity
+    // included, and that is how a Super Admin lost the New Project button in
+    // production. `canCreateProjects(null)` is false, so a single failed
+    // `/auth/me` -- a cold container, a timeout, one bad response -- rendered
+    // a complete, healthy-looking dashboard with the button silently missing
+    // and nothing on screen to say why. Permission must never be decided from
+    // an identity fetch that did not arrive: without a user we do not know
+    // what this person may do, and guessing "nothing" is still a guess.
+    //
+    // So identity is awaited on its own, retried once, and its failure is a
+    // visible error rather than a quietly reduced page.
+    let me = null;
+    try {
+      me = await authAPI.getMe();
+    } catch {
+      try {
+        me = await authAPI.getMe();
+      } catch {
+        setFailed(true);
+        setLoading(false);
+        return;
+      }
+    }
+
+    // These four genuinely may fail on their own: a missing panel is better
+    // than a blank page, and none of them decides what anybody is allowed
+    // to do.
     const settle = (p) => p.then((v) => v).catch(() => null);
-    const [me, pf, ex, mine, logs] = await Promise.all([
-      settle(authAPI.getMe()),
+    const [pf, ex, mine, logs] = await Promise.all([
       settle(controlTowerAPI.portfolio()),
       settle(controlTowerAPI.exceptions()),
       settle(tasksAPI.myCards(6)),
@@ -149,6 +180,29 @@ const Dashboard = () => {
     if (hour < 17) return "Good afternoon";
     return "Good evening";
   };
+
+  if (failed) {
+    return (
+      <div className="max-w-[1400px] mx-auto pt-10" data-testid="dashboard-identity-error">
+        <div className="lux-card px-6 py-10 text-center">
+          <p className="font-display text-[22px] text-gray-900 mb-2">
+            We could not confirm who you are
+          </p>
+          <p className="text-sm text-gray-500 mb-6 max-w-md mx-auto">
+            Your dashboard is not shown rather than shown with the wrong things on
+            it. Nothing is broken and nothing has been lost — try again.
+          </p>
+          <Button
+            onClick={() => { setLoading(true); load(); }}
+            data-testid="dashboard-retry"
+            className="h-11 px-6 rounded-full bg-[#0C0F13] text-white hover:bg-[#1a1f26]"
+          >
+            Try again
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

@@ -10,6 +10,7 @@
 // in a drawer.
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Activity, AlertTriangle, Check, Contact, FileText, Layers, Loader2,
   MonitorPlay, Plus, Trash2, Upload, Users, X, GitBranch, ShieldAlert,
@@ -114,24 +115,32 @@ export default function ProjectWorkspace({ projectId, project, onChanged }) {
   // `?tab=product`, "Attach demo materials" to `?drawer=demos`. It also makes
   // those places linkable to a colleague, which they were not before.
   //
-  // The parameter is cleared once acted on, so a later refresh does not
-  // re-open a drawer somebody has since closed.
+  // This keys on the query string, not on `projectId`, and that is the whole
+  // point. Every one of those links sits in the next-step panel *on this
+  // page*, so clicking one is a same-project navigation: the id does not
+  // change, and an effect watching only the id never re-runs. The URL gained
+  // its `?drawer=` and nothing opened -- which made every gate link look
+  // broken, because it was. It only ever worked on a cold page load.
+  //
+  // The parameter is cleared through the router rather than
+  // `history.replaceState`, so React Router's own view of the location cannot
+  // drift out of step with the address bar. Clearing re-runs this effect once
+  // more, which returns immediately because there is nothing left to read.
+  const [searchParams, setSearchParams] = useSearchParams();
+
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const wantTab = params.get("tab");
-    const wantDrawer = params.get("drawer");
+    const wantTab = searchParams.get("tab");
+    const wantDrawer = searchParams.get("drawer");
     if (!wantTab && !wantDrawer) return;
 
     if (wantTab && TABS.some((t) => t.key === wantTab)) setTab(wantTab);
     if (wantDrawer && DRAWERS.some((d) => d.key === wantDrawer)) setDrawer(wantDrawer);
 
-    params.delete("tab");
-    params.delete("drawer");
-    const rest = params.toString();
-    window.history.replaceState(
-      {}, "", window.location.pathname + (rest ? `?${rest}` : "")
-    );
-  }, [projectId]);
+    const rest = new URLSearchParams(searchParams);
+    rest.delete("tab");
+    rest.delete("drawer");
+    setSearchParams(rest, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   // Patch one list in place. An upload used to refetch the whole workspace,
   // which closed the drawer and lost the reader's place for a change only one

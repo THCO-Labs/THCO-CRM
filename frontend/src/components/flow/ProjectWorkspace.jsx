@@ -9,7 +9,7 @@
 // it is a list of documents the architect uploaded, and one button. That fits
 // in a drawer.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Activity, AlertTriangle, Check, Contact, FileText, Layers, Loader2,
@@ -128,17 +128,27 @@ export default function ProjectWorkspace({ projectId, project, onChanged }) {
   // more, which returns immediately because there is nothing left to read.
   const [searchParams, setSearchParams] = useSearchParams();
 
+  // Which section a gate link asked for, and when it asked. The timestamp
+  // matters: clicking the same link twice must re-open the form the second
+  // time, and a bare section name would look unchanged to an effect.
+  const [focus, setFocus] = useState(null);
+
   useEffect(() => {
     const wantTab = searchParams.get("tab");
     const wantDrawer = searchParams.get("drawer");
-    if (!wantTab && !wantDrawer) return;
+    const wantFocus = searchParams.get("focus");
+    if (!wantTab && !wantDrawer && !wantFocus) return;
 
     if (wantTab && TABS.some((t) => t.key === wantTab)) setTab(wantTab);
     if (wantDrawer && DRAWERS.some((d) => d.key === wantDrawer)) setDrawer(wantDrawer);
+    // Held in state rather than read from the URL further down, because the
+    // parameter is cleared immediately and the section still has to act on it.
+    if (wantFocus) setFocus({ section: wantFocus, at: Date.now() });
 
     const rest = new URLSearchParams(searchParams);
     rest.delete("tab");
     rest.delete("drawer");
+    rest.delete("focus");
     setSearchParams(rest, { replace: true });
   }, [searchParams, setSearchParams]);
 
@@ -234,11 +244,13 @@ export default function ProjectWorkspace({ projectId, project, onChanged }) {
       <div className="p-5">
         {tab === "overview" && <OverviewTab data={data} project={project} />}
         {tab === "product" && (
-          <ProductTab projectId={projectId} data={data} can={can} onChanged={refresh} />
+          <ProductTab projectId={projectId} data={data} can={can} onChanged={refresh}
+                      focus={focus} />
         )}
         {tab === "build" && (
           <BuildTab data={data} project={project}
-                    canManage={can.manage_board} onChanged={refresh} />
+                    canManage={can.manage_board} onChanged={refresh}
+                    focus={focus} />
         )}
         {tab === "traceability" && <TraceabilityTab projectId={projectId} />}
         {tab === "history" && <HistoryTab data={data} project={project} />}
@@ -344,7 +356,36 @@ function OverviewTab({ data, project }) {
   );
 }
 
-function ProductTab({ projectId, data, can, onChanged }) {
+
+/**
+ * Land on the control, not the page it lives on.
+ *
+ * A gate condition says "add requirements". Following it used to open the
+ * Product tab and leave you to find Requirements among three sections, which
+ * is most of the hunt the link exists to remove. Given `focus` naming this
+ * section, this scrolls it into view and opens its form.
+ *
+ * Returns the ref to attach. `open` is called only when the section is the one
+ * asked for, so a section nobody linked to is untouched.
+ */
+function useGateFocus(focus, section, open) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (focus?.section !== section) return;
+    open?.();
+    // After paint: the form has to exist before it can be scrolled to, and
+    // opening it is what makes the section its final height.
+    const t = setTimeout(() => {
+      ref.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 60);
+    return () => clearTimeout(t);
+    // `focus` carries a timestamp, so clicking the same link twice re-opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus, section]);
+  return ref;
+}
+
+function ProductTab({ projectId, data, can, onChanged, focus }) {
   return (
     <div className="space-y-6">
       {!can.edit_requirements && (
@@ -358,11 +399,14 @@ function ProductTab({ projectId, data, can, onChanged }) {
       )}
 
       <ProductBriefSection projectId={projectId} briefs={data.product_briefs}
-                           canWrite={can.move_stage} onChanged={onChanged} />
+                           canWrite={can.move_stage} onChanged={onChanged}
+                           focus={focus} />
       <RequirementsSection projectId={projectId} requirements={data.requirements}
-                           canEdit={can.edit_requirements} onChanged={onChanged} />
+                           canEdit={can.edit_requirements} onChanged={onChanged}
+                           focus={focus} />
       <JourneysSection projectId={projectId} journeys={data.journeys}
-                       canEdit={can.edit_requirements} onChanged={onChanged} />
+                       canEdit={can.edit_requirements} onChanged={onChanged}
+                       focus={focus} />
     </div>
   );
 }
@@ -386,7 +430,7 @@ const BRIEF_FIELDS = [
   { key: "assumptions", label: "Assumptions" },
 ];
 
-function ProductBriefSection({ projectId, briefs, canWrite, onChanged }) {
+function ProductBriefSection({ projectId, briefs, canWrite, onChanged, focus }) {
   const latest = briefs?.[0];
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -399,6 +443,9 @@ function ProductBriefSection({ projectId, briefs, canWrite, onChanged }) {
     setForm(Object.fromEntries(BRIEF_FIELDS.map((f) => [f.key, latest?.[f.key] || ""])));
     setEditing(true);
   };
+
+  // "Write the Product Brief" on an unmet gate opens the editor here.
+  const focusRef = useGateFocus(focus, "brief", () => canWrite && startEdit());
 
   const save = async () => {
     if (!form.problem.trim()) {
@@ -418,6 +465,7 @@ function ProductBriefSection({ projectId, briefs, canWrite, onChanged }) {
 
   return (
     <Section
+      innerRef={focusRef}
       title="Product Brief"
       action={canWrite && !editing && (
         <Button size="sm" variant="outline" onClick={startEdit} data-testid="edit-brief-btn">
@@ -497,8 +545,12 @@ const STATUS_OPTIONS = [
   { value: "rejected", label: "Rejected" },
 ];
 
-function RequirementsSection({ projectId, requirements, canEdit, onChanged }) {
+function RequirementsSection({ projectId, requirements, canEdit, onChanged, focus }) {
   const [adding, setAdding] = useState(false);
+  // "Add requirements" on an unmet gate opens this form and scrolls here,
+  // rather than dropping somebody on the tab to find it.
+  const focusRef = useGateFocus(focus, "requirements",
+    () => canEdit && setAdding(true));
   const [description, setDescription] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [draft, setDraft] = useState("");
@@ -543,6 +595,7 @@ function RequirementsSection({ projectId, requirements, canEdit, onChanged }) {
 
   return (
     <Section
+      innerRef={focusRef}
       title="Requirements"
       action={
         <div className="flex items-center gap-2">
@@ -657,8 +710,10 @@ function RequirementsSection({ projectId, requirements, canEdit, onChanged }) {
 // ---------------------------------------------------------------------------
 // User journeys
 // ---------------------------------------------------------------------------
-function JourneysSection({ projectId, journeys, canEdit, onChanged }) {
+function JourneysSection({ projectId, journeys, canEdit, onChanged, focus }) {
   const [adding, setAdding] = useState(false);
+  const focusRef = useGateFocus(focus, "journeys",
+    () => canEdit && setAdding(true));
   const [form, setForm] = useState({ title: "", persona: "", steps: "" });
   const [editingId, setEditingId] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -690,6 +745,7 @@ function JourneysSection({ projectId, journeys, canEdit, onChanged }) {
 
   return (
     <Section
+      innerRef={focusRef}
       title="User journeys"
       action={canEdit && !adding && (
         <Button size="sm" variant="outline" onClick={() => setAdding(true)}
@@ -775,13 +831,15 @@ function JourneysSection({ projectId, journeys, canEdit, onChanged }) {
 }
 
 
-function BuildTab({ data, project, canManage, onChanged }) {
+function BuildTab({ data, project, canManage, onChanged, focus }) {
   return (
     <div className="space-y-5">
-      <PodSection project={project} onChanged={onChanged} canManage={canManage} />
+      <PodSection project={project} onChanged={onChanged} canManage={canManage}
+                  focus={focus} />
 
       <MilestonesSection projectId={project?.id} milestones={data.milestones}
-                         canManage={canManage} onChanged={onChanged} />
+                         canManage={canManage} onChanged={onChanged}
+                         focus={focus} />
 
       <Section title="The board">
         <p className="text-sm text-gray-600">
@@ -2572,9 +2630,9 @@ function CommercialSlice({ data }) {
 // ---------------------------------------------------------------------------
 // Small shared pieces
 // ---------------------------------------------------------------------------
-function Section({ title, action, children }) {
+function Section({ title, action, children, innerRef }) {
   return (
-    <div>
+    <div ref={innerRef} className="scroll-mt-24">
       <div className="flex items-center justify-between mb-2">
         <h4 className="text-sm font-semibold text-gray-900">{title}</h4>
         {action}
@@ -2614,8 +2672,10 @@ function Empty({ children }) {
 // a "project team" in the page header and a pod in the delivery record. Two
 // names for one set of people is how they drift apart, so there is one now,
 // and it lives here with the rest of what the project knows about itself.
-function PodSection({ project, canManage, onChanged }) {
+function PodSection({ project, canManage, onChanged, focus }) {
   const [editing, setEditing] = useState(false);
+  // "Form the pod" on an unmet gate opens the picker here.
+  const focusRef = useGateFocus(focus, "pod", () => canManage && setEditing(true));
   const [staff, setStaff] = useState([]);
   const [selected, setSelected] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -2649,6 +2709,7 @@ function PodSection({ project, canManage, onChanged }) {
 
   return (
     <Section
+      innerRef={focusRef}
       title="Pod"
       action={canManage && !editing && (
         <Button size="sm" variant="outline" onClick={open} data-testid="manage-pod-btn">
@@ -2716,8 +2777,10 @@ function PodSection({ project, canManage, onChanged }) {
 // called it. Fields match MilestoneCreate exactly: `milestone_name`, not
 // `title` -- the old read-only list quietly read the wrong field and never
 // showed a name for anything.
-function MilestonesSection({ projectId, milestones, canManage, onChanged }) {
+function MilestonesSection({ projectId, milestones, canManage, onChanged, focus }) {
   const [adding, setAdding] = useState(false);
+  // "Add a milestone" on an unmet gate opens the form here.
+  const focusRef = useGateFocus(focus, "milestones", () => canManage && setAdding(true));
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ milestone_name: "", deliverable: "", target_date: "", payment_percent: "" });
   // Held per milestone so attaching a file does not refetch the whole
@@ -2759,6 +2822,7 @@ function MilestonesSection({ projectId, milestones, canManage, onChanged }) {
 
   return (
     <Section
+      innerRef={focusRef}
       title="Milestones"
       action={canManage && !adding && (
         <Button size="sm" variant="outline" onClick={() => setAdding(true)} data-testid="add-milestone-btn">

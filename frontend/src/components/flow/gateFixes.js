@@ -10,9 +10,15 @@
 // Conditions with `auto: null` are judgement calls with nothing to open, and
 // are deliberately absent.
 //
-// `tab` and `drawer` are read by ProjectWorkspace from the URL, so these
-// double as shareable links: sending somebody
+// `tab`, `drawer` and `focus` are read by ProjectWorkspace from the URL, so
+// these double as shareable links: sending somebody
 // `/flow/projects/{id}?drawer=demos` opens the drawer for them.
+//
+// `focus` names the section *inside* a tab and is what makes the link land on
+// the actual control. Opening the Product tab and leaving somebody to find
+// Requirements among three sections is most of the hunt this exists to remove:
+// the condition says "add requirements", so the link opens the add form and
+// scrolls to it.
 
 export const GATE_FIXES = {
   has_outcome: {
@@ -35,18 +41,21 @@ export const GATE_FIXES = {
   },
   has_requirements: {
     action: "Add requirements",
-    hint: "Three at minimum. Product tab.",
+    hint: "Three at minimum. Opens the form.",
     tab: "product",
+    focus: "requirements",
   },
   has_product_brief: {
     action: "Write the Product Brief",
-    hint: "Product tab. Only the problem statement is required to save one.",
+    hint: "Opens the brief. Only the problem statement is required to save it.",
     tab: "product",
+    focus: "brief",
   },
   has_journeys: {
     action: "Add a user journey",
-    hint: "Product tab, under User journeys.",
+    hint: "Opens the form under User journeys.",
     tab: "product",
+    focus: "journeys",
   },
   has_architect: {
     action: "The Senior Partner names the architect",
@@ -80,13 +89,15 @@ export const GATE_FIXES = {
   },
   has_pod: {
     action: "Form the pod",
-    hint: "Build tab, under Pod.",
+    hint: "Opens the pod, on the Build tab.",
     tab: "build",
+    focus: "pod",
   },
   has_milestones: {
     action: "Add a milestone",
-    hint: "Build tab, under Milestones.",
+    hint: "Opens the form under Milestones.",
     tab: "build",
+    focus: "milestones",
   },
   board_build_clear: {
     action: "Clear the build columns",
@@ -120,7 +131,10 @@ export function fixFor(condition) {
 export function fixHref(projectId, fix) {
   if (!fix) return null;
   if (fix.board) return `/tasks?project=${projectId}`;
-  if (fix.tab) return `/flow/projects/${projectId}?tab=${fix.tab}`;
+  if (fix.tab) {
+    const focus = fix.focus ? `&focus=${fix.focus}` : "";
+    return `/flow/projects/${projectId}?tab=${fix.tab}${focus}`;
+  }
   if (fix.drawer) return `/flow/projects/${projectId}?drawer=${fix.drawer}`;
   if (fix.edit) return `/flow/projects/${projectId}?edit=1`;
   return `/flow/projects/${projectId}`;

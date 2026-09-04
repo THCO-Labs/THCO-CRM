@@ -249,8 +249,8 @@ export default function FlowProjectDetail() {
     >
       {/* HEADER */}
       <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm" data-testid="project-detail">
-        <div className="flex items-start justify-between mb-3">
-          <div>
+        <div className="flex flex-col lg:flex-row lg:items-start gap-4 mb-3">
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 mb-1">
               <p className="text-[11px] font-mono text-gray-400">{project.project_id_display}</p>
               <span className="text-[11px] text-gray-500">{stageSummary(stage)}</span>
@@ -271,14 +271,21 @@ export default function FlowProjectDetail() {
                   isTsd={isProjectTsd} canRecord={isProjectTsd || isAdmin}
                   onChanged={() => load({ silent: true })} />
               )}
-              {project.architect_id && stage >= 6 && stage <= 9 && (
-                <TsdAcknowledgement project={project} role="architect" compact
-                  isTsd={isProjectArchitect} canRecord={isProjectArchitect || isAdmin}
-                  onChanged={() => load({ silent: true })} />
-              )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          {project.architect_id && stage >= 6 && stage <= 9 && (
+            <div className="w-full lg:w-[320px] shrink-0">
+              <TsdAcknowledgement
+                project={project}
+                role="architect"
+                compact
+                isTsd={isProjectArchitect}
+                canRecord={isProjectArchitect || isAdmin}
+                onChanged={() => load({ silent: true })}
+              />
+            </div>
+          )}
+          <div className="flex items-center gap-2 shrink-0">
             <Button
               variant="outline"
               size="sm"

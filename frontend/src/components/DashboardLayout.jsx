@@ -170,6 +170,7 @@ const DashboardLayoutInner = ({ children, user }) => {
   const navigate = useNavigate();
   const { trackAction } = useAnalytics();
   const { theme, toggleTheme } = useTheme();
+  const isFlowProjectDetail = location.pathname.startsWith("/flow/projects/");
 
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 1024px)");
@@ -726,7 +727,7 @@ const DashboardLayoutInner = ({ children, user }) => {
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top Bar */}
-        <header className="h-[68px] bg-[#F7F6F3]/85 backdrop-blur-md border-b border-[#EAE7E0] flex items-center justify-between px-4 lg:px-8 sticky top-0 z-30">
+        <header className={`h-[68px] bg-[#F7F6F3]/85 backdrop-blur-md border-b border-[#EAE7E0] flex items-center justify-between px-4 lg:px-8 ${isFlowProjectDetail ? "" : "sticky top-0 z-30"}`}>
           <div className="flex items-center gap-3 lg:gap-4 min-w-0">
             {/* The only way to reach the menu on a phone. Sized to the 44px
                 minimum a thumb can reliably hit. */}
@@ -983,7 +984,7 @@ const DashboardLayoutInner = ({ children, user }) => {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 p-4 lg:p-8 overflow-auto">
+        <main className={`flex-1 p-4 lg:p-8 ${isFlowProjectDetail ? "overflow-visible" : "overflow-auto"}`}>
           {children}
         </main>
       </div>

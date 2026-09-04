@@ -160,6 +160,7 @@ export default function LifecycleLine({
           {detailIsCurrent ? (
             <NextStepPanel
               project={project}
+              gate={gate}
               onAdvance={onAdvance}
               refreshKey={`${project.stage}-${project.architect_id || "none"}`}
               me={me}

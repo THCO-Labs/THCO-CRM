@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
-  Activity, AlertTriangle, Check, Contact, FileText, Layers, Loader2,
+  Activity, AlertTriangle, Check, Contact, FileText, Layers, Loader2, HelpCircle,
   MonitorPlay, Plus, Trash2, Upload, Users, X, GitBranch, ShieldAlert,
   ClipboardCheck, Briefcase, Ban, Link2, ScrollText, Printer,
 } from "lucide-react";
@@ -23,6 +23,7 @@ import { controlTowerAPI, deliveryAPI, flowAPI, intelligenceAPI } from "@/lib/ap
 import FileLink from "./FileLink";
 import Suggestion from "./Suggestion";
 import AttachmentStrip from "./AttachmentStrip";
+import NextStepPanel from "./NextStepPanel";
 
 const TABS = [
   { key: "overview", label: "Overview" },
@@ -83,7 +84,7 @@ const REQUIREMENT_STATUS = {
 const fmt = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined,
   { day: "numeric", month: "short", year: "numeric" }) : "");
 
-export default function ProjectWorkspace({ projectId, project, onChanged }) {
+export default function ProjectWorkspace({ projectId, project, onChanged, gate, onAdvance, me }) {
   const [tab, setTab] = useState("overview");
   const [drawer, setDrawer] = useState(null);
   const [data, setData] = useState(null);
@@ -201,22 +202,24 @@ export default function ProjectWorkspace({ projectId, project, onChanged }) {
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm" data-testid="project-workspace">
       {/* Icon rail. Everything that does not earn a tab lives behind one of
           these, and opens over the page rather than navigating away. */}
-      <div className="flex items-center gap-1 px-4 pt-4">
+      <div className="flex items-center gap-1 px-4 pt-4 overflow-x-auto [scrollbar-width:none]">
         {DRAWERS.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             onClick={() => setDrawer(key)}
             title={label}
             data-testid={`drawer-${key}`}
-            className="relative flex items-center justify-center w-10 h-10 rounded-lg
-                       bg-[#1B4332]/[0.08] border border-[#1B4332]/20 text-[#1B4332]
-                       hover:bg-[#1B4332]/[0.14] transition-colors"
+            className={`relative shrink-0 flex items-center justify-center w-10 h-10 rounded-lg
+                       text-[#1B4332] transition-all
+                       ${drawer === key
+                         ? "bg-[#1B4332] text-white shadow-sm"
+                         : "bg-transparent hover:bg-[#F0EEE9]"}`}
           >
             <Icon className="w-4 h-4" />
             {counts[key] > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full
-                               bg-[#1B4332] text-white text-[10px] font-semibold
-                               flex items-center justify-center">
+              <span className={`absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full
+                               ${drawer === key ? "bg-white text-[#1B4332]" : "bg-[#1B4332] text-white"} text-[10px] font-semibold
+                               flex items-center justify-center`}>
                 {counts[key]}
               </span>
             )}
@@ -242,7 +245,16 @@ export default function ProjectWorkspace({ projectId, project, onChanged }) {
       </div>
 
       <div className="p-5">
-        {tab === "overview" && <OverviewTab data={data} project={project} />}
+        {tab === "overview" && (
+          <OverviewTab
+            data={data}
+            project={project}
+            gate={gate}
+            onAdvance={onAdvance}
+            me={me}
+            onChanged={onChanged}
+          />
+        )}
         {tab === "product" && (
           <ProductTab projectId={projectId} data={data} can={can} onChanged={refresh}
                       focus={focus} />
@@ -322,20 +334,37 @@ export default function ProjectWorkspace({ projectId, project, onChanged }) {
 // ---------------------------------------------------------------------------
 // Tabs
 // ---------------------------------------------------------------------------
-function OverviewTab({ data, project }) {
+function OverviewTab({ data, project, gate, onAdvance, me, onChanged }) {
   const committed = data.requirements.filter((r) => r.status === "committed").length;
   const open = data.requirements.filter((r) => r.status === "open_question").length;
   const brief = data.product_briefs?.[0];
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Stat label="Requirements" value={data.requirements.length} hint={`${committed} committed`} />
-        <Stat label="Open questions" value={open} warn={open > 0} />
-        <Stat label="Demo rounds" value={data.demos.length} />
-        <Stat label="Architecture" value={data.architecture.length}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+        <Stat icon={ClipboardCheck} label="Requirements" value={data.requirements.length} hint={`${committed} committed`} />
+        <Stat icon={HelpCircle} label="Open questions" value={open} warn={open > 0} />
+        <Stat icon={MonitorPlay} label="Demo rounds" value={data.demos.length} />
+        <Stat icon={Layers} label="Architecture" value={data.architecture.length}
               hint={data.architecture.length ? `v${data.architecture[0].version}` : "none yet"} />
       </div>
+
+      {gate && onAdvance && (
+        <NextStepPanel
+          project={project}
+          gate={gate}
+          onAdvance={onAdvance}
+          refreshKey={`${project.stage}-${project.architect_id || "none"}`}
+          me={me}
+          onChanged={onChanged}
+        />
+      )}
+
+      {project?.description && (
+        <Section title="Project overview">
+          <p className="text-sm text-gray-700 whitespace-pre-wrap">{project.description}</p>
+        </Section>
+      )}
 
       {project?.desired_outcome && (
         <Section title="What the client asked for">
@@ -2651,12 +2680,15 @@ function Field({ label, children }) {
   );
 }
 
-function Stat({ label, value, hint, warn }) {
+function Stat({ icon: Icon, label, value, hint, warn }) {
   return (
-    <div className={`p-3 rounded-lg border ${warn ? "border-[#C6A15B]/40 bg-[#C6A15B]/[0.06]" : "border-[#EAE7E0] bg-[#F7F6F3]"}`}>
-      <p className="text-[11px] uppercase tracking-wide text-gray-500">{label}</p>
-      <p className="text-xl font-semibold text-gray-900">{value}</p>
-      {hint && <p className="text-[11px] text-gray-500">{hint}</p>}
+    <div className={`p-3 rounded-xl border bg-white ${warn ? "border-[#C6A15B]/50" : "border-[#EAE7E0]"}`}>
+      <div className="flex items-center gap-2">
+        {Icon && <Icon className={`w-4 h-4 ${warn ? "text-[#A9834E]" : "text-[#1B4332]"}`} strokeWidth={1.8} />}
+        <p className="text-[10px] uppercase tracking-[0.12em] text-gray-500">{label}</p>
+      </div>
+      <p className="text-xl font-semibold text-gray-900 mt-1">{value}</p>
+      {hint && <p className="text-[11px] text-gray-500 mt-0.5">{hint}</p>}
     </div>
   );
 }

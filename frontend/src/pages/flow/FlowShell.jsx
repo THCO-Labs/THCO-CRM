@@ -30,7 +30,7 @@ export const FlowShell = ({ children, title, action }) => {
       {/* The page title bar above this (DashboardLayout) already says
           "Crowther OS" -- a second one here, with its own icon and tagline,
           just repeated the same thing directly underneath it. */}
-      <div className="flex items-center justify-between gap-3 border-b border-gray-100 pb-4">
+      <div className="sticky top-0 z-20 -mx-4 px-4 lg:-mx-8 lg:px-8 py-3 flex items-center justify-between gap-3 border-b border-[#EAE7E0] bg-[#F7F6F3]/95 backdrop-blur-md">
         <div className="flex gap-1 overflow-x-auto" data-testid="flow-nav">
           {FLOW_NAV.map((n) => {
             const Icon = n.icon;

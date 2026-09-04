@@ -49,6 +49,7 @@ export default function TsdAcknowledgement({
   // "tsd" or "architect". The architect is named and then hears nothing,
   // exactly as the TSD used to, so both get the same three buttons.
   role = "tsd",
+  compact = false,
 }) {
   const [busy, setBusy] = useState(null);
   const [note, setNote] = useState("");
@@ -82,14 +83,16 @@ export default function TsdAcknowledgement({
   if (!canRecord && !current) return null;
 
   return (
-    <div className="rounded-xl border border-[#EAE7E0] bg-white p-4"
+    <div className={compact
+      ? "rounded-lg border border-[#EAE7E0] bg-[#FBFAF7] px-3 py-2"
+      : "rounded-xl border border-[#EAE7E0] bg-white p-4"}
          data-testid={`${role}-acknowledgement`}>
-      <div className="flex items-start justify-between gap-3 mb-3">
+      <div className={`flex items-start justify-between gap-3 ${compact ? "mb-1.5" : "mb-3"}`}>
         <div>
           <p className="text-[10px] font-mono text-gray-400">
             {isTsd ? "TELL THE SENIOR PARTNER" : `${roleLabel.toUpperCase()} STATUS`}
           </p>
-          <p className="text-sm font-medium text-gray-900 mt-0.5">
+          <p className={`${compact ? "text-xs" : "text-sm"} font-medium text-gray-900 mt-0.5`}>
             {current
               ? `${holderName || `The ${roleLabel}`} ${
                   current.status === "accepted" ? "has accepted this project"

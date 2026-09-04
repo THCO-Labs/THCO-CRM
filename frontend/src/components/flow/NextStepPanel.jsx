@@ -65,15 +65,20 @@ const ConditionRow = ({ condition, project }) => {
   );
 };
 
-export default function NextStepPanel({ project, onAdvance, refreshKey, me, onChanged }) {
-  const [gate, setGate] = useState(null);
-  const [loading, setLoading] = useState(true);
+export default function NextStepPanel({ project, onAdvance, refreshKey, me, onChanged, gate: suppliedGate }) {
+  const [gate, setGate] = useState(suppliedGate || null);
+  const [loading, setLoading] = useState(!suppliedGate);
 
   const loadNextStep = useCallback(
     () => intelligenceAPI.nextStep(project.id), [project.id]
   );
 
   useEffect(() => {
+    if (suppliedGate) {
+      setGate(suppliedGate);
+      setLoading(false);
+      return undefined;
+    }
     let cancelled = false;
     const load = async () => {
       setLoading(true);
@@ -88,7 +93,7 @@ export default function NextStepPanel({ project, onAdvance, refreshKey, me, onCh
     };
     load();
     return () => { cancelled = true; };
-  }, [project.id, refreshKey]);
+  }, [project.id, refreshKey, suppliedGate]);
 
   if (loading) {
     return (

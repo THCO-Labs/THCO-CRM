@@ -265,6 +265,18 @@ export default function FlowProjectDetail() {
                 : <span className="flex items-center gap-1 text-amber-700"><User className="w-3.5 h-3.5" />No TSD assigned</span>}
               {project.architect_name && <span className="flex items-center gap-1"><Hammer className="w-3.5 h-3.5" />Architect: {project.architect_name}</span>}
             </div>
+            <div className="flex flex-wrap gap-2 mt-3">
+              {stage <= 4 && (
+                <TsdAcknowledgement project={project} role="tsd" compact
+                  isTsd={isProjectTsd} canRecord={isProjectTsd || isAdmin}
+                  onChanged={() => load({ silent: true })} />
+              )}
+              {project.architect_id && stage >= 6 && stage <= 9 && (
+                <TsdAcknowledgement project={project} role="architect" compact
+                  isTsd={isProjectArchitect} canRecord={isProjectArchitect || isAdmin}
+                  onChanged={() => load({ silent: true })} />
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -302,39 +314,6 @@ export default function FlowProjectDetail() {
           />
         </div>
         </div>
-
-        {/* The TSD saying where they are with a project they were handed.
-          Directly under the header because "has the TSD picked this up" is the
-          first question anybody opening an early-stage project has, and until
-          now nothing on the page answered it. Hidden once the project is well
-          past intake -- it is an intake question, not a permanent panel. */}
-      {stage <= 4 && (
-        <div className="mb-5">
-          <TsdAcknowledgement
-            project={project}
-            role="tsd"
-            isTsd={isProjectTsd}
-            canRecord={isProjectTsd || isAdmin}
-            onChanged={() => load({ silent: true })}
-          />
-        </div>
-      )}
-
-      {/* The architect gets the same three buttons, for the same reason: being
-          named and then hearing nothing is the gap, and it was the same gap
-          for both roles. Shown from the moment one is named until the build
-          is under way. */}
-      {project.architect_id && stage >= 6 && stage <= 9 && (
-        <div className="mb-5">
-          <TsdAcknowledgement
-            project={project}
-            role="architect"
-            isTsd={isProjectArchitect}
-            canRecord={isProjectArchitect || isAdmin}
-            onChanged={() => load({ silent: true })}
-          />
-        </div>
-      )}
 
       {/* Everybody else placed on the project. Being added was treated as
           agreeing, which it is not -- people are on leave or at capacity,
@@ -433,8 +412,6 @@ export default function FlowProjectDetail() {
           </div>
         )}
 
-        {project.description && <p className="text-sm text-gray-600 my-4 leading-relaxed">{project.description}</p>}
-
         {/* Sibling banner */}
         {/* The split-track sibling link lived here. One project is now one
             record for its whole life, so there is no sibling to cross to. */}
@@ -447,7 +424,14 @@ export default function FlowProjectDetail() {
           The architect is handed no briefing package. They read this, the same
           as everyone else, from the moment they are named. */}
       <div className="mt-4">
-        <ProjectWorkspace projectId={project.id} project={project} onChanged={() => load({ silent: true })} />
+        <ProjectWorkspace
+          projectId={project.id}
+          project={project}
+          gate={gate}
+          onAdvance={handleAdvance}
+          me={me}
+          onChanged={() => load({ silent: true })}
+        />
       </div>
 
       {/* BUILD STATUS - the board carries the work; this is the summary line */}
